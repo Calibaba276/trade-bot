@@ -17,6 +17,6 @@ class TradingStrategy(Strategy):
             high = morning_data["high"].max()
             low = morning_data["low"].min()
 
-            self.log_message(f"From 12:00 - 6:59am: High={high}, Low={low}")
+            print(f"From 12:00 - 6:59am: High={high}, Low={low}")
         else:
-            self.log_message("No Data Provided")
+            print("No Data Provided")
