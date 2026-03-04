@@ -1,22 +1,27 @@
-from datetime import datetime
-from lumibot.backtesting import YahooDataBacktesting
+from datetime import time
 from lumibot.strategies.strategy import Strategy
 
 class TradingStrategy(Strategy):
     def initialize(self):
         self.symbol = self.parameters.get("symbol")
         self.sleeptime = "1M"
+        self.high = None
+        self.low = None
 
     def on_trading_iteration(self):
-        bars = self.get_historical_prices(self.symbol, 1000, "minute")
-        df = bars.pandas_df
 
-        morning_data = df.between_time("00:00", "06:59")
+        current_time = self.get_datetime().time()
 
-        if not morning_data.empty:
-            high = morning_data["high"].max()
-            low = morning_data["low"].min()
+        if current_time == time(7, 0):
+            bars = self.get_historical_prices(self.symbol, 500, "minute")
+            df = bars.pandas_df
 
-            print(f"From 12:00 - 6:59am: High={high}, Low={low}")
-        else:
-            print("No Data Provided")
+            morning_data = df.between_time("00:00", "06:59")
+
+            if not morning_data.empty:
+                self.high = morning_data["high"].max()
+                self.low = morning_data["low"].min()
+            else:
+                print(f"--- {self.get_datetime().date()} Market is Closed (No Data) ---")
+
+            print(f"From 12:00 - 6:59am: High={self.high}, Low={self.low}")
