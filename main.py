@@ -14,14 +14,9 @@ start = datetime.strptime(BACKTESTING_START, "%Y-%m-%d")
 end = datetime.strptime(BACKTESTING_END, "%Y-%m-%d")
 
 if __name__ == "__main__":
-    if os.getenv("ISBACKTESTING") == "true":
-        strategy = TradingStrategy(
-            name="Liquidity Sweep",
-            parameters={"symbol": "EURUSD=X"}
-        )
-
-        strategy.backtest(
-            YahooDataBacktesting,
-            start,
-            end
-        )
+    TradingStrategy.run_backtest(
+        YahooDataBacktesting,
+        start,
+        end,
+        parameters={"symbol": "EURUSD=X"}
+    )
