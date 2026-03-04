@@ -21,5 +21,5 @@ if __name__ == "__main__":
         end,
         parameters={"symbol": "C:EURUSD"},
         quiet_logs=False,
-        api_key=POLYGON_API_KEY
+        polygon_api_key=POLYGON_API_KEY
     )
