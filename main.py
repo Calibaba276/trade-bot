@@ -18,5 +18,6 @@ if __name__ == "__main__":
         YahooDataBacktesting,
         start,
         end,
-        parameters={"symbol": "EURUSD=X"}
+        parameters={"symbol": "EURUSD=X"},
+        quiet_logs=False
     )

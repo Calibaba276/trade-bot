@@ -19,4 +19,4 @@ class TradingStrategy(Strategy):
 
             self.log_message(f"From 12:00 - 6:59am: High={high}, Low={low}")
         else:
-            pass
+            self.log_message("No Data Provided")
