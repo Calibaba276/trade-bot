@@ -21,6 +21,7 @@ class TradingStrategy(Strategy):
         if not morning_data.empty:
             self.high = morning_data["high"].max()
             self.low = morning_data["low"].min()
-            print(f"From 12:00 - 6:59am: High={self.high}, Low={self.low}", flush=True)
         else:
             print(f"--- {self.get_datetime().date()} Market is Closed (No Data) ---", flush=True)
+
+        print(f"--- {self.get_timedate().date()} From 12:00 - 6:59am: High={self.high}, Low={self.low} ---", flush=True)
