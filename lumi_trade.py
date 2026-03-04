@@ -10,7 +10,13 @@ class TradingStrategy(Strategy):
 
     def on_trading_iteration(self):
 
-        current_time = self.get_datetime().time()
+        dt = self.get_datetime()
+        current_time = dt.time()
+
+        if dt.weekday() >=5:
+            if current_time == time(0, 0):
+                print(f"{dt.date()} Market is Closed (Weekend)", flush=True)
+                return
 
         if current_time == time(7, 0):
             bars = self.get_historical_prices(self.symbol, 500, "minute")
@@ -21,7 +27,6 @@ class TradingStrategy(Strategy):
             if not morning_data.empty:
                 self.high = morning_data["high"].max()
                 self.low = morning_data["low"].min()
+                print(f"From 12:00 - 6:59am: High={self.high}, Low={self.low}", flush=True)
             else:
-                print(f"--- {self.get_datetime().date()} Market is Closed (No Data) ---")
-
-            print(f"From 12:00 - 6:59am: High={self.high}, Low={self.low}")
+                print(f"--- {self.get_datetime().date()} Market is Closed (No Data) ---", flush=True)
