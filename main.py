@@ -20,6 +20,7 @@ if __name__ == "__main__":
         start,
         end,
         parameters={"symbol": "C:EURUSD"},
+        benchmark_asset="C:EURUSD",
         quiet_logs=False,
         polygon_api_key=POLYGON_API_KEY
     )
