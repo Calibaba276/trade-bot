@@ -4,7 +4,7 @@ from lumibot.strategies.strategy import Strategy
 class TradingStrategy(Strategy):
     def initialize(self):
         self.symbol = self.parameters.get("symbol")
-        self.sleeptime = "1M"
+        self.sleeptime = "5M"
         self.high = None
         self.low = None
         self.traded_today = False
