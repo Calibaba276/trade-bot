@@ -1,6 +1,9 @@
 from datetime import time
 from lumibot.strategies.strategy import Strategy
 
+import logging
+logging.basicConfig(filename="trades.log", level=logging.INFO, format="%(asctime)s | %(message)s")
+
 class TradingStrategy(Strategy):
     def initialize(self):
         self.symbol = self.parameters.get("symbol")
@@ -30,8 +33,11 @@ class TradingStrategy(Strategy):
                 self.low = morning_data["low"].min()
                 self.last_range_date = dt.date()
                 print(f"--- {dt.date()} From 12:00 - 6:59am: High={self.high}, Low={self.low} ---", flush=True)
+                logging.info(f"--- {dt.date()} From 12:00 - 6:59am: High={self.high}, Low={self.low} ---", flush=True)
+
             else:
                 print(f"--- {dt.date()} Market is Closed (No Data) ---", flush=True)
+                logging.info(f"--- {dt.date()} Market is Closed (No Data) ---", flush=True)
 
         if self.high and self.low and not self.traded_today:
             if current_time > time(7, 0) and current_time < time(17, 0):
@@ -40,6 +46,7 @@ class TradingStrategy(Strategy):
                 # BUY
                 if last_price > self.high:
                     print(f"{dt}-- BUY SIGNAL -- Price {last_price} passed High - {self.high}")
+                    logging.info(f"{dt}-- BUY SIGNAL -- Price {last_price} passed High - {self.high}")
                     order = self.create_order(self.symbol, 100, "buy")
                     self.submit_order(order)
 
@@ -48,6 +55,7 @@ class TradingStrategy(Strategy):
                 # SELL
                 elif last_price < self.low:
                     print(f"{dt} -- SELL SIGNAL -- Price {last_price} passed Low - {self.low}")
+                    logging.info(f"{dt} -- SELL SIGNAL -- Price {last_price} passed Low - {self.low}")
                     order = self.create_order(self.symbol, 100, "sell")
                     self.submit_order(order)
 
