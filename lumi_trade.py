@@ -65,7 +65,7 @@ class LiquiditySweep(Strategy):
                     self.swept_low = True
 
                 elif last_price > self.low and self.swept_low:
-                    print(f"{dt} -- BUY SIGNAL -- Price {last_price} passed Low - {self.low}", flush = True)
+                    print(f"{dt} -- BUY SIGNAL -- Price {last_price} reversed above Low - {self.low}", flush = True)
                     order = self.create_order(
                         self.symbol, 10000, "buy",
                         take_profit_price = self.high,
