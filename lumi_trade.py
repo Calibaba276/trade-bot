@@ -9,6 +9,9 @@ class LiquiditySweep(Strategy):
         self.low = None
         self.traded_today = False
         self.last_range_date = None
+        self.swept_high = False
+        self.swept_low = False
+        self.buffer = 0.0005
 
     def on_trading_iteration(self):
 
@@ -19,6 +22,8 @@ class LiquiditySweep(Strategy):
             self.high = None
             self.low = None
             self.traded_today = False
+            self.swept_high = False
+            self.swept_low = False
 
         if current_time >= time(7, 0) and self.last_range_date != dt.date():
             bars = self.get_historical_prices(self.symbol, 420, "minute")
@@ -38,17 +43,34 @@ class LiquiditySweep(Strategy):
                 last_price = self.get_last_price(self.symbol)
 
                 # SELL
+                #DETECT INITIAL SWEEP
                 if last_price > self.high:
-                    print(f"{dt}-- SELL SIGNAL -- Price {last_price} passed High - {self.high}", flush = True)
-                    order = self.create_order(self.symbol, 10000, "sell")
+                    self.swept_high = True
+                
+                # PRICES REVERSES BACK ABOVE LOW
+                elif last_price < self.high and self.swept_high:
+                    print(f"{dt}-- SELL SIGNAL -- Price {last_price} reversed below High - {self.high}", flush = True)
+                    order = self.create_order(
+                        self.symbol, 10000, "sell",
+                        take_profit_price = self.low,
+                        stop_loss_price = self.high + self.buffer
+                    )
                     self.submit_order(order)
 
                     self.traded_today = True
 
-                # SELL
+                # BUY
+                #DETECT INITIAL SWEEP
                 elif last_price < self.low:
+                    self.swept_low = True
+
+                elif last_price > self.low and self.swept_low:
                     print(f"{dt} -- BUY SIGNAL -- Price {last_price} passed Low - {self.low}", flush = True)
-                    order = self.create_order(self.symbol, 10000, "buy")
+                    order = self.create_order(
+                        self.symbol, 10000, "buy",
+                        take_profit_price = self.high,
+                        stop_loss_price = self.low - self.buffer
+                    )
                     self.submit_order(order)
 
                     self.traded_today = True
