@@ -1,10 +1,10 @@
 from datetime import time
 from lumibot.strategies.strategy import Strategy
 
-class TradingStrategy(Strategy):
+class LiquiditySweep(Strategy):
     def initialize(self):
         self.symbol = self.parameters.get("symbol")
-        self.sleeptime = "5M"
+        self.sleeptime = "1M"
         self.high = None
         self.low = None
         self.traded_today = False
@@ -37,18 +37,18 @@ class TradingStrategy(Strategy):
             if current_time > time(7, 0) and current_time < time(17, 0):
                 last_price = self.get_last_price(self.symbol)
 
-                # BUY
+                # SELL
                 if last_price > self.high:
-                    print(f"{dt}-- BUY SIGNAL -- Price {last_price} passed High - {self.high}", flush = True)
-                    order = self.create_order(self.symbol, 100, "buy")
+                    print(f"{dt}-- SELL SIGNAL -- Price {last_price} passed High - {self.high}", flush = True)
+                    order = self.create_order(self.symbol, 10000, "sell")
                     self.submit_order(order)
 
                     self.traded_today = True
 
                 # SELL
                 elif last_price < self.low:
-                    print(f"{dt} -- SELL SIGNAL -- Price {last_price} passed Low - {self.low}", flush = True)
-                    order = self.create_order(self.symbol, 100, "sell")
+                    print(f"{dt} -- BUY SIGNAL -- Price {last_price} passed Low - {self.low}", flush = True)
+                    order = self.create_order(self.symbol, 10000, "buy")
                     self.submit_order(order)
 
                     self.traded_today = True

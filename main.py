@@ -1,5 +1,5 @@
 import os
-from lumi_trade import TradingStrategy
+from lumi_trade import LiquiditySweep
 from lumibot.backtesting import PolygonDataBacktesting
 from dotenv import load_dotenv
 
@@ -15,7 +15,7 @@ start = datetime.strptime(BACKTESTING_START, "%Y-%m-%d")
 end = datetime.strptime(BACKTESTING_END, "%Y-%m-%d")
 
 if __name__ == "__main__":
-    TradingStrategy.run_backtest(
+    LiquiditySweep.run_backtest(
         PolygonDataBacktesting,
         start,
         end,
