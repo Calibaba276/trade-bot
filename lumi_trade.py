@@ -12,6 +12,8 @@ class LiquiditySweep(Strategy):
         self.swept_high = False
         self.swept_low = False
         self.buffer = 0.0005
+        self.mss_swing_low = None
+        self.mss_swing_high = None
 
     def on_trading_iteration(self):
 
@@ -24,6 +26,8 @@ class LiquiditySweep(Strategy):
             self.traded_today = False
             self.swept_high = False
             self.swept_low = False
+            self.mss_swing_low = None
+            self.mss_swing_high = None
 
         if current_time >= time(7, 0) and self.last_range_date != dt.date():
             bars = self.get_historical_prices(self.symbol, 420, "minute")
@@ -42,35 +46,56 @@ class LiquiditySweep(Strategy):
             if current_time > time(7, 0) and current_time < time(17, 0):
                 last_price = self.get_last_price(self.symbol)
 
-                # SELL
-                #DETECT INITIAL SWEEP
+                # --- BEARISH MSS ---
+                # Step 1: Detect sweep above the high
                 if last_price > self.high:
                     self.swept_high = True
-                
-                # PRICES REVERSES BACK ABOVE LOW
-                elif last_price < self.high and self.swept_high:
-                    print(f"{dt}-- SELL SIGNAL -- Price {last_price} reversed below High - {self.high}", flush = True)
+
+                # Step 2: Price reverses below high — scan recent bars for a swing low (higher low)
+                if self.swept_high and last_price < self.high and self.mss_swing_low is None:
+                    bars = self.get_historical_prices(self.symbol, 20, "minute")
+                    df = bars.pandas_df
+                    lows = df["low"].values
+                    for i in range(len(lows) - 2, 0, -1):
+                        if lows[i] < lows[i - 1] and lows[i] < lows[i + 1] and lows[i] > self.low:
+                            self.mss_swing_low = float(lows[i])
+                            print(f"{dt} -- Bearish MSS: Swing Low identified at {self.mss_swing_low}", flush=True)
+                            break
+
+                # Step 3: Price breaks below the swing low — MSS confirmed, SELL
+                if self.mss_swing_low and last_price < self.mss_swing_low:
+                    print(f"{dt} -- SELL (Bearish MSS) -- Price {last_price} broke below swing low {self.mss_swing_low}", flush=True)
                     order = self.create_order(
                         self.symbol, 10000, "sell",
                         take_profit_price = self.low,
-                        stop_loss_price = self.high + self.buffer
+                        stop_loss_price = self.mss_swing_low + self.buffer
                     )
                     self.submit_order(order)
-
                     self.traded_today = True
 
-                # BUY
-                #DETECT INITIAL SWEEP
+                # --- BULLISH MSS ---
+                # Step 1: Detect sweep below the low
                 elif last_price < self.low:
                     self.swept_low = True
 
-                elif last_price > self.low and self.swept_low:
-                    print(f"{dt} -- BUY SIGNAL -- Price {last_price} reversed above Low - {self.low}", flush = True)
+                # Step 2: Price reverses above low — scan recent bars for a swing high (lower high)
+                if self.swept_low and last_price > self.low and self.mss_swing_high is None:
+                    bars = self.get_historical_prices(self.symbol, 20, "minute")
+                    df = bars.pandas_df
+                    highs = df["high"].values
+                    for i in range(len(highs) - 2, 0, -1):
+                        if highs[i] > highs[i - 1] and highs[i] > highs[i + 1] and highs[i] < self.high:
+                            self.mss_swing_high = float(highs[i])
+                            print(f"{dt} -- Bullish MSS: Swing High identified at {self.mss_swing_high}", flush=True)
+                            break
+
+                # Step 3: Price breaks above the swing high — MSS confirmed, BUY
+                if self.mss_swing_high and last_price > self.mss_swing_high:
+                    print(f"{dt} -- BUY (Bullish MSS) -- Price {last_price} broke above swing high {self.mss_swing_high}", flush=True)
                     order = self.create_order(
                         self.symbol, 10000, "buy",
                         take_profit_price = self.high,
-                        stop_loss_price = self.low - self.buffer
+                        stop_loss_price = self.mss_swing_high - self.buffer
                     )
                     self.submit_order(order)
-
                     self.traded_today = True
