@@ -14,6 +14,8 @@ class LiquiditySweep(Strategy):
         self.buffer = 0.0005
         self.mss_swing_low = None
         self.mss_swing_high = None
+        self.risk_amount = 25
+        self.stop_loss_distance = None
 
     def on_trading_iteration(self):
 
