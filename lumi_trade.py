@@ -28,6 +28,8 @@ class LiquiditySweep(Strategy):
             self.swept_low = False
             self.mss_swing_low = None
             self.mss_swing_high = None
+            self.risk_amount = 25
+            self.stop_loss_distance = None
 
         if current_time >= time(7, 0) and self.last_range_date != dt.date():
             bars = self.get_historical_prices(self.symbol, 420, "minute")
@@ -64,9 +66,13 @@ class LiquiditySweep(Strategy):
 
                 # Step 3: Price breaks below the swing low — MSS confirmed, SELL
                 if self.mss_swing_low and last_price < self.mss_swing_low:
+
+                    self.stop_loss_distance = (self.mss_swing_low + self.buffer) - last_price
+                    quantity = int(self.risk_amount / self.stop_loss_distance)
+
                     print(f"{dt} -- SELL (Bearish MSS) -- Price {last_price} broke below swing low {self.mss_swing_low}", flush=True)
                     order = self.create_order(
-                        self.symbol, 10000, "sell",
+                        self.symbol, quantity, "sell",
                         take_profit_price = self.low,
                         stop_loss_price = self.mss_swing_low + self.buffer
                     )
@@ -91,9 +97,13 @@ class LiquiditySweep(Strategy):
 
                 # Step 3: Price breaks above the swing high — MSS confirmed, BUY
                 if self.mss_swing_high and last_price > self.mss_swing_high:
+
+                    self.stop_loss_distance = last_price - (self.mss_swing_high - self.buffer)
+                    quantity = int(self.risk_amount / self.stop_loss_distance)
+
                     print(f"{dt} -- BUY (Bullish MSS) -- Price {last_price} broke above swing high {self.mss_swing_high}", flush=True)
                     order = self.create_order(
-                        self.symbol, 10000, "buy",
+                        self.symbol, quantity, "buy",
                         take_profit_price = self.high,
                         stop_loss_price = self.mss_swing_high - self.buffer
                     )
