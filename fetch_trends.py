@@ -54,14 +54,20 @@ class FetchTrends:
         return article
 
     def get_ai_response(self):
-        response = self.client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=self.prompt,
-            config=types.GenerateContentConfig( 
-                response_mime_type="application/json",
-                response_schema=TradeBatch,
-                temperature=0.0
-            )
-        )
 
-        return response.text
+        try:
+            response = self.client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=self.prompt,
+                config=types.GenerateContentConfig( 
+                    response_mime_type="application/json",
+                    response_schema=TradeBatch,
+                    temperature=0.0
+                )
+            )
+
+            return response.text
+
+        except Exception as e:
+            print(f"Error calling Gemini - {e}")
+            return {}

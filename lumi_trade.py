@@ -123,9 +123,12 @@ class LiquiditySweep(Strategy):
 class TrendStrategy(Strategy):
     def initialize(self):
         self.result = FetchTrends(NEWS_API_KEY, GEMINI_API_KEY)
-        self.sleeptime = "2M"
+        self.sleeptime = "5M"
     
     def on_trading_iteration(self):
+
+        dt = self.get_datetime()
+
         payload = json.loads(self.result.get_ai_response())
         signals = payload.get("signals", [])
 
@@ -147,14 +150,14 @@ class TrendStrategy(Strategy):
                     
                     order = self.create_order(asset, quantity, "buy", type="market")
                     self.submit_order(order)
-                    print(f"BUY {ticker} | Score: {score} | Reason: {signal['reason']}", flush=True)
+                    print(f"{dt} BUY {ticker} | Score: {score} | Reason: {signal['reason']}", flush=True)
 
             elif score <= -0.5:
                 pos = self.get_position(asset)
                 if pos is not None:
                     order = self.create_order(asset, pos.quantity, "sell", type="market")
                     self.submit_order(order)
-                    print(f"SELL {ticker} | Score: {score} | Reason: {signal['reason']}", flush=True)
+                    print(f"{dt} SELL {ticker} | Score: {score} | Reason: {signal['reason']}", flush=True)
 
     def calculate_quantity(self, ticker):
         # Simple logic: Use 5% of available cash per trade
