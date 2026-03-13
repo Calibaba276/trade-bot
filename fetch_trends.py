@@ -70,4 +70,4 @@ class FetchTrends:
 
         except Exception as e:
             print(f"Error calling Gemini - {e}")
-            return {}
+            return '{"signals": []}'

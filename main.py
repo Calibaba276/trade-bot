@@ -1,7 +1,7 @@
 import os
-from lumi_trade import LiquiditySweep
+from lumi_trade import LiquiditySweep, TrendStrategy
 from lumibot.backtesting import PolygonDataBacktesting
-from lumibot.brokers import Alpaca
+from lumibot.brokers import MetaTrader5
 from lumibot.traders import Trader
 
 from dotenv import load_dotenv
@@ -14,8 +14,9 @@ ISBACKTESTING = os.getenv("ISBACKTESTING", "false").lower() == "true"
 BACKTESTING_START = os.getenv("BACKTESTING_START")
 BACKTESTING_END = os.getenv("BACKTESTING_END")
 POLYGON_API_KEY = os.getenv("POLYGON_API_KEY")
-ALPACA_API_KEY = os.getenv("ALPACA_API_KEY")
-ALPACA_API_SECRET = os.getenv("ALPACA_API_SECRET")
+ACCOUNT = os.getenv("ACCOUNT")
+PASSWORD = os.getenv("PASSWORD")
+SERVER = os.getenv("SERVER")
 
 if __name__ == "__main__":
     if ISBACKTESTING:
@@ -33,13 +34,13 @@ if __name__ == "__main__":
             polygon_api_key=POLYGON_API_KEY
         )
     else:
-        broker = Alpaca({
-            "API_KEY": ALPACA_API_KEY,
-            "API_SECRET": ALPACA_API_SECRET,
-            "PAPER": True
+        broker = MetaTrader5({
+            "account": ACCOUNT,
+            "password": PASSWORD,
+            "server": SERVER
         })
 
-        strategy = LiquiditySweep(broker=broker, parameters={"symbol": "EURUSD"})
+        strategy = TrendStrategy(broker=broker)
         trader = Trader()
         trader.add_strategy(strategy)
         trader.run_all()
