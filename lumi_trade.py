@@ -1,5 +1,13 @@
+import os
+import json
 from datetime import time
 from lumibot.strategies.strategy import Strategy
+from lumibot.entities import Asset
+
+from fetch_trends import FetchTrends
+
+NEWS_API_KEY = os.getenv("NEWS_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 class LiquiditySweep(Strategy):
     def initialize(self):
@@ -111,3 +119,45 @@ class LiquiditySweep(Strategy):
                     )
                     self.submit_order(order)
                     self.traded_today = True
+
+class TrendStrategy(Strategy):
+    def initialize(self):
+        self.result = FetchTrends(NEWS_API_KEY, GEMINI_API_KEY)
+        self.sleeptime = "2M"
+    
+    def on_trading_iteration(self):
+        payload = json.loads(self.result.get_ai_response())
+        signals = payload.get("signals", [])
+
+        if not signals:
+            return
+
+        for signal in signals:
+            ticker = signal["ticker"]
+            score = signal["sentiment_score"]
+            asset = Asset(symbol=ticker, asset_type="stock")
+
+            if score > 0.7:
+                pos = self.get_position(asset)
+                if pos is None:
+                    quantity = self.calculate_quantity(ticker)
+
+                    if quantity <= 0:
+                        continue
+                    
+                    order = self.create_order(asset, quantity, "buy", type="market")
+                    self.submit_order(order)
+                    print(f"BUY {ticker} | Score: {score} | Reason: {signal['reason']}", flush=True)
+
+            elif score <= -0.5:
+                pos = self.get_position(asset)
+                if pos is not None:
+                    order = self.create_order(asset, pos.quantity, "sell", type="market")
+                    self.submit_order(order)
+                    print(f"SELL {ticker} | Score: {score} | Reason: {signal['reason']}", flush=True)
+
+    def calculate_quantity(self, ticker):
+        # Simple logic: Use 5% of available cash per trade
+        price = self.get_last_price(Asset(symbol=ticker, asset_type="stock"))
+        cash = self.get_cash()
+        return int((cash * 0.05) / price)
