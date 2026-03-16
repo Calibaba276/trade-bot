@@ -6,8 +6,23 @@ from lumibot.entities import Asset
 
 from fetch_trends import FetchTrends
 
-NEWS_API_KEY = os.getenv("NEWS_API_KEY")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
+
+VAULT_URL = "https://calibabasecret.vault.azure.net/"
+credentials = DefaultAzureCredential()
+client = SecretClient(VAULT_URL, credentials)
+
+def get_azure_secret(name):
+    """Helper to pull secrets from Azure"""
+    try:
+        return client.get_secret(name).value
+    except Exception as e:
+        print(f"Error fetching {name}: {e}")
+        return None
+
+NEWS_API_KEY = get_azure_secret("NEWS-API-KEY")
+GEMINI_API_KEY = get_azure_secret("GEMINI_API_KEY")
 
 class LiquiditySweep(Strategy):
     def initialize(self):
