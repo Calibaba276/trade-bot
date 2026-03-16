@@ -1,3 +1,4 @@
+import os
 import json
 from datetime import time
 from lumibot.strategies.strategy import Strategy
@@ -178,3 +179,9 @@ class TrendStrategy(Strategy):
         price = self.get_last_price(Asset(symbol=ticker, asset_type="stock"))
         cash = self.get_cash()
         return int((cash * 0.05) / price)
+    
+    def on_bot_crash(self, error):
+        print(f"CRITICAL ERROR: {error}")
+        # Perform cleanup like selling or cancelling orders if needed
+        # Then force the entire process to stop
+        os._exit(1)

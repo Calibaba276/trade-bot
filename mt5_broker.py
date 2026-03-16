@@ -3,7 +3,8 @@ import pandas as pd
 from lumibot.brokers import Broker
 from lumibot.entities import Position, Order
 
-from datetime import datetime
+from datetime import datetime, timedelta
+import pytz
 
 class MetaTrader5(Broker):
 
@@ -131,7 +132,13 @@ class MetaTrader5(Broker):
         return order
 
     def get_datetime(self, *args, **kwargs):
-        return datetime.now()
+        return datetime.now(pytz.utc)
+
+    def market_open_time(self, *args, **kwargs):
+        return datetime.now(pytz.utc) - timedelta(days=1)
+    
+    def market_close_time(self, *args, **kwargs):
+        return datetime.now(pytz.utc) + timedelta(days=1)
     
     def _get_stream_object(self): return None
     def _register_stream_events(self): pass
