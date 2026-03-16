@@ -17,6 +17,11 @@ class MetaTrader5(Broker):
 
         if not mt5.initialize():
             raise RuntimeError(f"MT5 Initialize Failed: {mt5.last_error()}")
+        else:
+            account_info = mt5.account_info()
+            print(f"Account Name: {account_info.name}")
+            print(f"Server Name:  {account_info.server}")
+            print(f"Login ID:     {account_info.login}")
     
     def _get_balances_at_broker(self):
         """
