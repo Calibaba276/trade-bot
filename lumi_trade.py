@@ -1,4 +1,3 @@
-import os
 import json
 from datetime import time
 from lumibot.strategies.strategy import Strategy
@@ -22,7 +21,7 @@ def get_azure_secret(name):
         return None
 
 NEWS_API_KEY = get_azure_secret("NEWS-API-KEY")
-GEMINI_API_KEY = get_azure_secret("GEMINI_API_KEY")
+GEMINI_API_KEY = get_azure_secret("GEMINI-API-KEY")
 
 class LiquiditySweep(Strategy):
     def initialize(self):
