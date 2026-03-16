@@ -5,7 +5,7 @@ from lumibot.entities import Position, Order
 
 class MetaTrader5(Broker):
     def __init__(self, config):
-        super().__init__(name="MT5")
+        super().__init__(name="MT5", data_source=self)
         self.config = config
         self._initialize_mt5()
 
@@ -57,6 +57,26 @@ class MetaTrader5(Broker):
             return tick.last if tick.last != 0 else (tick.bid + tick.ask) / 2
         return None
     
+    def get_historical_prices(self, asset, length, timestep="minute"):
+        """Required for technical indicators and strategy logic"""
+
+        tf_map = {"minute": mt5.TIMEFRAME_M1, "hour": mt5.TIMEFRAME_H1, "day": mt5.TIMEFRAME_D1}
+        timeframe = tf_map.get(timestep)
+        if timeframe is None:
+            raise ValueError(f"Unsupported timestep: {timestep}. Use one of: {', '.join(tf_map.keys())}")
+
+        rates = mt5.copy_rates_from_pos(asset.symbol, timeframe, 0, length)
+
+        if rates is None:
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(rates)
+        df['time'] = pd.to_datetime(df['time'], unit='s')
+        df.set_index('time', inplace=True)
+        df.rename(columns={'real_volume': 'volume'}, inplace=True)
+        
+        return df
+    
     def _submit_order(self, order: Order):
         """Sends orders to MT5 and updates order status"""
 
@@ -93,26 +113,6 @@ class MetaTrader5(Broker):
             print(f"MT5 Order Error: {result.comment}")
             order.status = "failed"
         return order
-    
-    def get_historical_prices(self, asset, length, timestep="minute"):
-        """Required for technical indicators and strategy logic"""
-
-        tf_map = {"minute": mt5.TIMEFRAME_M1, "hour": mt5.TIMEFRAME_H1, "day": mt5.TIMEFRAME_D1}
-        timeframe = tf_map.get(timestep)
-        if timeframe is None:
-            raise ValueError(f"Unsupported timestep: {timestep}. Use one of: {', '.join(tf_map.keys())}")
-
-        rates = mt5.copy_rates_from_pos(asset.symbol, timeframe, 0, length)
-
-        if rates is None:
-            return pd.DataFrame()
-        
-        df = pd.DataFrame(rates)
-        df['time'] = pd.to_datetime(df['time'], unit='s')
-        df.set_index('time', inplace=True)
-        df.rename(columns={'real_volume': 'volume'}, inplace=True)
-        
-        return df
     
     def _get_stream_object(self): return None
     def _register_stream_events(self): pass
