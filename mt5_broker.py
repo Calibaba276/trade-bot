@@ -17,7 +17,7 @@ class MetaTrader5(Broker):
         ):
             raise RuntimeError(f"MT5 Initialize Failed: {mt5.last_error()}")
     
-    def get_balances(self):
+    def _get_balances_at_broker(self):
         """
         This is the internal source for self.get_cash() 
         and self.get_portfolio_value()
@@ -30,7 +30,7 @@ class MetaTrader5(Broker):
             "equity": account.equity
         }
     
-    def get_positions(self):
+    def _pull_positions(self):
         """
         This is the source for self.get_positions() 
         and self.get_position(asset)
@@ -57,7 +57,7 @@ class MetaTrader5(Broker):
             return tick.last if tick.last != 0 else (tick.bid + tick.ask) / 2
         return None
     
-    def submit_order(self, order: Order):
+    def _submit_order(self, order: Order):
         """Sends orders to MT5 and updates order status"""
 
         symbol = order.asset.symbol
@@ -113,3 +113,13 @@ class MetaTrader5(Broker):
         df.rename(columns={'real_volume': 'volume'}, inplace=True)
         
         return df
+    
+    def _get_stream_object(self): return None
+    def _register_stream_events(self): pass
+    def _run_stream(self): pass
+    def _modify_order(self, order): pass
+    def _pull_broker_order(self, identifier): return None
+    def _pull_broker_all_orders(self): return []
+    def _parse_broker_order(self, response): return None
+    def _pull_position(self, asset): return None
+    def get_historical_account_value(self): return []
