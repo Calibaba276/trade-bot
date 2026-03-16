@@ -16,7 +16,7 @@ class MetaTrader5(Broker):
         server = self.config.get('server')
 
         if not mt5.initialize(
-            login=int(log),
+            login=log,
             password=pwd,
             server=server
         ):
