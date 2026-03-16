@@ -55,4 +55,8 @@ if __name__ == "__main__":
         strategy = TrendStrategy(broker=broker)
         trader = Trader()
         trader.add_strategy(strategy)
-        trader.run_all()
+
+        try:
+            trader.run_all()
+        except KeyboardInterrupt:
+            trader.stop_all()

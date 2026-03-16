@@ -3,18 +3,17 @@ import pandas as pd
 from lumibot.brokers import Broker
 from lumibot.entities import Position, Order
 
+from datetime import datetime
+
 class MetaTrader5(Broker):
-    
-    Source = "PANDAS"
 
     def __init__(self, config):
         super().__init__(name="MT5", data_source=self)
+        self.SOURCE = "PANDAS"
         self.config = config
         self._initialize_mt5()
 
     def _initialize_mt5(self):
-
-        self.SOURCE = "PANDAS"
 
         if not mt5.initialize():
             raise RuntimeError(f"MT5 Initialize Failed: {mt5.last_error()}")
@@ -130,6 +129,9 @@ class MetaTrader5(Broker):
             print(f"MT5 Order Error: {result.comment}")
             order.status = "failed"
         return order
+
+    def get_datetime(self, *args, **kwargs):
+        return datetime.now()
     
     def _get_stream_object(self): return None
     def _register_stream_events(self): pass
