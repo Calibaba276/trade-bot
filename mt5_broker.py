@@ -15,16 +15,17 @@ class MetaTrader5(Broker):
             raise RuntimeError(f"MT5 Initialize Failed: {mt5.last_error()}")
 
         authorized = mt5.login(
-        login=int(self.config['login']),
-        password=self.config['password'],
-        server=self.config['server']
+        login=int(self.config.get('account')),
+        password=self.config.get('password'),
+        server=self.config.get('server')
         )
 
         if not authorized:
             error = mt5.last_error()
             mt5.shutdown() # Close connection if login fails
             raise RuntimeError(f"MT5 Login failed for account {self.config['login']}: {error}")
-            print(f"Successfully logged into {self.config['server']} as {self.config['login']}")
+        
+        print(f"Successfully logged into {self.config['server']} as {self.config['login']}")
     
     def _get_balances_at_broker(self):
         """
