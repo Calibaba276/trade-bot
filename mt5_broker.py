@@ -4,6 +4,9 @@ from lumibot.brokers import Broker
 from lumibot.entities import Position, Order
 
 class MetaTrader5(Broker):
+    
+    Source = "PANDAS"
+
     def __init__(self, config):
         super().__init__(name="MT5", data_source=self)
         self.config = config
