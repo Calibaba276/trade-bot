@@ -14,6 +14,8 @@ class MetaTrader5(Broker):
 
     def _initialize_mt5(self):
 
+        self.SOURCE = "PANDAS"
+
         if not mt5.initialize():
             raise RuntimeError(f"MT5 Initialize Failed: {mt5.last_error()}")
 
