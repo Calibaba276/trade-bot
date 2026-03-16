@@ -15,11 +15,7 @@ class MetaTrader5(Broker):
         pwd = self.config.get('password')
         server = self.config.get('server')
 
-        if not mt5.initialize(
-            login=log,
-            password=pwd,
-            server=server
-        ):
+        if not mt5.initialize():
             raise RuntimeError(f"MT5 Initialize Failed: {mt5.last_error()}")
     
     def _get_balances_at_broker(self):
