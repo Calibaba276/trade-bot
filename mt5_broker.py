@@ -123,3 +123,4 @@ class MetaTrader5(Broker):
     def _parse_broker_order(self, response): return None
     def _pull_position(self, asset): return None
     def get_historical_account_value(self): return []
+    def cancel_order(self, order): pass
