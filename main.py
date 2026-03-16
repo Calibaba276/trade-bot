@@ -34,11 +34,12 @@ if __name__ == "__main__":
             polygon_api_key=POLYGON_API_KEY
         )
     else:
-        broker = MetaTrader5({
+        MT5_CONFIG = {
             "login": ACCOUNT,
             "password": PASSWORD,
             "server": SERVER
-        })
+        }
+        broker = MetaTrader5(MT5_CONFIG)
 
         strategy = TrendStrategy(broker=broker)
         trader = Trader()

@@ -15,9 +15,9 @@ class MetaTrader5(Broker):
             raise RuntimeError(f"MT5 Initialize Failed: {mt5.last_error()}")
 
         authorized = mt5.login(
-        login=298938332,
+        login=self.config.get('login'),
         password=self.config.get('password'),
-        server="Exness-MT5Trial9"
+        server=self.config.get('server')
         )
 
         if not authorized:
