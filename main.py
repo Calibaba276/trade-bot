@@ -35,7 +35,7 @@ if __name__ == "__main__":
         )
     else:
         broker = MetaTrader5({
-            "account": ACCOUNT,
+            "login": ACCOUNT,
             "password": PASSWORD,
             "server": SERVER
         })
