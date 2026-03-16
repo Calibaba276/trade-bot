@@ -1,7 +1,6 @@
 import os
 from lumi_trade import LiquiditySweep, TrendStrategy
 from lumibot.backtesting import PolygonDataBacktesting
-from lumibot.data_sources import PandasData
 from mt5_broker import MetaTrader5
 from lumibot.traders import Trader
 
@@ -40,8 +39,6 @@ if __name__ == "__main__":
             "password": PASSWORD,
             "server": SERVER
         })
-
-        broker.data_source = broker
 
         strategy = TrendStrategy(broker=broker)
         trader = Trader()
