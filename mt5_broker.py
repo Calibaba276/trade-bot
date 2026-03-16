@@ -17,7 +17,7 @@ class MetaTrader5(Broker):
         authorized = mt5.login(
         login=298938332,
         password=self.config.get('password'),
-        server=self.config.get('server')
+        server=Exness-MT5Trial9
         )
 
         if not authorized:
