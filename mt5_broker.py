@@ -34,11 +34,13 @@ class MetaTrader5(Broker):
         """
         account = mt5.account_info()
         if account is None:
-            return {"cash": 0.0, "equity": 0.0}
-        return {
-            "cash": account.balance,
-            "equity": account.equity
-        }
+            return 0.0, 0.0, 0.0
+        
+        cash = account.balance
+        portfolio_value = account.equity
+        position_value = portfolio_value - cash
+
+        return cash, position_value, portfolio_value
     
     def _pull_positions(self, *args, **kwargs):
         """
