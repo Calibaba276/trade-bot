@@ -27,7 +27,7 @@ class MetaTrader5(Broker):
         
         # print(f"Successfully logged into {self.config['server']} as {self.config['login']}")
     
-    def _get_balances_at_broker(self):
+    def _get_balances_at_broker(self, *args, **kwargs):
         """
         This is the internal source for self.get_cash() 
         and self.get_portfolio_value()
@@ -40,7 +40,7 @@ class MetaTrader5(Broker):
             "equity": account.equity
         }
     
-    def _pull_positions(self):
+    def _pull_positions(self, *args, **kwargs):
         """
         This is the source for self.get_positions() 
         and self.get_position(asset)
