@@ -4,19 +4,31 @@ from lumibot.backtesting import PolygonDataBacktesting
 from mt5_broker import MetaTrader5
 from lumibot.traders import Trader
 
-from dotenv import load_dotenv
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
+
+VAULT_URL = "https://calibabasecret.vault.azure.net/"
+credentials = DefaultAzureCredential()
+client = SecretClient(VAULT_URL, credentials)
+
+def get_azure_secret(name):
+    """Helper to pull secrets from Azure"""
+    try:
+        return client.get_secret(name).value
+    except Exception as e:
+        print(f"Error fetching {name}: {e}")
+        return None
 
 from datetime import datetime
 
-load_dotenv()
+ISBACKTESTING = get_azure_secret("ISBACKTESTING")
+BACKTESTING_START = get_azure_secret("BACKTESTING-START")
+BACKTESTING_END = get_azure_secret("BACKTESTING-END")
+POLYGON_API_KEY = get_azure_secret("POLYGON-API-KEY")
 
-ISBACKTESTING = os.getenv("ISBACKTESTING", "false").lower() == "true"
-BACKTESTING_START = os.getenv("BACKTESTING_START")
-BACKTESTING_END = os.getenv("BACKTESTING_END")
-POLYGON_API_KEY = os.getenv("POLYGON_API_KEY")
-ACCOUNT = os.getenv("ACCOUNT")
-PASSWORD = os.getenv("PASSWORD")
-SERVER = os.getenv("SERVER")
+ACCOUNT = get_azure_secret("ACCOUNT")
+PASSWORD = get_azure_secret("PASSWORD")
+SERVER = get_azure_secret("SERVER")
 
 if __name__ == "__main__":
     if ISBACKTESTING:
@@ -34,12 +46,11 @@ if __name__ == "__main__":
             polygon_api_key=POLYGON_API_KEY
         )
     else:
-        MT5_CONFIG = {
-            "login": ACCOUNT,
+        broker = MetaTrader5({
+            "login": int(ACCOUNT),
             "password": PASSWORD,
             "server": SERVER
-        }
-        broker = MetaTrader5(MT5_CONFIG)
+        })
 
         strategy = TrendStrategy(broker=broker)
         trader = Trader()
