@@ -10,10 +10,15 @@ class MetaTrader5(Broker):
         self._initialize_mt5()
 
     def _initialize_mt5(self):
+
+        log = self.config.get('account')
+        pwd = self.config.get('password')
+        server = self.config.get('server')
+
         if not mt5.initialize(
-            login= int(self.config['account']),
-            password=self.config['password'],
-            server=self.config['server']
+            login=int(log),
+            password=pwd,
+            server=server
         ):
             raise RuntimeError(f"MT5 Initialize Failed: {mt5.last_error()}")
     
