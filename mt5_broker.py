@@ -11,7 +11,7 @@ class MetaTrader5(Broker):
 
     def _initialize_mt5(self):
         if not mt5.initialize(
-            login=self.config['account'],
+            login= int(self.config['account']),
             password=self.config['password'],
             server=self.config['server']
         ):
