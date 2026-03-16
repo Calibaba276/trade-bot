@@ -1,7 +1,7 @@
 import os
 from lumi_trade import LiquiditySweep, TrendStrategy
 from lumibot.backtesting import PolygonDataBacktesting
-from lumibot.brokers import MetaTrader5
+from mt5_broker import MetaTrader5
 from lumibot.traders import Trader
 
 from dotenv import load_dotenv
