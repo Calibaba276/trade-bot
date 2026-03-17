@@ -73,7 +73,11 @@ class MetaTrader5(Broker):
 
         symbol = asset.symbol if hasattr(asset, 'symbol') else str(asset)
 
+        if symbol.endswith("M"):
+            symbol = symbol[:-1] + "m"
+
         tick = mt5.symbol_info_tick(symbol)
+
         if tick is None:
             print(f"Could not get last price for {symbol}. Symbol might be wrong in MT5.")
             return None
