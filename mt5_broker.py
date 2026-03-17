@@ -108,6 +108,10 @@ class MetaTrader5(Broker):
         """Sends orders to MT5 and updates order status"""
 
         symbol = order.asset.symbol
+
+        if symbol.endswith("M"):
+            symbol = symbol[:-1] + "m"
+
         sl = order.stop_loss_price
         tp = order.take_profit_price
         tick = mt5.symbol_info_tick(symbol)
