@@ -165,8 +165,8 @@ class MetaTrader5(Broker):
 
         days_until_friday = (4 - now.weekday()) % 7
 
-        if now.weekday() >= 5:
-            days_until_friday += 7
+        if days_until_friday == 0 and now.hour >= 22:
+            days_until_friday = 7
 
         next_friday = now + timedelta(days=days_until_friday)
         return next_friday.replace(hour=22, minute=0, second=0, microsecond=0)
@@ -175,13 +175,12 @@ class MetaTrader5(Broker):
         """Is Market Open"""
         now = self.get_datetime()
 
-        if now.weekday() == 6:
-            return now.hour >= 22
-        if now.weekday() == 4:
-            return now.hour < 22
-        if now.weekday() < 4:
-            return True
-        return False
+        if now.weekday() == 5:
+            return False
+        if now.weekday() == 6 and now.hour < 22:
+            return False
+        
+        return True
     
     def _get_stream_object(self): return None
     def _register_stream_events(self): pass
