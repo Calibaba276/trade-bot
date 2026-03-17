@@ -117,7 +117,9 @@ class MetaTrader5(Broker):
         tick = mt5.symbol_info_tick(symbol)
 
         if tick is None:
-            raise RuntimeError(f"No tick data available for symbol: {symbol}")
+            print(f"ERROR: Could not get tick for {symbol}. Order aborted, but bot is still running.")
+            order.status = "error"
+            return order
 
         price = tick.ask if order.side == "buy" else tick.bid
 
