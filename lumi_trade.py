@@ -57,8 +57,7 @@ class LiquiditySweep(Strategy):
             self.stop_loss_distance = None
 
         if current_time >= time(7, 0) and self.last_range_date != dt.date():
-            bars = self.get_historical_prices(self.symbol, 420, "minute")
-            df = bars.pandas_df
+            df = self.get_historical_prices(self.symbol, 420, "minute")
             morning_data = df.between_time("00:00", "06:59")
 
             if not morning_data.empty:
