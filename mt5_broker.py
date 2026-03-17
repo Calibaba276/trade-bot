@@ -177,8 +177,10 @@ class MetaTrader5(Broker):
 
         if now.weekday() == 5:
             return False
-        if now.weekday() == 6 and now.hour < 22:
-            return False
+        if now.weekday() == 6:
+            return now.hour >= 22
+        if now.weekday() == 4:
+            return now.hour < 22
         
         return True
     
