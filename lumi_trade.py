@@ -1,5 +1,6 @@
 import os
 import json
+import pandas as pd
 from datetime import time
 from lumibot.strategies.strategy import Strategy
 from lumibot.entities import Asset
@@ -58,6 +59,9 @@ class LiquiditySweep(Strategy):
 
         if current_time >= time(7, 0) and self.last_range_date != dt.date():
             df = self.get_historical_prices(self.symbol, 420, "minute")
+
+            df.index = pd.to_datetime(df.index)
+
             morning_data = df.between_time("00:00", "06:59")
 
             if not morning_data.empty:
