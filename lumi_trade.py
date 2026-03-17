@@ -146,6 +146,7 @@ class TrendStrategy(Strategy):
 
         payload = json.loads(self.result.get_ai_response())
         signals = payload.get("signals", [])
+        tickers_scores = {}
 
         if not signals:
             return
@@ -153,9 +154,18 @@ class TrendStrategy(Strategy):
         for signal in signals:
             ticker = signal["ticker"]
             score = signal["sentiment_score"]
+
+            if ticker not in tickers_scores:
+                tickers_scores[ticker] = []
+
+                tickers_scores[ticker].append(score)
+
+        for ticker, scores in tickers_scores.items():
+            avg_score = sum(scores) / len(scores)
+
             asset = Asset(symbol=ticker, asset_type="stock")
 
-            if score > 0.7:
+            if avg_score > 0.7:
                 pos = self.get_position(asset)
                 if pos is None:
                     quantity = self.calculate_quantity(ticker)
@@ -167,7 +177,7 @@ class TrendStrategy(Strategy):
                     self.submit_order(order)
                     self.log_message(f"{dt} BUY {ticker} | Score: {score} | Reason: {signal['reason']}")
 
-            elif score <= -0.5:
+            elif avg_score <= -0.5:
                 pos = self.get_position(asset)
                 if pos is not None:
                     order = self.create_order(asset, pos.quantity, "sell", type="market")

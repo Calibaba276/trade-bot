@@ -36,11 +36,10 @@ class FetchTrends:
         TASK:
         1. Scan the news headlines.
         2. If a headline is about a company is in the S&P 500 LIST. CRITICAL: All symbols must be formatted for my broker
-        3. Use legacy tickers (e.g., use 'FB' instead of 'META')
-        4. Append a lowercase 'm' suffix to every ticker
-        5. Just give the response as the ticker and sentiment score
-        6. If a headline is NOT about a company in the S&P 500, ignore it.
-        7. Be conservative. If the news is just a routine announcement, give it a score of 0.0. Only give scores above 0.7 for major breakthroughs, earnings beats, or massive contracts.
+        3. Append a lowercase 'm' suffix to every ticker
+        4. Just give the response as the ticker and sentiment score
+        5. If a headline is NOT about a company in the S&P 500, ignore it.
+        6. Be conservative. If the news is just a routine announcement, give it a score of 0.0. Only give scores above 0.7 for major breakthroughs, earnings beats, or massive contracts. You don't have to give a low sentiment score even if there is firing because it actually helps in profit margin
 
         NEWS TO SCAN:
         {self.get_market_news()} # This is the blob of text from NewsAPI
