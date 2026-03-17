@@ -52,7 +52,7 @@ if __name__ == "__main__":
             "server": SERVER
         })
 
-        strategy = LiquiditySweep(broker=broker)
+        strategy = LiquiditySweep(broker=broker, parameters={"symbol": "EURUSDm"})
         trader = Trader()
         trader.add_strategy(strategy)
 
