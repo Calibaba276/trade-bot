@@ -176,14 +176,14 @@ class TrendStrategy(Strategy):
                     if quantity <= 0:
                         continue
                     
-                    order = self.create_order(asset, quantity, "buy", type="market")
+                    order = self.create_order(asset, quantity, "buy", order_type="market")
                     self.submit_order(order)
                     self.log_message(f"{dt} BUY {ticker} | Score: {score} | Reason: {signal['reason']}")
 
             elif avg_score <= -0.5:
                 pos = self.get_position(asset)
                 if pos is not None:
-                    order = self.create_order(asset, pos.quantity, "sell", type="market")
+                    order = self.create_order(asset, pos.quantity, "sell", order_type="market")
                     self.submit_order(order)
                     self.log_message(f"{dt} SELL {ticker} | Score: {score} | Reason: {signal['reason']}")
 
