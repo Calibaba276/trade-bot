@@ -75,7 +75,7 @@ class MetaTrader5(Broker):
 
         tick = mt5.symbol_info_tick(symbol)
         if tick is None:
-            self.log_message(f"Could not get last price for {symbol}. Symbol might be wrong in MT5.")
+            print(f"Could not get last price for {symbol}. Symbol might be wrong in MT5.")
             return None
         
         return tick.last if tick.last != 0 else (tick.bid + tick.ask) / 2

@@ -180,7 +180,6 @@ class TrendStrategy(Strategy):
         cash = self.get_cash()
 
         if price is None or price == 0:
-            self.log_message(f"Warning: Price for {ticker} is {price} as a result of error. Skipping calculation.")
             return 0
 
         return int((cash * 0.05) / price)
