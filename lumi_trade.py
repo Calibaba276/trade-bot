@@ -150,6 +150,7 @@ class TrendStrategy(Strategy):
         payload = json.loads(self.result.get_ai_response())
         signals = payload.get("signals", [])
         tickers_scores = {}
+        self.order_sent = False
 
         if not signals:
             return
@@ -179,6 +180,7 @@ class TrendStrategy(Strategy):
                     order = self.create_order(asset, quantity, "buy", order_type="market")
                     self.submit_order(order)
                     self.log_message(f"{dt} BUY {ticker} | Score: {score} | Reason: {signal['reason']}")
+                    self.order_sent = True
 
             elif avg_score <= -0.5:
                 pos = self.get_position(asset)
@@ -186,6 +188,10 @@ class TrendStrategy(Strategy):
                     order = self.create_order(asset, pos.quantity, "sell", order_type="market")
                     self.submit_order(order)
                     self.log_message(f"{dt} SELL {ticker} | Score: {score} | Reason: {signal['reason']}")
+                    self.order_sent = True
+
+        if not self.order_sent:
+            self.log_message("No Orders Made... Unto the Next Iteration")
 
     def calculate_quantity(self, ticker):
         # Simple logic: Use 5% of available cash per trade
