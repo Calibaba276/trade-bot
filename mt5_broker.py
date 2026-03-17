@@ -191,5 +191,6 @@ class MetaTrader5(Broker):
     def _pull_broker_all_orders(self): return []
     def _parse_broker_order(self, response): return None
     def _pull_position(self, asset): return None
+    def _update_datetime(self, *args, **kwargs): pass
     def get_historical_account_value(self): return []
     def cancel_order(self, order): pass
