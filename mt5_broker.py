@@ -84,7 +84,7 @@ class MetaTrader5(Broker):
         
         return tick.last if tick.last != 0 else (tick.bid + tick.ask) / 2
     
-    def get_historical_prices(self, asset, length, timestep="minute"):
+    def get_historical_prices(self, asset, length, timestep="minute", *args, **kwargs):
         """Required for technical indicators and strategy logic"""
 
         tf_map = {"minute": mt5.TIMEFRAME_M1, "hour": mt5.TIMEFRAME_H1, "day": mt5.TIMEFRAME_D1}
