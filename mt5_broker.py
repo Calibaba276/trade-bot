@@ -59,7 +59,7 @@ class MetaTrader5(Broker):
         if mt5_positions:
             for pos in mt5_positions:
                 self.log_message(f"TRACKED POSITION: {pos.symbol} | Side: {pos.side} | Quantity: {pos.quantity} | Entry: {pos.entry_price}")
-                
+
                 lumibot_positions.append(Position(
                     strategy_name=self.name,
                     symbol=pos.symbol,
@@ -68,13 +68,17 @@ class MetaTrader5(Broker):
                 ))
         return lumibot_positions
         
-    def get_last_price(self, asset):
-        """Standard price fetcher for current tick data"""
+    def get_last_price(self, asset, *args, **kwargs):
+        """Fetches the last price from MT5."""
 
-        tick = mt5.symbol_info_tick(asset.symbol)
-        if tick:
-            return tick.last if tick.last != 0 else (tick.bid + tick.ask) / 2
-        return None
+        symbol = asset.symbol if hasattr(asset, 'symbol') else str(asset)
+
+        tick = mt5.symbol_info_tick(symbol)
+        if tick is None:
+            self.log_message(f"Could not get last price for {symbol}. Symbol might be wrong in MT5.")
+            return None
+        
+        return tick.last if tick.last != 0 else (tick.bid + tick.ask) / 2
     
     def get_historical_prices(self, asset, length, timestep="minute"):
         """Required for technical indicators and strategy logic"""

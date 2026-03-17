@@ -65,9 +65,9 @@ class LiquiditySweep(Strategy):
                 self.high = morning_data["high"].max()
                 self.low = morning_data["low"].min()
                 self.last_range_date = dt.date()
-                print(f"--- {dt.date()} From 12:00 - 6:59am: High={self.high}, Low={self.low} ---", flush=True)
+                self.log_message(f"--- {dt.date()} From 12:00 - 6:59am: High={self.high}, Low={self.low} ---")
             else:
-                print(f"--- {dt.date()} Market is Closed (No Data) ---", flush=True)
+                self.log_message(f"--- {dt.date()} Market is Closed (No Data) ---")
 
         if self.high and self.low and not self.traded_today:
             if current_time > time(7, 0) and current_time < time(17, 0):
@@ -86,7 +86,7 @@ class LiquiditySweep(Strategy):
                     for i in range(len(lows) - 2, 0, -1):
                         if lows[i] < lows[i - 1] and lows[i] < lows[i + 1] and lows[i] > self.low:
                             self.mss_swing_low = float(lows[i])
-                            print(f"{dt} -- Bearish MSS: Swing Low identified at {self.mss_swing_low}", flush=True)
+                            self.log_message(f"{dt} -- Bearish MSS: Swing Low identified at {self.mss_swing_low}")
                             break
 
                 # Step 3: Price breaks below the swing low — MSS confirmed, SELL
@@ -95,7 +95,7 @@ class LiquiditySweep(Strategy):
                     self.stop_loss_distance = (self.mss_swing_low + self.buffer) - last_price
                     quantity = int(self.risk_amount / self.stop_loss_distance)
 
-                    print(f"{dt} -- SELL (Bearish MSS) -- Price {last_price} broke below swing low {self.mss_swing_low}", flush=True)
+                    self.log_message(f"{dt} -- SELL (Bearish MSS) -- Price {last_price} broke below swing low {self.mss_swing_low}")
                     order = self.create_order(
                         self.symbol, quantity, "sell",
                         take_profit_price = self.low,
@@ -117,7 +117,7 @@ class LiquiditySweep(Strategy):
                     for i in range(len(highs) - 2, 0, -1):
                         if highs[i] > highs[i - 1] and highs[i] > highs[i + 1] and highs[i] < self.high:
                             self.mss_swing_high = float(highs[i])
-                            print(f"{dt} -- Bullish MSS: Swing High identified at {self.mss_swing_high}", flush=True)
+                            self.log_message(f"{dt} -- Bullish MSS: Swing High identified at {self.mss_swing_high}")
                             break
 
                 # Step 3: Price breaks above the swing high — MSS confirmed, BUY
@@ -126,7 +126,7 @@ class LiquiditySweep(Strategy):
                     self.stop_loss_distance = last_price - (self.mss_swing_high - self.buffer)
                     quantity = int(self.risk_amount / self.stop_loss_distance)
 
-                    print(f"{dt} -- BUY (Bullish MSS) -- Price {last_price} broke above swing high {self.mss_swing_high}", flush=True)
+                    self.log_message(f"{dt} -- BUY (Bullish MSS) -- Price {last_price} broke above swing high {self.mss_swing_high}")
                     order = self.create_order(
                         self.symbol, quantity, "buy",
                         take_profit_price = self.high,
@@ -165,23 +165,28 @@ class TrendStrategy(Strategy):
                     
                     order = self.create_order(asset, quantity, "buy", type="market")
                     self.submit_order(order)
-                    print(f"{dt} BUY {ticker} | Score: {score} | Reason: {signal['reason']}", flush=True)
+                    self.log_message(f"{dt} BUY {ticker} | Score: {score} | Reason: {signal['reason']}")
 
             elif score <= -0.5:
                 pos = self.get_position(asset)
                 if pos is not None:
                     order = self.create_order(asset, pos.quantity, "sell", type="market")
                     self.submit_order(order)
-                    print(f"{dt} SELL {ticker} | Score: {score} | Reason: {signal['reason']}", flush=True)
+                    self.log_message(f"{dt} SELL {ticker} | Score: {score} | Reason: {signal['reason']}")
 
     def calculate_quantity(self, ticker):
         # Simple logic: Use 5% of available cash per trade
         price = self.get_last_price(Asset(symbol=ticker, asset_type="stock"))
         cash = self.get_cash()
+
+        if price is None or price == 0:
+            self.log_message(f"Warning: Price for {ticker} is {price} as a result of error. Skipping calculation.")
+            return 0
+
         return int((cash * 0.05) / price)
     
     def on_bot_crash(self, error):
-        print(f"CRITICAL ERROR: {error}")
+        self.log_message(f"CRITICAL ERROR: {error}")
         # Perform cleanup like selling or cancelling orders if needed
         # Then force the entire process to stop
         os._exit(1)
