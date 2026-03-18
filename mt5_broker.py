@@ -143,8 +143,8 @@ class MetaTrader5(Broker):
             order.identifier = result.order
             order.status = "filled"
         else:
-            print(f"MT5 Order Error: {result.comment}")
-            order.status = "failed"
+            print(f"MT5 ERROR: {result.comment} | Code: {result.retcode}")
+            order.status = "error"
         return order
 
     def get_datetime(self, *args, **kwargs):

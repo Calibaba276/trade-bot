@@ -159,11 +159,14 @@ class TrendStrategy(Strategy):
         for signal in signals:
             ticker = signal["ticker"]
             score = signal["sentiment_score"]
+            reason = signal["reason"]
 
             if ticker not in tickers_scores:
                 tickers_scores[ticker] = []
+                tickers_scores[reason] = []
 
                 tickers_scores[ticker].append(score)
+                tickers_scores[reason].append(reason)
 
         for ticker, scores in tickers_scores.items():
             avg_score = sum(scores) / len(scores)
@@ -176,11 +179,12 @@ class TrendStrategy(Strategy):
                     quantity = self.calculate_quantity(ticker)
 
                     if quantity <= 0:
+                        self.log_message(f"Skipping {ticker}. Price is too high for $25 trade limit.")
                         continue
                     
                     order = self.create_order(asset, quantity, "buy", order_type="market")
                     self.submit_order(order)
-                    self.log_message(f"{dt} BUY {ticker} | Score: {score} | Reason: {signal['reason']}")
+                    self.log_message(f"{dt} BUY {ticker} | Score: {avg_score} | Reason: {signal['reason']}")
                     self.order_sent = True
 
             elif avg_score <= -0.5:
@@ -200,9 +204,18 @@ class TrendStrategy(Strategy):
         cash = self.get_cash()
 
         if price is None or price == 0:
+            self.log_message(f"Warning: Price for {ticker} is 0 or None. Cannot calculate $25 trade.")
             return 0
 
-        return int((cash * 0.05) / price)
+        raw_quantity = self.risk_amount / price
+
+        quantity = round(raw_quantity, 2)
+
+        if quantity < 0.01:
+            self.log_message(f"Price of {ticker} is too high! $25 buys less than 0.01 lots.")
+            return 0
+        
+        return quantity
     
     def on_bot_crash(self, error):
         self.log_message(f"CRITICAL ERROR: {error}")
