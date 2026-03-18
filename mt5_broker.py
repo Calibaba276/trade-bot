@@ -149,40 +149,6 @@ class MetaTrader5(Broker):
 
     def get_datetime(self, *args, **kwargs):
         return datetime.now(pytz.utc)
-
-    def market_open_time(self, *args, **kwargs):
-        """Calculate the Most Recent Sunday at 22:00 UTC"""
-
-        now = self.get_datetime()
-
-        days_since_sunday = (now.weekday() + 1) % 7
-        last_sunday = now - timedelta(days=days_since_sunday)
-        return last_sunday.replace(hour=22, minute=0, second=0, microsecond=0)
-    
-    def market_close_time(self, *args, **kwargs):
-        """Calculates the Upcoming Friday at 22:00 UTC"""
-        now = self.get_datetime()
-
-        days_until_friday = (4 - now.weekday()) % 7
-
-        if days_until_friday == 0 and now.hour >= 22:
-            days_until_friday = 7
-
-        next_friday = now + timedelta(days=days_until_friday)
-        return next_friday.replace(hour=22, minute=0, second=0, microsecond=0)
-    
-    def is_market_open(self):
-        """Is Market Open"""
-        now = self.get_datetime()
-
-        if now.weekday() == 5:
-            return False
-        if now.weekday() == 6:
-            return now.hour >= 22
-        if now.weekday() == 4:
-            return now.hour < 22
-        
-        return True
     
     def _get_stream_object(self): return None
     def _register_stream_events(self): pass
