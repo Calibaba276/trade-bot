@@ -46,16 +46,26 @@ if __name__ == "__main__":
             polygon_api_key=POLYGON_API_KEY
         )
     else:
-        broker = MetaTrader5({
+        liquidity_sweep = MetaTrader5({
             "login": int(ACCOUNT),
             "password": PASSWORD,
-            "server": SERVER
+            "server": SERVER,
+            "terminal_path": "C:\Program Files\Liquidity Sweep\terminal64.exe"
         })
 
-        strategy = LiquiditySweep(broker=broker, parameters={"symbol": "EURUSDm"})
-        # strategy = TrendStrategy(broker=broker)
+        trend_strategy = MetaTrader5({
+            "login": int(ACCOUNT),
+            "password": PASSWORD,
+            "server": SERVER,
+            "path": "C:\Program Files\Trend Strategy\terminal64.exe"
+        })
+
+        ld = LiquiditySweep(name="Liquidity Sweep", broker=liquidity_sweep, parameters={"symbol": "EURUSDm"})
+        ts = TrendStrategy(name="Trend Strategy", broker=trend_strategy)
+
         trader = Trader()
-        trader.add_strategy(strategy)
+        trader.add_strategy(ld)
+        trader.add_strategy(ts)
 
         try:
             trader.run_all()

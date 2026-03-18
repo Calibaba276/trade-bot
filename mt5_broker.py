@@ -20,7 +20,9 @@ class MetaTrader5(Broker):
 
     def _initialize_mt5(self):
 
-        if not mt5.initialize():
+        path = self.config.get("path")
+
+        if not mt5.initialize(path=path, portable=True):
             raise RuntimeError(f"MT5 Initialize Failed: {mt5.last_error()}")
 
         authorized = mt5.login(
