@@ -148,7 +148,7 @@ class MetaTrader5(Broker):
         return order
 
     def get_datetime(self, *args, **kwargs):
-        tz = pytz.timezone(self.timezone)
+        tz = pytz.timezone("America/New_York")
         return datetime.now(tz)
     
     def _get_stream_object(self): return None
