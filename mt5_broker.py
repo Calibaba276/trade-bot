@@ -146,9 +146,6 @@ class MetaTrader5(Broker):
             print(f"MT5 ERROR: {result.comment} | Code: {result.retcode}")
             order.status = "error"
         return order
-
-    def get_datetime(self, *args, **kwargs):
-        return datetime.now(pytz.utc)
     
     def _get_stream_object(self): return None
     def _register_stream_events(self): pass
