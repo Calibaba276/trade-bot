@@ -40,6 +40,7 @@ class LiquiditySweep(Strategy):
         self.mss_swing_high = None
         self.risk_amount = 25
         self.stop_loss_distance = None
+        self.set_market("24/5")
 
     def on_trading_iteration(self):
 
