@@ -50,14 +50,14 @@ if __name__ == "__main__":
             "login": int(ACCOUNT),
             "password": PASSWORD,
             "server": SERVER,
-            "terminal_path": r"C:\\\\Program Files\\\\Liquidity Sweep\\\\terminal64.exe"
+            "terminal_path": "C:\\\\Program Files\\\\Liquidity Sweep\\\\terminal64.exe"
         })
 
         trend_strategy = MetaTrader5({
             "login": int(ACCOUNT),
             "password": PASSWORD,
             "server": SERVER,
-            "path": r"C:\\\\Program Files\\\\Trend Strategy\\\\terminal64.exe"
+            "path": "C:\\\\Program Files\\\\Trend Strategy\\\\terminal64.exe"
         })
 
         ld = LiquiditySweep(name="Liquidity Sweep", broker=liquidity_sweep, parameters={"symbol": "EURUSDm"})
