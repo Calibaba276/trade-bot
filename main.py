@@ -52,7 +52,7 @@ if __name__ == "__main__":
             "server": SERVER
         })
 
-        strategy = TrendStrategy(broker=broker)
+        strategy = LiquiditySweep(broker=broker)
         trader = Trader()
         trader.add_strategy(strategy)
 
