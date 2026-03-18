@@ -50,7 +50,7 @@ if __name__ == "__main__":
             "login": int(ACCOUNT),
             "password": PASSWORD,
             "server": SERVER,
-            "terminal_path": "C:\\\\Program Files\\\\Liquidity Sweep\\\\terminal64.exe"
+            "path": "C:\\\\Program Files\\\\Liquidity Sweep\\\\terminal64.exe"
         })
 
         trend_strategy = MetaTrader5({
