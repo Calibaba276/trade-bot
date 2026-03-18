@@ -5,6 +5,10 @@ from lumibot.entities import Position, Order
 
 from datetime import datetime, timedelta
 import pytz
+import zlib
+
+def generate_magic_number(strategy_name):
+    return zlib.adler32(strategy_name.encode()) & 0xFFFFFFFF
 
 class MetaTrader5(Broker):
 
@@ -123,6 +127,9 @@ class MetaTrader5(Broker):
 
         price = tick.ask if order.side == "buy" else tick.bid
 
+        strategy_name = order.strategy.name if order.strategy else "Unknown"
+        magic_number = generate_magic_number(strategy_name)
+
         request = {
             "action": mt5.TRADE_ACTION_DEAL,
             "symbol": symbol,
@@ -131,7 +138,7 @@ class MetaTrader5(Broker):
             "price": price,
             "sl": float(sl) if sl else 0.0,
             "tp": float(tp) if tp else 0.0,
-            "magic": 199020,
+            "magic": magic_number,
             "comment": "Lumibot MT5 Trade",
             "type_time": mt5.ORDER_TIME_GTC,
             "type_filling": mt5.ORDER_FILLING_IOC,
