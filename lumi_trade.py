@@ -30,7 +30,7 @@ class LiquiditySweep(Strategy):
         self.symbol = self.parameters.get("symbol")
         self.sleeptime = "1M"
         self.set_market("24/7")
-        self.timezone = "America/New_York"
+        # self.timezone = "America/New_York"
         self.high = None
         self.low = None
         self.traded_today = False
