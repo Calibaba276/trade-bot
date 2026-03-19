@@ -35,9 +35,9 @@ def connect_mt5(config):
     if not authorized:
         error = mt5.last_error()
         mt5.shutdown() # Close connection if login fails
-        raise RuntimeError(f"MT5 Login failed for account {self.config['login']}: {error}")
+        raise RuntimeError(f"MT5 Login failed for account {config['login']}: {error}")
         
-    print(f"Successfully logged into {self.config['server']} as {self.config['login']}")
+    print(f"Successfully logged into {config['server']} as {config['login']}")
 
 def shutdown_mt5():
     mt5.shutdown()
