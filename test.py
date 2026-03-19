@@ -1,20 +1,52 @@
 import MetaTrader5 as mt5
 import pandas as pd
 from datetime import datetime
+import time
 
-def connect_mt5():
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
+
+VAULT_URL = "https://calibabasecret.vault.azure.net/"
+credentials = DefaultAzureCredential()
+client = SecretClient(VAULT_URL, credentials)
+
+def get_azure_secret(name):
+    """Helper to pull secrets from Azure"""
+    try:
+        return client.get_secret(name).value
+    except Exception as e:
+        print(f"Error fetching {name}: {e}")
+        return None
+    
+ACCOUNT = get_azure_secret("ACCOUNT")
+PASSWORD = get_azure_secret("PASSWORD")
+SERVER = get_azure_secret("SERVER")
+
+def connect_mt5(config):
     if not mt5.initialize():
         raise RuntimeError(" !!! Error >>> MT5 initialize() failed")
-    print("Good! Connected to MT5")
+    
+    authorized = mt5.login(
+        login=config.get('login'),
+        password=config.get('password'),
+        server=config.get('server')
+        )
+
+    if not authorized:
+        error = mt5.last_error()
+        mt5.shutdown() # Close connection if login fails
+        raise RuntimeError(f"MT5 Login failed for account {self.config['login']}: {error}")
+        
+    print(f"Successfully logged into {self.config['server']} as {self.config['login']}")
 
 def shutdown_mt5():
     mt5.shutdown()
     print("MT5 disconnected")
 
-def get_daily_data(symbol="EURUSD", n=10):
-    rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_D1, 0, n)
+def get_daily_data(symbol="GBPUSD", n=10):
+    rates = rates = mt5.copy_rates_from_pos("GBPUSD", mt5.TIMEFRAME_D1, 0, 10)
     df = pd.DataFrame(rates)
-    df['time'] = pd.to_datetime(df['time'], unit='s')
+    # df['time'] = pd.to_datetime(df['time'], unit='s')
     return df
 
 def detect_engulfing(df):
@@ -93,4 +125,9 @@ def run_strategy():
     shutdown_mt5()
 
 if __name__ == "__main__":
-    run_strategy()
+    connect_mt5({
+            "login": int(ACCOUNT),
+            "password": PASSWORD,
+            "server": SERVER
+        })
+    print(get_daily_data("EURUSD", 10))
