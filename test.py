@@ -1,8 +1,6 @@
 import MetaTrader5 as mt5
 import pandas as pd
 from datetime import datetime
-import schedule
-import time
 
 def connect_mt5():
     if not mt5.initialize():
