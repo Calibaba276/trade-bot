@@ -43,8 +43,8 @@ def shutdown_mt5():
     mt5.shutdown()
     print("MT5 disconnected")
 
-def get_daily_data(symbol="GBPUSD", n=10):
-    rates = rates = mt5.copy_rates_from_pos("GBPUSD", mt5.TIMEFRAME_D1, 0, 10)
+def get_daily_data(symbol="EURUSDm", n=10):
+    rates = rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_D1, 0, 10)
     df = pd.DataFrame(rates)
     # df['time'] = pd.to_datetime(df['time'], unit='s')
     return df
@@ -113,7 +113,7 @@ def run_strategy():
     #     print("Weekend — skipping execution.")
     #     return
 
-    symbol = "EURUSD"
+    symbol = "EURUSDm"
     connect_mt5()
     df = get_daily_data(symbol, n=5)
     print(df.tail(2))
@@ -125,9 +125,10 @@ def run_strategy():
     shutdown_mt5()
 
 if __name__ == "__main__":
+    symbol = "EURUSDm"
     connect_mt5({
             "login": int(ACCOUNT),
             "password": PASSWORD,
             "server": SERVER
         })
-    print(get_daily_data("EURUSD", 10))
+    print(get_daily_data(symbol, 10))
