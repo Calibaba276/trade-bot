@@ -114,7 +114,11 @@ def run_strategy():
     #     return
 
     symbol = "EURUSDm"
-    connect_mt5()
+    connect_mt5({
+        "login": int(ACCOUNT),
+        "password": PASSWORD,
+        "server": SERVER
+    })
     df = get_daily_data(symbol, n=5)
     print(df.tail(2))
 
@@ -125,10 +129,4 @@ def run_strategy():
     shutdown_mt5()
 
 if __name__ == "__main__":
-    symbol = "EURUSDm"
-    connect_mt5({
-            "login": int(ACCOUNT),
-            "password": PASSWORD,
-            "server": SERVER
-        })
-    print(get_daily_data(symbol, 10))
+    run_strategy()
