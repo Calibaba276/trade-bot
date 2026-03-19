@@ -163,19 +163,9 @@ class TrendStrategy(Strategy):
             score = signal["sentiment_score"]
             reason = signal["reason"]
 
-            if ticker not in tickers_scores:
-                tickers_scores[ticker] = []
-                tickers_scores[reason] = []
-
-                tickers_scores[ticker].append(score)
-                tickers_scores[reason].append(reason)
-
-        for ticker, scores in tickers_scores.items():
-            avg_score = sum(scores) / len(scores)
-
             asset = Asset(symbol=ticker, asset_type="stock")
 
-            if avg_score > 0.7:
+            if score > 0.7:
                 pos = self.get_position(asset)
                 if pos is None:
                     quantity = self.calculate_quantity(ticker)
@@ -184,15 +174,21 @@ class TrendStrategy(Strategy):
                         self.log_message(f"Skipping {ticker}. Price is too high for $25 trade limit.")
                         continue
                     
-                    order = self.create_order(asset, quantity, "buy", order_type="market")
+                    order = self.create_order(asset, quantity, "buy", type="market")
                     self.submit_order(order)
-                    self.log_message(f"{dt} BUY {ticker} | Score: {avg_score} | Reason: {signal['reason']}")
+                    self.log_message(f"{dt} BUY {ticker} | Score: {score} | Reason: {reason}")
                     self.order_sent = True
 
-            elif avg_score <= -0.5:
+            elif score <= -0.5:
                 pos = self.get_position(asset)
                 if pos is not None:
-                    order = self.create_order(asset, pos.quantity, "sell", order_type="market")
+                    quantity = self.calculate_quantity(ticker)
+
+                    if quantity <= 0:
+                        self.log_message(f"Skipping {ticker}. Price is too high for $25 trade limit.")
+                        continue
+
+                    order = self.create_order(asset, pos.quantity, "sell", type="market")
                     self.submit_order(order)
                     self.log_message(f"{dt} SELL {ticker} | Score: {score} | Reason: {signal['reason']}")
                     self.order_sent = True
@@ -203,7 +199,6 @@ class TrendStrategy(Strategy):
     def calculate_quantity(self, ticker):
         # Simple logic: Use 5% of available cash per trade
         price = self.get_last_price(Asset(symbol=ticker, asset_type="stock"))
-        cash = self.get_cash()
 
         if price is None or price == 0:
             self.log_message(f"Warning: Price for {ticker} is 0 or None. Cannot calculate $25 trade.")
