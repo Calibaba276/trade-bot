@@ -124,7 +124,13 @@ class MetaTrader5(Broker):
 
         price = tick.ask if order.side == "buy" else tick.bid
 
-        strategy_name = order.strategy.name if order.strategy else "Unknown"
+        # Lumibot may provide order.strategy as either the strategy object or its name string.
+        if isinstance(order.strategy, str):
+            strategy_name = order.strategy
+        elif order.strategy is not None and hasattr(order.strategy, "name"):
+            strategy_name = order.strategy.name
+        else:
+            strategy_name = "Unknown"
         magic_number = generate_magic_number(strategy_name)
 
         request = {
