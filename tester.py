@@ -33,7 +33,9 @@ if __name__ == "__main__":
     symbol = "AAPLm"
 
     # print(mt5.select_symbol(Asset(symbol, asset_type="stock")))
-    print(mt5.get_historical_prices(Asset(symbol, asset_type="stock"), 100, "minute"))
+    # print(mt5.get_historical_prices(Asset(symbol, asset_type="stock"), 100, "minute"))
+
+    print(mt5.get_asset_type(symbol))
 
     last_tick = mt5api.symbol_info_tick(symbol)
     print(f"Last Price: {last_tick.ask}")

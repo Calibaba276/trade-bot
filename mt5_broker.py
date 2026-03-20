@@ -65,7 +65,6 @@ class MetaTrader5(Broker):
                 print(f"TRACKED POSITION: {pos.symbol} | Quantity: {pos.volume} | Entry: {pos.price_open}")
 
                 lumibot_positions.append(Position(
-                    strategy_name=self.name,
                     symbol=pos.symbol,
                     quantity=pos.volume,
                     entry_price=pos.price_open
@@ -151,6 +150,10 @@ class MetaTrader5(Broker):
         tz = pytz.timezone("America/New_York")
         return datetime.now(tz)
     
+    def get_asset_type(symbol):
+        info = mt5.symbol_info(symbol)
+        return info
+
     def _symbol(self, asset):
         symbol = asset.symbol if hasattr(asset, "symbol") else str(asset)
 

@@ -42,6 +42,7 @@ class LiquiditySweep(Strategy):
         self.mss_swing_high = None
         self.risk_amount = 25
         self.stop_loss_distance = None
+        self.asset = Asset(symbol=self.symbol, asset_type="forex")
 
     def on_trading_iteration(self):
 
@@ -60,9 +61,7 @@ class LiquiditySweep(Strategy):
             self.stop_loss_distance = None
 
         if current_time >= time(7, 0) and self.last_range_date != dt.date():
-            df = self.get_historical_prices(self.symbol, 420, "minute")
-
-            df.index = pd.to_datetime(df.index)
+            df = self.get_historical_prices(self.asset, 420, "minute")
 
             morning_data = df.between_time("00:00", "06:59")
 
