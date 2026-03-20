@@ -84,17 +84,17 @@ class MetaTrader5(Broker):
         
         return tick.last if tick.last != 0 else (tick.bid + tick.ask) / 2
     
-    def get_historical_prices(self, asset, length, timestep="minute", *args, **kwargs):
+    def get_historical_prices(self, asset, length, timestep, *args, **kwargs):
         """Required for technical indicators and strategy logic"""
 
-        # tf_map = {"minute": mt5.TIMEFRAME_M1, "hour": mt5.TIMEFRAME_H1, "day": mt5.TIMEFRAME_D1}
-        # timeframe = tf_map.get(timestep)
-        # if timeframe is None:
-        #     raise ValueError(f"Unsupported timestep: {timestep}. Use one of: {', '.join(tf_map.keys())}")
+        tf_map = {"minute": mt5.TIMEFRAME_M1, "hour": mt5.TIMEFRAME_H1, "day": mt5.TIMEFRAME_D1}
+        timeframe = tf_map.get(timestep)
+        if timeframe is None:
+            raise ValueError(f"Unsupported timestep: {timestep}. Use one of: {', '.join(tf_map.keys())}")
 
         symbol = self._symbol(asset)
 
-        rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_M1, 0, length)
+        rates = mt5.copy_rates_from_pos(symbol, timestep, 0, length)
 
         if rates is None:
             raise RuntimeError(f"No rates returned for {symbol} ({timestep}). MT5 error: {mt5.last_error()}")
@@ -107,7 +107,6 @@ class MetaTrader5(Broker):
         """Sends orders to MT5 and updates order status"""
 
         symbol = self._symbol(order.asset)
-        self.select_symbol(symbol)
 
         sl = order.stop_loss_price
         tp = order.take_profit_price
