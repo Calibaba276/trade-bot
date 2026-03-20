@@ -29,7 +29,4 @@ mt5 = MetaTrader5(
 )
 
 if __name__ == "__main__":
-    sym = "AAPLm"  # replace with exact symbol from your account
-
-    tick = mt5.symbol_info_tick(sym)
-    print(tick, mt5.last_error())
+    print(mt5.get_last_price(Asset(symbol="AAPLm")))
