@@ -182,7 +182,7 @@ class MetaTrader5(Broker):
         return symbol
 
     def select_symbol(self, asset):
-        symbol = self._symbol(asset)
+        symbol = self.broker._symbol(asset)
 
         symbol_info = mt5.symbol_info(symbol)
         if symbol_info is None:
