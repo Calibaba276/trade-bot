@@ -30,11 +30,6 @@ mt5 = MetaTrader5(
 
 if __name__ == "__main__":
     sym = "AAPLm"  # replace with exact symbol from your account
-    info = mt5.symbol_info(sym)
-    if info is None:
-       print("Wrong symbol")
-    elif not info.visible:
-       mt5.symbol_select(sym, True)
 
     tick = mt5.symbol_info_tick(sym)
     print(tick, mt5.last_error())
