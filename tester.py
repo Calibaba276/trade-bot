@@ -1,3 +1,4 @@
+import MetaTrader5 as mt5api
 from mt5_broker import MetaTrader5
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
@@ -30,13 +31,13 @@ mt5 = MetaTrader5(
 
 if __name__ == "__main__":
     symbol = "AAPL"
-    selected = mt5.symbol_select(symbol, True)
+    selected = mt5api.symbol_select(symbol, True)
     if not selected:
-        print(f"Failed to select {symbol}, error code =", mt5.last_error())
+        print(f"Failed to select {symbol}, error code =", mt5api.last_error())
         quit()
 
     # 3. Get symbol info
-    symbol_info = mt5.symbol_info(symbol)
+    symbol_info = mt5api.symbol_info(symbol)
     if symbol_info is None:
         print(f"{symbol} not found")
         quit()
@@ -44,5 +45,5 @@ if __name__ == "__main__":
         print(f"Symbol: {symbol_info.name}, {symbol_info.description}")
 
     # 4. Get last tick data
-    last_tick = mt5.symbol_info_tick(symbol)
+    last_tick = mt5api.symbol_info_tick(symbol)
     print(f"Last Price: {last_tick.ask}")
