@@ -29,4 +29,4 @@ mt5 = MetaTrader5(
 )
 
 if __name__ == "__main__":
-    print(mt5.get_last_price(Asset(symbol="METAm", asset_type="stock")))
+    print(mt5.get_last_price(Asset(symbol="AAPL", asset_type="stock")))
