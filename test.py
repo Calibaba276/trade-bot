@@ -46,7 +46,7 @@ def shutdown_mt5():
     print("MT5 disconnected")
 
 def get_daily_data(symbol="EURUSDm", n=10):
-    rates = rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_D1, 0, 10)
+    rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_D1, 0, 10)
     df = pd.DataFrame(rates)
     # df['time'] = pd.to_datetime(df['time'], unit='s')
     return df

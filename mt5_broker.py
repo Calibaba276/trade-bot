@@ -97,10 +97,10 @@ class MetaTrader5(Broker):
         # if timeframe is None:
         #     raise ValueError(f"Unsupported timestep: {timestep}. Use one of: {', '.join(tf_map.keys())}")
 
-        rates = mt5.copy_rates_from_pos(asset.symbol, mt5.TIMEFRAME_M1, 0, length)
+        rates = mt5.copy_rates_from_pos("AAPLm", mt5.TIMEFRAME_M1, 0, length)
 
         if rates is None:
-            raise ValueError("no response receieved... rates are none")
+            raise ValueError("No response receieved... rates are none")
             return pd.DataFrame()
         
         df = pd.DataFrame(rates)
