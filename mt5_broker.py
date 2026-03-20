@@ -71,15 +71,11 @@ class MetaTrader5(Broker):
                     entry_price=pos.price_open
                 ))
         return lumibot_positions
-        
+
     def get_last_price(self, asset, *args, **kwargs):
         """Fetches the last price from MT5."""
-
-        symbol = asset.symbol if hasattr(asset, 'symbol') else str(asset)
-
-        if symbol.endswith("M"):
-            symbol = symbol[:-1] + "m"
-
+        symbol = self._symbol(asset)
+        self.select_symbol(symbol)
         tick = mt5.symbol_info_tick(symbol)
 
         if tick is None:
@@ -88,21 +84,20 @@ class MetaTrader5(Broker):
         
         return tick.last if tick.last != 0 else (tick.bid + tick.ask) / 2
     
-    def get_historical_prices(self, asset, length, *args, **kwargs):
+    def get_historical_prices(self, asset, length, timestep="minute", *args, **kwargs):
         """Required for technical indicators and strategy logic"""
 
-        # tf_map = {"minute": mt5.TIMEFRAME_M1, "hour": mt5.TIMEFRAME_H1, "day": mt5.TIMEFRAME_D1}
+        tf_map = {"minute": mt5.TIMEFRAME_M1, "hour": mt5.TIMEFRAME_H1, "day": mt5.TIMEFRAME_D1}
+        timeframe = tf_map.get(timestep)
+        if timeframe is None:
+            raise ValueError(f"Unsupported timestep: {timestep}. Use one of: {', '.join(tf_map.keys())}")
 
-        # timeframe = tf_map.get(timestep)
-        # if timeframe is None:
-        #     raise ValueError(f"Unsupported timestep: {timestep}. Use one of: {', '.join(tf_map.keys())}")
-        symbol = asset.symbol if hasattr(asset, 'symbol') else str(asset)
-
-        rates = mt5.copy_rates_from_pos("AAPLm", mt5.TIMEFRAME_M1, 0, length)
+        symbol = self._symbol(asset)
+        self.select_symbol(symbol)
+        rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, length)
 
         if rates is None:
-            raise ValueError("No response receieved... rates are none")
-            return pd.DataFrame()
+            raise RuntimeError(f"No rates returned for {symbol} ({timestep}). MT5 error: {mt5.last_error()}")
         
         df = pd.DataFrame(rates)
         
@@ -111,10 +106,8 @@ class MetaTrader5(Broker):
     def _submit_order(self, order: Order):
         """Sends orders to MT5 and updates order status"""
 
-        symbol = order.asset.symbol
-
-        if symbol.endswith("M"):
-            symbol = symbol[:-1] + "m"
+        symbol = self._symbol(order.asset)
+        self.select_symbol(symbol)
 
         sl = order.stop_loss_price
         tp = order.take_profit_price
@@ -158,12 +151,15 @@ class MetaTrader5(Broker):
         tz = pytz.timezone("America/New_York")
         return datetime.now(tz)
     
-    def select_symbol(self, asset):
-
-        symbol = asset.symbol if hasattr(asset, 'symbol') else str(asset)
-
+    def _symbol(self, asset):
+        symbol = asset.symbol if hasattr(asset, "symbol") else str(asset)
+        
         if symbol.endswith("M"):
             symbol = symbol[:-1] + "m"
+        return symbol
+
+    def select_symbol(self, asset):
+        symbol = self._symbol(asset)
 
         symbol_info = mt5.symbol_info(symbol)
         if symbol_info is None:
