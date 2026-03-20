@@ -30,7 +30,7 @@ mt5 = MetaTrader5(
 )
 
 if __name__ == "__main__":
-    symbol = "AAPL"
+    symbol = "AAPLm"
     selected = mt5api.symbol_select(symbol, True)
     if not selected:
         print(f"Failed to select {symbol}, error code =", mt5api.last_error())
