@@ -35,3 +35,4 @@ if __name__ == "__main__":
     asset = Asset(symbol=symbol, asset_type="stock")
     
     print(mt5.get_last_price(asset))
+    
