@@ -72,7 +72,7 @@ class MetaTrader5(Broker):
                 lumibot_positions.append(Position(
                     asset=asset,
                     quantity=pos.volume,
-                    entry_price=pos.price_open,
+                    price=pos.price_open,
                     side=side
                 ))
 
