@@ -18,13 +18,13 @@ ACCOUNT = get_azure_secret("ACCOUNT")
 PASSWORD = get_azure_secret("PASSWORD")
 SERVER = get_azure_secret("SERVER")
 
-mt5 = MetaTrader5({
+mt5 = MetaTrader5(
     {
         "login": int(ACCOUNT),
         "password": PASSWORD,
         "server": SERVER
     }
-})
+)
 
 if __name__ == "__main__":
     mt5._initialize_mt5()
