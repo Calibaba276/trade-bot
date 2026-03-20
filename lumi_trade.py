@@ -148,7 +148,7 @@ class TrendStrategy(Strategy):
     
     def on_trading_iteration(self):
 
-        dt = self.get_datetime()
+        dt = self.broker.get_datetime()
 
         date = dt.date()
         time = dt.time()
@@ -190,7 +190,7 @@ class TrendStrategy(Strategy):
             elif score <= -0.5:
                 pos = self.get_position(asset)
                 if pos is not None:
-                    quantity = self.calculate_quantity(ticker)
+                    quantity = self.calculate_quantity(asset)
 
                     if quantity <= 0:
                         self.log_message(f"Skipping {ticker}. Price is too high for $25 trade limit.")
@@ -207,7 +207,7 @@ class TrendStrategy(Strategy):
     def calculate_quantity(self, asset):
         
         # Simple logic: Use 5% of available cash per trade
-        price = self.get_last_price(asset)
+        price = self.broker.get_last_price(asset)
 
         if price is None or price == 0:
             self.log_message(f"Warning: Price for {asset.symbol} is 0 or None. Cannot calculate $25 trade.")
