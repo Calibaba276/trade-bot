@@ -154,7 +154,10 @@ class MetaTrader5(Broker):
         symbol = self._symbol(asset)
         info = mt5.symbol_info(symbol)
 
-        return info
+        if info is None:
+            return "stock"
+        
+        return info.path.lower()
 
     def _symbol(self, asset):
         symbol = asset.symbol if hasattr(asset, "symbol") else str(asset)
