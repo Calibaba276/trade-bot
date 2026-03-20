@@ -75,7 +75,7 @@ class MetaTrader5(Broker):
     def get_last_price(self, asset, *args, **kwargs):
         """Fetches the last price from MT5."""
         symbol = self._symbol(asset)
-        self.select_symbol(symbol)
+
         tick = mt5.symbol_info_tick(symbol)
 
         if tick is None:
