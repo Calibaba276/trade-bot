@@ -1,7 +1,7 @@
 import MetaTrader5 as mt5
 import pandas as pd
 from lumibot.brokers import Broker
-from lumibot.entities import Position, Order
+from lumibot.entities import Asset, Position, Order
 
 from datetime import datetime, timedelta
 import pytz
@@ -62,13 +62,22 @@ class MetaTrader5(Broker):
 
         if mt5_positions:
             for pos in mt5_positions:
-                print(f"TRACKED POSITION: {pos.symbol} | Quantity: {pos.volume} | Entry: {pos.price_open}")
+
+                type = self.get_asset_type(pos.symbol)
+
+                asset = Asset(symbol=pos.symbol, asset_type=type)
+
+                side = "buy" if pos.type == 0 else "sell"
 
                 lumibot_positions.append(Position(
                     symbol=pos.symbol,
+                    asset=asset,
                     quantity=pos.volume,
-                    entry_price=pos.price_open
+                    entry_price=pos.price_open,
+                    side=side
                 ))
+
+                print(f"TRACKED POSITION: {pos.symbol} | Quantity: {pos.volume} | Entry: {pos.price_open}")
         return lumibot_positions
 
     def get_last_price(self, asset, *args, **kwargs):
@@ -150,8 +159,7 @@ class MetaTrader5(Broker):
         tz = pytz.timezone("America/New_York")
         return datetime.now(tz)
     
-    def get_asset_type(self, asset):
-        symbol = self._symbol(asset)
+    def get_asset_type(self, symbol):
         info = mt5.symbol_info(symbol)
 
         if info is None:
