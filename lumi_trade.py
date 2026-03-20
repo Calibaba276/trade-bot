@@ -219,9 +219,3 @@ class TrendStrategy(Strategy):
             return 0
         
         return quantity
-    
-    def on_bot_crash(self, error):
-        self.log_message(f"CRITICAL ERROR: {error}")
-        # Perform cleanup like selling or cancelling orders if needed
-        # Then force the entire process to stop
-        os._exit(1)

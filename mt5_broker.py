@@ -137,7 +137,7 @@ class MetaTrader5(Broker):
             "action": mt5.TRADE_ACTION_DEAL,
             "symbol": symbol,
             "volume": float(order.quantity),
-            "type": mt5.ORDER_TYPE_BUY if order.side == "buy" else mt5.ORDER_TYPE_SELL,
+            "order_type": mt5.ORDER_TYPE_BUY if order.side == "buy" else mt5.ORDER_TYPE_SELL,
             "price": price,
             "sl": float(sl) if sl else 0.0,
             "tp": float(tp) if tp else 0.0,
