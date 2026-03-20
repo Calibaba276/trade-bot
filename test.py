@@ -6,6 +6,8 @@ import time
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 
+from mt5_broker import MetaTrader5
+
 VAULT_URL = "https://calibabasecret.vault.azure.net/"
 credentials = DefaultAzureCredential()
 client = SecretClient(VAULT_URL, credentials)
@@ -114,7 +116,7 @@ def run_strategy():
     #     return
 
     symbol = "EURUSDm"
-    connect_mt5({
+    MetaTrader5({
         "login": int(ACCOUNT),
         "password": PASSWORD,
         "server": SERVER
