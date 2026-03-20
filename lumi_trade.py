@@ -164,7 +164,7 @@ class TrendStrategy(Strategy):
             asset = Asset(symbol=ticker, asset_type="stock")
             
             try:
-                self.select_symbol(asset)
+                self.broker.select_symbol(asset)
             except Exception as e:
                 self.log_message(f"Could not enable {ticker}: {e}. Skipping...")
                 continue
@@ -201,9 +201,7 @@ class TrendStrategy(Strategy):
             self.log_message("No Orders Made... Unto the Next Iteration")
 
     def calculate_quantity(self, asset):
-
-        asset = self._symbol(asset)
-
+        
         # Simple logic: Use 5% of available cash per trade
         price = self.get_last_price(asset)
 
