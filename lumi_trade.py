@@ -144,6 +144,7 @@ class TrendStrategy(Strategy):
         self.result = FetchTrends(NEWS_API_KEY, GEMINI_API_KEY)
         self.sleeptime = "5M"
         self.set_market("24/5")
+        self.risk_amount = 25
     
     def on_trading_iteration(self):
 
