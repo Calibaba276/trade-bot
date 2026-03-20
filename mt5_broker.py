@@ -71,8 +71,7 @@ class MetaTrader5(Broker):
 
                 lumibot_positions.append(Position(
                     asset=asset,
-                    quantity=pos.volume,
-                    side=side
+                    quantity=pos.quantity
                 ))
 
                 print(f"TRACKED POSITION: {pos.symbol} | Quantity: {pos.volume} | Entry: {pos.price_open}")
