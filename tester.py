@@ -30,7 +30,7 @@ mt5 = MetaTrader5(
 )
 
 if __name__ == "__main__":
-    symbol = "UBERm"
+    symbol = "NVDAm"
 
     asset = Asset(symbol=symbol, asset_type="stock")
     

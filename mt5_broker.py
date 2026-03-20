@@ -153,7 +153,7 @@ class MetaTrader5(Broker):
             order.identifier = result.order
             order.status = "filled"
         else:
-            print(f"MT5 ERROR: {result.comment} | Code: {result.retcode}")
+            print(f"MT5 ERROR: {result.comment.upper()} | Code: {result.retcode}")
             order.status = "error"
         return order
 
@@ -200,7 +200,7 @@ class MetaTrader5(Broker):
                 raise RuntimeError(f"Failed to select {symbol}. MT5 error: {mt5.last_error()}")
             symbol_info = mt5.symbol_info(symbol)
 
-        print(f"Symbol enabled: {symbol_info.name} | {symbol_info.description}")
+        print(f"Symbol Enabled: {symbol_info.name} | {symbol_info.description}")
         return True
 
     def _get_stream_object(self): return None

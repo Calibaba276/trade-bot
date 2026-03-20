@@ -150,6 +150,9 @@ class TrendStrategy(Strategy):
 
         dt = self.get_datetime()
 
+        date = dt.date()
+        time = dt.time()
+
         payload = json.loads(self.result.get_ai_response())
         signals = payload.get("signals", [])
         self.order_sent = False
@@ -179,9 +182,9 @@ class TrendStrategy(Strategy):
                         self.log_message(f"Skipping {ticker}. Price is too high for $25 trade limit.")
                         continue
                     
-                    order = self.create_order(asset, quantity, "buy", type="market")
+                    order = self.create_order(asset, quantity, "buy", order_type="market")
                     self.submit_order(order)
-                    self.log_message(f"{dt} BUY {ticker} | Score: {score} | Reason: {reason}")
+                    self.log_message(f"{date} - {time} BUY {ticker} | Score: {score} | Reason: {reason}")
                     self.order_sent = True
 
             elif score <= -0.5:
@@ -193,9 +196,9 @@ class TrendStrategy(Strategy):
                         self.log_message(f"Skipping {ticker}. Price is too high for $25 trade limit.")
                         continue
 
-                    order = self.create_order(asset, pos.quantity, "sell", type="market")
+                    order = self.create_order(asset, pos.quantity, "sell", order_type="market")
                     self.submit_order(order)
-                    self.log_message(f"{dt} SELL {ticker} | Score: {score} | Reason: {signal['reason']}")
+                    self.log_message(f"{date} - {time} SELL {ticker} | Score: {score} | Reason: {signal['reason']}")
                     self.order_sent = True
 
         if not self.order_sent:
