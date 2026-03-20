@@ -100,7 +100,6 @@ class MetaTrader5(Broker):
         rates = mt5.copy_rates_from_pos(asset.symbol, mt5.TIMEFRAME_M1, 0, length)
 
         if rates is None:
-            print(timestep)
             raise ValueError("no response receieved... rates are none")
             return pd.DataFrame()
         
