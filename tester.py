@@ -27,4 +27,4 @@ mt5 = MetaTrader5(
 )
 
 if __name__ == "__main__":
-    print(mt5.get_portfolio_value())
+    print(mt5.get_last_price("EURUSDm"))

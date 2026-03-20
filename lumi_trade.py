@@ -152,7 +152,6 @@ class TrendStrategy(Strategy):
 
         payload = json.loads(self.result.get_ai_response())
         signals = payload.get("signals", [])
-        tickers_scores = {}
         self.order_sent = False
 
         if not signals:
