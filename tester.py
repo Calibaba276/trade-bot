@@ -2,6 +2,8 @@ from mt5_broker import MetaTrader5
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 
+from lumibot.entities import Asset
+
 VAULT_URL = "https://calibabasecret.vault.azure.net/"
 credentials = DefaultAzureCredential()
 client = SecretClient(VAULT_URL, credentials)
@@ -27,4 +29,4 @@ mt5 = MetaTrader5(
 )
 
 if __name__ == "__main__":
-    print(mt5.get_last_price("EURUSDm"))
+    print(mt5.get_last_price(Asset(symbol="EURUSDm", asset_type="forex")))
