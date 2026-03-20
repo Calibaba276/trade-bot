@@ -27,4 +27,4 @@ mt5 = MetaTrader5(
 )
 
 if __name__ == "__main__":
-    mt5._initialize_mt5()
+    print(mt5._get_balances_at_broker())
