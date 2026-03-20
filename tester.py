@@ -33,6 +33,7 @@ if __name__ == "__main__":
     symbol = "AAPLm"
 
     print(mt5.select_symbol(symbol))
-
+    print(mt5.get_last_price(symbol))
+    
     last_tick = mt5api.symbol_info_tick(symbol)
     print(f"Last Price: {last_tick.ask}")
