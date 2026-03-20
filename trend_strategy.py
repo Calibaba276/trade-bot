@@ -26,6 +26,7 @@ if __name__ == "__main__":
             "login": int(ACCOUNT),
             "password": PASSWORD,
             "server": SERVER,
+            "timezone": "Africa/Lagos",
             "path": "C:\\\\Program Files\\\\Trend Strategy\\\\terminal64.exe"
         })
 

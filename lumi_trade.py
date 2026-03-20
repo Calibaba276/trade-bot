@@ -84,13 +84,12 @@ class LiquiditySweep(Strategy):
 
                 # Step 2: Price reverses below high — scan recent bars for a swing low (higher low)
                 if self.swept_high and last_price < self.high and self.mss_swing_low is None:
-                    bars = self.get_historical_prices(self.symbol, 20, "minute")
-                    df = bars.pandas_df
+                    df = self.get_historical_prices(self.symbol, 20, "minute")
                     lows = df["low"].values
                     for i in range(len(lows) - 2, 0, -1):
                         if lows[i] < lows[i - 1] and lows[i] < lows[i + 1] and lows[i] > self.low:
                             self.mss_swing_low = float(lows[i])
-                            self.log_message(f"{dt} -- Bearish MSS: Swing Low identified at {self.mss_swing_low}")
+                            self.log_message(f"{current_time} -- Bearish MSS: Swing Low identified at {self.mss_swing_low}")
                             break
 
                 # Step 3: Price breaks below the swing low — MSS confirmed, SELL
@@ -99,7 +98,7 @@ class LiquiditySweep(Strategy):
                     self.stop_loss_distance = (self.mss_swing_low + self.buffer) - last_price
                     quantity = int(self.risk_amount / self.stop_loss_distance)
 
-                    self.log_message(f"{dt} -- SELL (Bearish MSS) -- Price {last_price} broke below swing low {self.mss_swing_low}")
+                    self.log_message(f"{current_time} -- SELL (Bearish MSS) -- Price {last_price} broke below swing low {self.mss_swing_low}")
                     order = self.create_order(
                         self.symbol, quantity, "sell",
                         take_profit_price = self.low,
@@ -115,13 +114,12 @@ class LiquiditySweep(Strategy):
 
                 # Step 2: Price reverses above low — scan recent bars for a swing high (lower high)
                 if self.swept_low and last_price > self.low and self.mss_swing_high is None:
-                    bars = self.get_historical_prices(self.symbol, 20, "minute")
-                    df = bars.pandas_df
+                    df = self.get_historical_prices(self.symbol, 20, "minute")
                     highs = df["high"].values
                     for i in range(len(highs) - 2, 0, -1):
                         if highs[i] > highs[i - 1] and highs[i] > highs[i + 1] and highs[i] < self.high:
                             self.mss_swing_high = float(highs[i])
-                            self.log_message(f"{dt} -- Bullish MSS: Swing High identified at {self.mss_swing_high}")
+                            self.log_message(f"{current_time} -- Bullish MSS: Swing High identified at {self.mss_swing_high}")
                             break
 
                 # Step 3: Price breaks above the swing high — MSS confirmed, BUY
@@ -130,7 +128,7 @@ class LiquiditySweep(Strategy):
                     self.stop_loss_distance = last_price - (self.mss_swing_high - self.buffer)
                     quantity = int(self.risk_amount / self.stop_loss_distance)
 
-                    self.log_message(f"{dt} -- BUY (Bullish MSS) -- Price {last_price} broke above swing high {self.mss_swing_high}")
+                    self.log_message(f"{current_time} -- BUY (Bullish MSS) -- Price {last_price} broke above swing high {self.mss_swing_high}")
                     order = self.create_order(
                         self.symbol, quantity, "buy",
                         take_profit_price = self.high,
@@ -148,7 +146,7 @@ class TrendStrategy(Strategy):
     
     def on_trading_iteration(self):
 
-        dt = self.broker.get_datetime()
+        dt = self.get_datetime()
 
         date = dt.date()
         time = dt.time()

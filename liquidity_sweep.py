@@ -26,6 +26,7 @@ if __name__ == "__main__":
             "login": int(ACCOUNT),
             "password": PASSWORD,
             "server": SERVER,
+            "timezone": "Africa/Lagos",
             "path": "C:\\\\Program Files\\\\Liquidity Sweep\\\\terminal64.exe"
         })
     

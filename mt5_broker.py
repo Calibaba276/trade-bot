@@ -16,6 +16,7 @@ class MetaTrader5(Broker):
         super().__init__(name="MT5", data_source=self)
         self.SOURCE = "PANDAS"
         self.config = config
+        self.timezone = self.config.get("timezone", "Africa/Lagos")
         self._initialize_mt5()
 
     def _initialize_mt5(self):
@@ -158,7 +159,7 @@ class MetaTrader5(Broker):
         return order
 
     def get_datetime(self, *args, **kwargs):
-        tz = pytz.timezone("America/New_York")
+        tz = pytz.timezone(self.timezone)
         return datetime.now(tz)
     
     def get_asset_type(self, symbol):
