@@ -70,7 +70,6 @@ class MetaTrader5(Broker):
                 side = "buy" if pos.type == 0 else "sell"
 
                 lumibot_positions.append(Position(
-                    symbol=pos.symbol,
                     asset=asset,
                     quantity=pos.volume,
                     entry_price=pos.price_open,
