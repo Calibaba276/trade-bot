@@ -158,7 +158,10 @@ class MetaTrader5(Broker):
         tz = pytz.timezone("America/New_York")
         return datetime.now(tz)
     
-    def select_symbol(self, symbol: str):
+    def select_symbol(self, asset):
+
+        symbol = asset.symbol if hasattr(asset, 'symbol') else str(asset)
+
         if symbol.endswith("M"):
             symbol = symbol[:-1] + "m"
 
