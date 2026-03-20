@@ -62,7 +62,7 @@ class MetaTrader5(Broker):
 
         if mt5_positions:
             for pos in mt5_positions:
-                print(f"TRACKED POSITION: {pos.symbol} | Quantity: {pos.quantity} | Entry: {pos.entry_price}")
+                print(f"TRACKED POSITION: {pos.symbol} | Quantity: {pos.volume} | Entry: {pos.price_open}")
 
                 lumibot_positions.append(Position(
                     strategy_name=self.name,
