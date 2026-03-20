@@ -94,7 +94,7 @@ class MetaTrader5(Broker):
 
         symbol = self._symbol(asset)
 
-        rates = mt5.copy_rates_from_pos(symbol, timestep, 0, length)
+        rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, length)
 
         if rates is None:
             raise RuntimeError(f"No rates returned for {symbol} ({timestep}). MT5 error: {mt5.last_error()}")
