@@ -162,11 +162,17 @@ class TrendStrategy(Strategy):
             reason = signal["reason"]
 
             asset = Asset(symbol=ticker, asset_type="stock")
+            
+            try:
+                self.select_symbol(asset)
+            except Exception as e:
+                self.log_message(f"Could not enable {ticker}: {e}. Skipping...")
+                continue
 
             if score > 0.7:
                 pos = self.get_position(asset)
                 if pos is None:
-                    quantity = self.calculate_quantity(ticker)
+                    quantity = self.calculate_quantity(asset)
 
                     if quantity <= 0:
                         self.log_message(f"Skipping {ticker}. Price is too high for $25 trade limit.")
@@ -194,12 +200,15 @@ class TrendStrategy(Strategy):
         if not self.order_sent:
             self.log_message("No Orders Made... Unto the Next Iteration")
 
-    def calculate_quantity(self, ticker):
+    def calculate_quantity(self, asset):
+
+        asset = self._symbol(asset)
+
         # Simple logic: Use 5% of available cash per trade
-        price = self.get_last_price(Asset(symbol=ticker, asset_type="stock"))
+        price = self.get_last_price(asset)
 
         if price is None or price == 0:
-            self.log_message(f"Warning: Price for {ticker} is 0 or None. Cannot calculate $25 trade.")
+            self.log_message(f"Warning: Price for {asset.symbol} is 0 or None. Cannot calculate $25 trade.")
             return 0
 
         raw_quantity = self.risk_amount / price
@@ -207,7 +216,7 @@ class TrendStrategy(Strategy):
         quantity = round(raw_quantity, 2)
 
         if quantity < 0.01:
-            self.log_message(f"Price of {ticker} is too high! $25 buys less than 0.01 lots.")
+            self.log_message(f"Price of {asset.symbol} is too high! $25 buys less than 0.01 lots.")
             return 0
         
         return quantity
