@@ -19,7 +19,7 @@ class MetaTrader5(Broker):
         self._initialize_mt5()
 
     def _initialize_mt5(self):
-        
+
         if not mt5.initialize():
             raise RuntimeError(f"MT5 Initialize Failed: {mt5.last_error()}")
 
@@ -36,20 +36,18 @@ class MetaTrader5(Broker):
         
         print(f"Successfully logged into {self.config['server']} as {self.config['login']}")
     
-    def _get_balances_at_broker(self, *args, **kwargs):
+    def get_portfolio_value(self, *args, **kwargs):
         """
         This is the internal source for self.get_cash() 
         and self.get_portfolio_value()
         """
         account = mt5.account_info()
         if account is None:
-            return 0.0, 0.0, 0.0
+            return 0.0
         
-        cash = account.balance
         portfolio_value = account.equity
-        position_value = portfolio_value - cash
 
-        return cash, position_value, portfolio_value
+        return portfolio_value
     
     def _pull_positions(self, *args, **kwargs):
         """

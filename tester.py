@@ -27,4 +27,4 @@ mt5 = MetaTrader5(
 )
 
 if __name__ == "__main__":
-    print(mt5._get_balances_at_broker())
+    print(mt5.get_portfolio_value())
