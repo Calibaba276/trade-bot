@@ -157,7 +157,18 @@ class MetaTrader5(Broker):
         if info is None:
             return "stock"
         
-        return info.path.lower()
+        path = info.path.lower()
+
+        if "forex" in path:
+            return "forex"
+        elif "crypto" in path:
+            return "crypto"
+        elif "future" in path:
+            return "future"
+        elif "option" in path:
+            return "option"
+        else:
+            return "stock"
 
     def _symbol(self, asset):
         symbol = asset.symbol if hasattr(asset, "symbol") else str(asset)
