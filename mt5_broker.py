@@ -158,7 +158,7 @@ class MetaTrader5(Broker):
         tz = pytz.timezone("America/New_York")
         return datetime.now(tz)
     
-    def select_symbol(symbol):
+    def select_symbol(symbol, *args, **kwargs):
         selected = mt5.symbol_select(symbol, True)
         if not selected:
             raise NameError(f"Failed to select {symbol}, error code =", mt5.last_error())
