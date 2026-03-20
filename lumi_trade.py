@@ -164,7 +164,7 @@ class TrendStrategy(Strategy):
             asset = Asset(symbol=ticker, asset_type="stock")
             
             try:
-                self.select_symbol(asset)
+                self.broker.select_symbol(asset)
             except Exception as e:
                 self.log_message(f"Could not enable {ticker}: {e}. Skipping...")
                 continue
