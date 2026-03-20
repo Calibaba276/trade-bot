@@ -38,46 +38,62 @@ if not authorized:
 
 print(f"Successfully logged into {SERVER} as {ACCOUNT}\n")
 
-# Get all symbols
-symbols = mt5.symbols_get()
+symbols_to_enable = [
+    "AAPLm",   # Apple (NOTE: it's AAPL with 2 P's, not APPL)
+    "NVDAm",   # NVIDIA
+    "TSLAm",   # Tesla
+    "MSFTm",   # Microsoft
+    "AMZNm",   # Amazon
+    "GOOGLm",  # Google
+    "FBm",     # Meta/Facebook
+    "AMDm",    # AMD
+    # Add more symbols as needed
+]
 
-if symbols is None:
-    print("No symbols found")
-    mt5.shutdown()
-    exit()
+print("Checking and enabling symbols...")
+print("=" * 70)
 
-print(f"Total symbols available: {len(symbols)}\n")
-
-# Check specific symbols you're interested in
-test_symbols = ["APPLm", "NVDAm", "UBERm", "TSLA", "TSLAm", "AAPL", "NVDA"]
-
-print("Checking specific symbols:")
-print("-" * 60)
-for symbol_name in test_symbols:
+for symbol_name in symbols_to_enable:
+    # Check if symbol exists
     info = mt5.symbol_info(symbol_name)
-    if info:
-        print(f"✓ {symbol_name:10} - Available | Path: {info.path} | Description: {info.description}")
+    
+    if info is None:
+        print(f"✗ {symbol_name:15} - DOES NOT EXIST on this broker")
+        continue
+    
+    # Check if symbol is visible in Market Watch
+    if not info.visible:
+        print(f"⚠ {symbol_name:15} - Found but NOT visible. Enabling...")
+        
+        # Enable the symbol
+        if mt5.symbol_select(symbol_name, True):
+            # Verify it's now visible
+            info = mt5.symbol_info(symbol_name)
+            if info.visible:
+                print(f"✓ {symbol_name:15} - Successfully enabled! Now visible in Market Watch")
+            else:
+                print(f"✗ {symbol_name:15} - Failed to verify visibility")
+        else:
+            print(f"✗ {symbol_name:15} - Failed to enable: {mt5.last_error()}")
     else:
-        print(f"✗ {symbol_name:10} - NOT FOUND")
+        print(f"✓ {symbol_name:15} - Already visible in Market Watch")
 
-print("\n" + "=" * 60)
-print("Searching for stock-related symbols (showing first 50):")
-print("=" * 60)
+print("\n" + "=" * 70)
+print("\nVerifying final status...")
+print("-" * 70)
 
-# Filter and show stock symbols
-stock_count = 0
-for symbol in symbols:
-    path_lower = symbol.path.lower()
-    if "stock" in path_lower or "equity" in path_lower or "share" in path_lower:
-        print(f"{symbol.name:15} | {symbol.description:40} | {symbol.path}")
-        stock_count += 1
-        if stock_count >= 50:
-            break
+for symbol_name in symbols_to_enable:
+    info = mt5.symbol_info(symbol_name)
+    if info and info.visible:
+        tick = mt5.symbol_info_tick(symbol_name)
+        if tick:
+            print(f"✓ {symbol_name:15} | Bid: {tick.bid:10.2f} | Ask: {tick.ask:10.2f} | {info.description}")
+        else:
+            print(f"⚠ {symbol_name:15} | Visible but no tick data available")
+    elif info:
+        print(f"✗ {symbol_name:15} | Exists but NOT visible")
+    else:
+        print(f"✗ {symbol_name:15} | Does NOT exist on this broker")
 
-if stock_count == 0:
-    print("\nNo stock symbols found. Showing all symbols (first 100):")
-    print("-" * 60)
-    for i, symbol in enumerate(symbols[:100]):
-        print(f"{symbol.name:15} | {symbol.description:40} | {symbol.path}")
-
+print("\n✓ Done! Check your MT5 terminal - symbols should now be visible in Market Watch.")
 mt5.shutdown()
