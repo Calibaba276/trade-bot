@@ -100,7 +100,8 @@ class MetaTrader5(Broker):
             raise RuntimeError(f"No rates returned for {symbol} ({timestep}). MT5 error: {mt5.last_error()}")
         
         df = pd.DataFrame(rates)
-        
+        df['time'] = pd.to_datetime(df['time'], unit='s')
+        df.set_index('time', inplace=True)
         return df
     
     def _submit_order(self, order: Order):
