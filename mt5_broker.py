@@ -51,7 +51,7 @@ class MetaTrader5(Broker):
 
         return cash, position_value, portfolio_value
     
-    def _pull_positions(self, *args, **kwargs):
+    def _pull_positions(self, strategy=None, *args, **kwargs):
         """
         This is the source for self.get_positions() 
         and self.get_position(asset)
@@ -67,9 +67,8 @@ class MetaTrader5(Broker):
 
                 asset = Asset(symbol=pos.symbol, asset_type=type)
 
-                side = "buy" if pos.type == 0 else "sell"
-
                 lumibot_positions.append(Position(
+                    strategy,
                     asset=asset,
                     quantity=pos.volume
                 ))
