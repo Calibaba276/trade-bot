@@ -150,8 +150,10 @@ class MetaTrader5(Broker):
         tz = pytz.timezone("America/New_York")
         return datetime.now(tz)
     
-    def get_asset_type(symbol, *args, **kwargs):
+    def get_asset_type(self, asset):
+        symbol = self._symbol(asset)
         info = mt5.symbol_info(symbol)
+
         return info
 
     def _symbol(self, asset):
