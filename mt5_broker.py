@@ -105,9 +105,6 @@ class MetaTrader5(Broker):
             return pd.DataFrame()
         
         df = pd.DataFrame(rates)
-        df['time'] = pd.to_datetime(df['time'], unit='s')
-        df.set_index('time', inplace=True)
-        df.rename(columns={'real_volume': 'volume'}, inplace=True)
         
         return df
     
