@@ -158,6 +158,17 @@ class MetaTrader5(Broker):
         tz = pytz.timezone("America/New_York")
         return datetime.now(tz)
     
+    def select_symbol(symbol):
+        selected = mt5.symbol_select(symbol, True)
+        if not selected:
+            raise NameError(f"Failed to select {symbol}, error code =", mt5.last_error())
+        
+        symbol_info = mt5.symbol_info(symbol)
+        if symbol_info is None:
+            raise NameError(f"{symbol} not found")
+        else:
+            print(f"Symbol: {symbol_info.name}, {symbol_info.description}")
+
     def _get_stream_object(self): return None
     def _register_stream_events(self): pass
     def _run_stream(self): pass

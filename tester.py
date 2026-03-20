@@ -31,19 +31,8 @@ mt5 = MetaTrader5(
 
 if __name__ == "__main__":
     symbol = "AAPLm"
-    selected = mt5api.symbol_select(symbol, True)
-    if not selected:
-        print(f"Failed to select {symbol}, error code =", mt5api.last_error())
-        quit()
 
-    # 3. Get symbol info
-    symbol_info = mt5api.symbol_info(symbol)
-    if symbol_info is None:
-        print(f"{symbol} not found")
-        quit()
-    else:
-        print(f"Symbol: {symbol_info.name}, {symbol_info.description}")
+    print(mt5.select_symbol(symbol))
 
-    # 4. Get last tick data
     last_tick = mt5api.symbol_info_tick(symbol)
     print(f"Last Price: {last_tick.ask}")
