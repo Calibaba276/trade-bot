@@ -46,7 +46,7 @@ class LiquiditySweep(Strategy):
 
     def on_trading_iteration(self):
 
-        dt = self.get_datetime()
+        dt = self.broker.get_datetime()
         current_time = dt.time()
 
         if current_time == time(0, 0):
