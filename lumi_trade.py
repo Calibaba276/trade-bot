@@ -61,7 +61,11 @@ class LiquiditySweep(Strategy):
             self.stop_loss_distance = None
 
         if current_time >= time(7, 0) and self.last_range_date != dt.date():
-            df = self.get_historical_prices(self.asset, 420, "minute")
+            try:
+                df = self.get_historical_prices(self.asset, 420, "minute")
+            except Exception:
+                self.log_message(f" --- {current_time} Failed to fetch historical prices --- ")
+                return
 
             morning_data = df.between_time("00:00", "06:59")
 
@@ -69,9 +73,9 @@ class LiquiditySweep(Strategy):
                 self.high = morning_data["high"].max()
                 self.low = morning_data["low"].min()
                 self.last_range_date = dt.date()
-                self.log_message(f"--- {dt.date()} From 12:00 - 6:59am: High={self.high}, Low={self.low} ---")
+                self.log_message(f"--- {dt.date()} - {current_time} From 12:00 - 6:59am: High={self.high}, Low={self.low} ---")
             else:
-                self.log_message(f"--- {dt.date()} Market is Closed (No Data) ---")
+                self.log_message(f"--- {dt.date()} - {current_time} Market is Closed (No Data) ---")
 
         if self.high and self.low and not self.traded_today:
             if current_time > time(7, 0) and current_time < time(17, 0):
@@ -84,7 +88,7 @@ class LiquiditySweep(Strategy):
 
                 # Step 2: Price reverses below high — scan recent bars for a swing low (higher low)
                 if self.swept_high and last_price < self.high and self.mss_swing_low is None:
-                    df = self.get_historical_prices(self.symbol, 20, "minute")
+                    df = self.get_historical_prices(self.asset, 20, "minute")
                     lows = df["low"].values
                     for i in range(len(lows) - 2, 0, -1):
                         if lows[i] < lows[i - 1] and lows[i] < lows[i + 1] and lows[i] > self.low:
@@ -114,7 +118,7 @@ class LiquiditySweep(Strategy):
 
                 # Step 2: Price reverses above low — scan recent bars for a swing high (lower high)
                 if self.swept_low and last_price > self.low and self.mss_swing_high is None:
-                    df = self.get_historical_prices(self.symbol, 20, "minute")
+                    df = self.get_historical_prices(self.asset, 20, "minute")
                     highs = df["high"].values
                     for i in range(len(highs) - 2, 0, -1):
                         if highs[i] > highs[i - 1] and highs[i] > highs[i + 1] and highs[i] < self.high:
