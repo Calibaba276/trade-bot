@@ -46,7 +46,7 @@ class LiquiditySweep(Strategy):
 
     def on_trading_iteration(self):
 
-        dt = self.get_datetime()
+        dt = self.broker.get_datetime()
         current_time = dt.time()
 
         if current_time == time(0, 0):
@@ -85,6 +85,7 @@ class LiquiditySweep(Strategy):
                 # Step 1: Detect sweep above the high
                 if last_price > self.high:
                     self.swept_high = True
+                    self.log_message(f"{current_time} -- Current Price has surpassed the Highest Point --")
 
                 # Step 2: Price reverses below high — scan recent bars for a swing low (higher low)
                 if self.swept_high and last_price < self.high and self.mss_swing_low is None:
@@ -115,6 +116,7 @@ class LiquiditySweep(Strategy):
                 # Step 1: Detect sweep below the low
                 elif last_price < self.low:
                     self.swept_low = True
+                    self.log_message(f"{current_time} -- Current Price has surpassed the Highest Point --")
 
                 # Step 2: Price reverses above low — scan recent bars for a swing high (lower high)
                 if self.swept_low and last_price > self.low and self.mss_swing_high is None:
@@ -171,8 +173,8 @@ class TrendStrategy(Strategy):
             
             try:
                 self.broker.select_symbol(asset)
-            except Exception as e:
-                self.log_message(f"Could not enable {ticker}: {e}. Skipping...")
+            except Exception:
+                self.log_message(f"Could not enable {ticker}. Skipping...")
                 continue
 
             if score > 0.7:
@@ -204,12 +206,12 @@ class TrendStrategy(Strategy):
                     self.order_sent = True
 
         if not self.order_sent:
-            self.log_message("No Orders Made... Unto the Next Iteration")
+            self.log_message("No Orders Made... Unto the Next")
 
     def calculate_quantity(self, asset):
         
         # Simple logic: Use 5% of available cash per trade
-        price = self.broker.get_last_price(asset)
+        price = self.get_last_price(asset)
 
         if price is None or price == 0:
             self.log_message(f"Warning: Price for {asset.symbol} is 0 or None. Cannot calculate $25 trade.")
