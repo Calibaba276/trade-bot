@@ -1,6 +1,5 @@
-import os
+import math
 import json
-import pandas as pd
 from datetime import time
 from lumibot.strategies.strategy import Strategy
 from lumibot.entities import Asset
@@ -78,7 +77,7 @@ class LiquiditySweep(Strategy):
                 self.log_message(f"--- {dt.date()} - {current_time} Market is Closed (No Data) ---")
 
         if self.high and self.low and not self.traded_today:
-            if current_time > time(7, 0) and current_time < time(17, 0):
+            if time(7, 0) <= current_time < time(17, 0):
                 last_price = self.get_last_price(self.symbol)
 
                 # --- BEARISH MSS ---
@@ -100,14 +99,14 @@ class LiquiditySweep(Strategy):
                 # Step 3: Price breaks below the swing low — MSS confirmed, SELL
                 if self.mss_swing_low and last_price < self.mss_swing_low:
 
-                    self.stop_loss_distance = (self.mss_swing_low + self.buffer) - last_price
-                    quantity = int(self.risk_amount / self.stop_loss_distance)
+                    self.stop_loss_distance = self.mss_swing_low + self.buffer
+                    quantity = self.calculate_quantity(self.asset, self.stop_loss_distance)
 
                     self.log_message(f"{current_time} -- SELL (Bearish MSS) -- Price {last_price} broke below swing low {self.mss_swing_low}")
                     order = self.create_order(
                         self.symbol, quantity, "sell",
-                        take_profit_price = self.low,
-                        stop_loss_price = self.mss_swing_low + self.buffer
+                        limit_price = self.low,
+                        stop_price = self.mss_swing_low + self.buffer
                     )
                     self.submit_order(order)
                     self.traded_today = True
@@ -131,14 +130,14 @@ class LiquiditySweep(Strategy):
                 # Step 3: Price breaks above the swing high — MSS confirmed, BUY
                 if self.mss_swing_high and last_price > self.mss_swing_high:
 
-                    self.stop_loss_distance = last_price - (self.mss_swing_high - self.buffer)
-                    quantity = int(self.risk_amount / self.stop_loss_distance)
+                    self.stop_loss_distance = self.mss_swing_high - self.buffer
+                    quantity = self.calculate_quantity(self.asset, self.stop_loss_distance)
 
                     self.log_message(f"{current_time} -- BUY (Bullish MSS) -- Price {last_price} broke above swing high {self.mss_swing_high}")
                     order = self.create_order(
                         self.symbol, quantity, "buy",
-                        take_profit_price = self.high,
-                        stop_loss_price = self.mss_swing_high - self.buffer
+                        limit_price = self.high,
+                        stop_price = self.mss_swing_high - self.buffer
                     )
                     self.submit_order(order)
                     self.traded_today = True
@@ -194,11 +193,6 @@ class TrendStrategy(Strategy):
             elif score <= -0.5:
                 pos = self.get_position(asset)
                 if pos is not None:
-                    quantity = self.calculate_quantity(asset)
-
-                    if quantity <= 0:
-                        self.log_message(f"Skipping {ticker}. Price is too high for $25 trade limit.")
-                        continue
 
                     order = self.create_order(asset, pos.quantity, "sell", order_type="market")
                     self.submit_order(order)
@@ -208,21 +202,39 @@ class TrendStrategy(Strategy):
         if not self.order_sent:
             self.log_message("No Orders Made... Unto the Next")
 
-    def calculate_quantity(self, asset):
+    def calculate_quantity(self, asset, stop_loss=None):
+        """Quantity Calculator for Stocks and Forex"""
         
         # Simple logic: Use 5% of available cash per trade
         price = self.get_last_price(asset)
-
+        
         if price is None or price == 0:
             self.log_message(f"Warning: Price for {asset.symbol} is 0 or None. Cannot calculate $25 trade.")
             return 0
+        
+        if stop_loss is not None:
+            sl_distance = abs(price - stop_loss)
+            if sl_distance == 0:
+                return 0
 
-        raw_quantity = self.risk_amount / price
+            raw_quantity = self.risk_amount / sl_distance
 
-        quantity = round(raw_quantity, 2)
+            if asset.asset_type == "forex":
+                quantity = raw_quantity / 100000
+            else:
+                quantity = raw_quantity
 
-        if quantity < 0.01:
-            self.log_message(f"Price of {asset.symbol} is too high! $25 buys less than 0.01 lots.")
+        else:
+            quantity = self.risk_amount / price
+
+        if asset.asset_type == "forex":
+            step = 0.01
+            final_qty = round(math.floor(quantity / step) * step, 2)
+        else:
+            final_qty = math.floor(quantity)
+        
+        if final_qty <= 0:
+            self.log_message(f"Quantity too small for {asset.symbol} with $25 Limit.")
             return 0
         
-        return quantity
+        return final_qty
