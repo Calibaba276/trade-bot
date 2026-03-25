@@ -36,7 +36,4 @@ if __name__ == "__main__":
     trader = Trader()
     trader.add_strategy(ts)
 
-    try:
-        trader.run_all()
-    except KeyboardInterrupt:
-        trader.stop_all()
+    trader.run_all()

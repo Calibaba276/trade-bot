@@ -98,7 +98,7 @@ class LiquiditySweep(Strategy):
                 if self.mss_swing_low and last_price < self.mss_swing_low:
 
                     self.stop_loss_distance = self.mss_swing_low + self.buffer
-                    quantity = self.calculate_quantity(self.asset, self.stop_loss_distance)
+                    quantity = calculate_quantity(self.asset, self.stop_loss_distance)
 
                     self.log_message(f"{current_time} -- SELL (Bearish MSS) -- Price {last_price} broke below swing low {self.mss_swing_low}")
                     order = self.create_order(
@@ -129,7 +129,7 @@ class LiquiditySweep(Strategy):
                 if self.mss_swing_high and last_price > self.mss_swing_high:
 
                     self.stop_loss_distance = self.mss_swing_high - self.buffer
-                    quantity = self.calculate_quantity(self.asset, self.stop_loss_distance)
+                    quantity = calculate_quantity(self.asset, self.stop_loss_distance)
 
                     self.log_message(f"{current_time} -- BUY (Bullish MSS) -- Price {last_price} broke above swing high {self.mss_swing_high}")
                     order = self.create_order(
@@ -177,7 +177,7 @@ class TrendStrategy(Strategy):
             if score > 0.7:
                 pos = self.get_position(asset)
                 if pos is None:
-                    quantity = self.calculate_quantity(asset)
+                    quantity = calculate_quantity(asset)
 
                     if quantity <= 0:
                         self.log_message(f"Skipping {ticker}. Price is too high for $25 trade limit.")
@@ -199,40 +199,116 @@ class TrendStrategy(Strategy):
 
         if not self.order_sent:
             self.log_message("No Orders Made... Unto the Next")
+    
+class ACB(Strategy):
+    def initialize(self):
+        self.symbol = self.parameter.get("symbol")
+        self.sleeptime = "1M"
 
-    def calculate_quantity(self, asset, stop_loss=None):
-        """Quantity Calculator for Stocks and Forex"""
+        self.asset = Asset(symbol=self.symbol, asset_type="forex")
+        self.risk_amount = 25
+        self.start = time(14, 0)
+        self.end = time(16, 30)
+
+    def get_signal_day(self):
+        """Is it Green or Red Light Day"""
+        df = self.get_historical_prices(self.asset, 2, "day")
+
+        yesterday = df.iloc[-1]
+        day_before = df.iloc[-2]
+
+        if yesterday['close'] > day_before['high']:
+            return "BULLISH"
+        elif yesterday['close'] > yesterday['open'] and day_before['close'] and day_before['open']:
+            return "BULLISH"
         
-        # Simple logic: Use 5% of available cash per trade
-        price = self.get_last_price(asset)
+        elif yesterday['close'] < day_before['low']:
+            return "BEARISH"
+        elif yesterday['close'] < yesterday['open'] and day_before['close'] > day_before['open']:
+            return "BEARISH"
         
-        if price is None or price == 0:
-            self.log_message(f"Warning: Price for {asset.symbol} is 0 or None. Cannot calculate $25 trade.")
+        return "NO SIGNAL"
+    
+    def get_coil_range(self):
+        """Return the High and Low of the last 60 minutes."""
+
+        df = self.get_historical_prices(self.asset, 60, "minute")
+        return df['high'].max(), df['low'].min()
+    
+    def on_trading_iteration(self):
+        current_time = self.broker.get_datetime().time()
+
+        if not (self.start <= current_time <= self.end):
+            self.log_message("Not Within Trading Period...")
+            return
+        
+        signal = self.get_signal_day()
+        if signal == "NO SIGNAL":
+            return
+        
+        last_price = self.get_last_price(self.asset)
+        high, low = self.get_coil_range()
+
+        stop_loss_distance = abs(high - low)
+
+        if signal == "BULLISH" and last_price > high:
+            limit_price = low
+            stop_price = last_price + (stop_loss_distance * 2)
+
+            quantity = calculate_quantity(self.asset, stop_price)
+
+            order = self.create_order(
+                self.symbol, quantity, "buy",
+                limit_price=limit_price,
+                stop_price=stop_price
+            )
+            self.submit_order(order)
+        
+        elif signal == "BEARISH" and last_price < low:
+            limit_price = high
+            stop_price = last_price - (stop_loss_distance * 2)
+
+            quantity = calculate_quantity(self.asset, stop_price)
+
+            order = self.create_order(
+                self.symbol, quantity, "buy",
+                limit_price=limit_price,
+                stop_price=stop_price
+            )
+            self.submit_order(order)
+
+def calculate_quantity(self, asset, stop_loss=None):
+    """Quantity Calculator for Stocks and Forex"""
+        
+    # Simple logic: Use 5% of available cash per trade
+    price = self.get_last_price(asset)
+        
+    if price is None or price == 0:
+        self.log_message(f"Warning: Price for {asset.symbol} is 0 or None. Cannot calculate $25 trade.")
+        return 0
+        
+    if stop_loss is not None:
+        sl_distance = abs(price - stop_loss)
+        if sl_distance == 0:
             return 0
-        
-        if stop_loss is not None:
-            sl_distance = abs(price - stop_loss)
-            if sl_distance == 0:
-                return 0
 
-            raw_quantity = self.risk_amount / sl_distance
-
-            if asset.asset_type == "forex":
-                quantity = raw_quantity / 100000
-            else:
-                quantity = raw_quantity
-
-        else:
-            quantity = self.risk_amount / price
+        raw_quantity = self.risk_amount / sl_distance
 
         if asset.asset_type == "forex":
             step = 0.01
+            quantity = raw_quantity / 100000
+
             final_qty = round(math.floor(quantity / step) * step, 2)
         else:
+            quantity = raw_quantity
+
             final_qty = math.floor(quantity)
+
+    else:
+        quantity = self.risk_amount / price
+             
+    if final_qty <= 0:
+        self.log_message(f"Quantity too small for {asset.symbol} with $25 Limit.")
+        return 0
         
-        if final_qty <= 0:
-            self.log_message(f"Quantity too small for {asset.symbol} with $25 Limit.")
-            return 0
-        
-        return final_qty
+    return final_qty

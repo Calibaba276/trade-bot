@@ -1,6 +1,10 @@
-from lumi_trade import LiquiditySweep
+import os
+from lumi_trade import ACB
 from mt5_broker import MetaTrader5
+from lumibot.backtesting import YahooDataBacktesting
 from lumibot.traders import Trader
+
+from datetime import datetime
 
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
@@ -21,18 +25,29 @@ ACCOUNT = get_azure_secret("ACCOUNT")
 PASSWORD = get_azure_secret("PASSWORD")
 SERVER = get_azure_secret("SERVER")
 
+ISBACKTESTING = True
+backtesting_start = datetime(2020, 1, 1)
+backtesting_end = datetime(2025, 12, 31)
+
 if __name__ == "__main__":
-    liquidity_sweep = MetaTrader5({
+    if ISBACKTESTING:
+        ACB.backtest(
+            YahooDataBacktesting,
+            backtesting_start,
+            backtesting_end
+        )
+    else:
+        acb = MetaTrader5({
             "login": int(ACCOUNT),
             "password": PASSWORD,
             "server": SERVER,
             "timezone": "Africa/Lagos",
-            "path": "C:\\\\Program Files\\\\Liquidity Sweep\\\\terminal64.exe"
+            "path": "C:\\\\Program Files\\\\ACB Strategy\\\\terminal64.exe"
         })
-    
-    ls = LiquiditySweep(name="Liquidity Sweep", broker=liquidity_sweep, parameters={"symbol": "EURUSDm"})
 
-    trader = Trader()
-    trader.add_strategy(ls)
+        acbm = ACB(name="Liquidity Sweep", broker=acb, parameters={"symbol": "GBPUSDm"})
 
-    trader.run_all()
+        trader = Trader()
+        trader.add_strategy(acbm)
+
+        trader.run_all()
