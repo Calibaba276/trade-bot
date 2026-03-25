@@ -29,7 +29,6 @@ class LiquiditySweep(Strategy):
         self.symbol = self.parameters.get("symbol")
         self.sleeptime = "1M"
         self.set_market("24/7")
-        # self.timezone = "America/New_York"
         self.high = None
         self.low = None
         self.traded_today = False
@@ -43,21 +42,20 @@ class LiquiditySweep(Strategy):
         self.stop_loss_distance = None
         self.asset = Asset(symbol=self.symbol, asset_type="forex")
 
+    def before_market_opens(self):
+        self.high = None
+        self.low = None
+        self.traded_today = False
+        self.swept_high = False
+        self.swept_low = False
+        self.mss_swing_low = None
+        self.mss_swing_high = None
+        self.stop_loss_distance = None
+
     def on_trading_iteration(self):
 
         dt = self.broker.get_datetime()
         current_time = dt.time()
-
-        if current_time == time(0, 0):
-            self.high = None
-            self.low = None
-            self.traded_today = False
-            self.swept_high = False
-            self.swept_low = False
-            self.mss_swing_low = None
-            self.mss_swing_high = None
-            self.risk_amount = 25
-            self.stop_loss_distance = None
 
         if current_time >= time(7, 0) and self.last_range_date != dt.date():
             try:
