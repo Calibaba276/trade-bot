@@ -218,8 +218,8 @@ class ACB(Strategy):
             self.log_message(f"Error: {e}")
 
         if df is not None and not df.empty:
-            yesterday = df.iloc[-1]
-            day_before = df.iloc[-2]
+            yesterday = df.pandas_df.iloc[-1]
+            day_before = df.pandas_df.iloc[-2]
         else:
             self.log_message("Warning: No data found for the current signal request.")
             return None 
