@@ -240,7 +240,7 @@ class ACB(Strategy):
         """Return the High and Low of the last 60 minutes."""
 
         df = self.get_historical_prices(self.asset, 60, "minute")
-        return df['high'].max(), df['low'].min()
+        return df.pandas_df['high'].max(), df.pandas_df['low'].min()
     
     def on_trading_iteration(self):
         current_time = self.get_datetime().time()
