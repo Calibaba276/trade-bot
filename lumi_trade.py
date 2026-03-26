@@ -212,10 +212,17 @@ class ACB(Strategy):
 
     def get_signal_day(self):
         """Is it Green or Red Light Day"""
-        df = self.get_historical_prices(self.asset, 2, "day")
+        try:
+            df = self.get_historical_prices(self.asset, 2, "day")
+        except Exception as e:
+            self.log_message("Error: {e}")
 
-        yesterday = df.iloc[-1]
-        day_before = df.iloc[-2]
+        if df is not None and not df.empty:
+            yesterday = df.iloc[-1]
+            day_before = df.iloc[-2]
+        else:
+            self.log_message("Warning: No data found for the current signal request.")
+            return None 
 
         if yesterday['close'] > day_before['high']:
             return "BULLISH"
