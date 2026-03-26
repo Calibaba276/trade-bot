@@ -215,7 +215,7 @@ class ACB(Strategy):
         try:
             df = self.get_historical_prices(self.asset, 2, "day")
         except Exception as e:
-            self.log_message("Error: {e}")
+            self.log_message(f"Error: {e}")
 
         if df is not None and not df.empty:
             yesterday = df.iloc[-1]
