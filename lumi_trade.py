@@ -98,7 +98,7 @@ class LiquiditySweep(Strategy):
                 if self.mss_swing_low and last_price < self.mss_swing_low:
 
                     self.stop_loss_distance = self.mss_swing_low + self.buffer
-                    quantity = calculate_quantity(self.asset, self.stop_loss_distance)
+                    quantity = calculate_quantity(self, self.asset, self.stop_loss_distance)
 
                     self.log_message(f"{current_time} -- SELL (Bearish MSS) -- Price {last_price} broke below swing low {self.mss_swing_low}")
                     order = self.create_order(
@@ -129,7 +129,7 @@ class LiquiditySweep(Strategy):
                 if self.mss_swing_high and last_price > self.mss_swing_high:
 
                     self.stop_loss_distance = self.mss_swing_high - self.buffer
-                    quantity = calculate_quantity(self.asset, self.stop_loss_distance)
+                    quantity = calculate_quantity(self, self.asset, self.stop_loss_distance)
 
                     self.log_message(f"{current_time} -- BUY (Bullish MSS) -- Price {last_price} broke above swing high {self.mss_swing_high}")
                     order = self.create_order(
@@ -177,7 +177,7 @@ class TrendStrategy(Strategy):
             if score > 0.7:
                 pos = self.get_position(asset)
                 if pos is None:
-                    quantity = calculate_quantity(asset)
+                    quantity = calculate_quantity(self, asset)
 
                     if quantity <= 0:
                         self.log_message(f"Skipping {ticker}. Price is too high for $25 trade limit.")
@@ -262,7 +262,7 @@ class ACB(Strategy):
             limit_price = low
             stop_price = last_price + (stop_loss_distance * 2)
 
-            quantity = calculate_quantity(self.asset, stop_price)
+            quantity = calculate_quantity(self, self.asset, stop_price)
 
             order = self.create_order(
                 self.symbol, quantity, "buy",
@@ -275,7 +275,7 @@ class ACB(Strategy):
             limit_price = high
             stop_price = last_price - (stop_loss_distance * 2)
 
-            quantity = calculate_quantity(self.asset, stop_price)
+            quantity = calculate_quantity(self, self.asset, stop_price)
 
             order = self.create_order(
                 self.symbol, quantity, "buy",
@@ -312,7 +312,7 @@ def calculate_quantity(self, asset, stop_loss=None):
             final_qty = math.floor(quantity)
 
     else:
-        quantity = self.risk_amount / price
+        final_qty = self.risk_amount / price
              
     if final_qty <= 0:
         self.log_message(f"Quantity too small for {asset.symbol} with $25 Limit.")
