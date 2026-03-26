@@ -35,7 +35,8 @@ if __name__ == "__main__":
             YahooDataBacktesting,
             backtesting_start,
             backtesting_end,
-            parameters={"symbol": "GBPUSD=X"}
+            parameters={"symbol": "GBPUSD=X"},
+            quiet_logs=False
         )
     else:
         acb = MetaTrader5({
