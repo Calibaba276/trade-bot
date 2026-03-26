@@ -204,13 +204,14 @@ class ACB(Strategy):
     def initialize(self):
         self.symbol = self.parameters.get("symbol")
         self.sleeptime = "1M"
-
         self.asset = Asset(symbol=self.symbol, asset_type="forex")
         self.risk_amount = 25
         self.start = time(14, 0)
         self.end = time(16, 30)
+        self.traded_today = False
+        self.last_trade_date = None
 
-    def get_signal_day(self):
+    def get_signal_day(self, current_time):
         """Is it Green or Red Light Day"""
         try:
             df = self.get_historical_prices(self.asset, 2, "day")
@@ -226,13 +227,17 @@ class ACB(Strategy):
             return None 
 
         if yesterday['close'] > day_before['high']:
+            self.log_message(f"{current_time} --- EXPECTING BULLISH TREND TODAY ---")
             return "BULLISH"
         elif yesterday['close'] > yesterday['open'] and day_before['close'] < day_before['open']:
+            self.log_message(f"{current_time} --- EXPECTING BULLISH TREND TODAY --- ")
             return "BULLISH"
         
         elif yesterday['close'] < day_before['low']:
+            self.log_message(f"{current_time} --- EXPECTING BEARISH TREND TODAY ---")
             return "BEARISH"
         elif yesterday['close'] < yesterday['open'] and day_before['close'] > day_before['open']:
+            self.log_message(f"{current_time} -- EXPECTING BEARISH TREND TODAY --")
             return "BEARISH"
         
         return "NO SIGNAL"
@@ -248,13 +253,24 @@ class ACB(Strategy):
         return df.pandas_df['high'].max(), df.pandas_df['low'].min()
     
     def on_trading_iteration(self):
-        current_time = self.get_datetime().time()
+        dt = self.get_datetime()
+        current_time = dt.time()
+        current_date = dt.date()
+
+        # Reset daily flag
+        if self.last_trade_date != current_date:
+            self.traded_today = False
+            self.last_trade_date = current_date
 
         if not (self.start <= current_time <= self.end):
             self.log_message("Not Within Trading Period...")
             return
         
-        signal = self.get_signal_day()
+        if self.traded_today:
+            self.log_message("Already traded today. Skipping...")
+            return
+        
+        signal = self.get_signal_day(current_time)
         if signal is None or signal == "NO SIGNAL":
             return
         
@@ -273,12 +289,14 @@ class ACB(Strategy):
 
             quantity = calculate_quantity(self, self.asset, stop_price)
 
+            self.log_message(f"{current_time} --- BUY at {quantity} for {self.asset.symbol} ---")
             order = self.create_order(
                 self.symbol, quantity, "buy",
                 limit_price=limit_price,
                 stop_price=stop_price
             )
             self.submit_order(order)
+            self.traded_today = True
         
         elif signal == "BEARISH" and last_price < low:
             limit_price = high
@@ -286,12 +304,14 @@ class ACB(Strategy):
 
             quantity = calculate_quantity(self, self.asset, stop_price)
 
+            self.log_message(f"{current_time} --- SELL at {quantity} for {self.asset.symbol} ---")
             order = self.create_order(
                 self.symbol, quantity, "sell",
                 limit_price=limit_price,
                 stop_price=stop_price
             )
             self.submit_order(order)
+            self.traded_today = True
 
 def calculate_quantity(self, asset, stop_loss=None):
     """Quantity Calculator for Stocks and Forex"""
