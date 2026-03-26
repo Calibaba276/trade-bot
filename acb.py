@@ -45,7 +45,7 @@ if __name__ == "__main__":
             "path": "C:\\\\Program Files\\\\ACB Strategy\\\\terminal64.exe"
         })
 
-        acbm = ACB(name="ACB Strategy", broker=acb, parameters={"symbol": "GBPUSDm"})
+        acbm = ACB(name="ACB Strategy", broker=acb, parameters={"symbol": "GBPUSD"})
 
         trader = Trader()
         trader.add_strategy(acbm)
