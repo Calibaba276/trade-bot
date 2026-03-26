@@ -216,6 +216,7 @@ class ACB(Strategy):
             df = self.get_historical_prices(self.asset, 2, "day")
         except Exception as e:
             self.log_message(f"Error: {e}")
+            return None
 
         if df is not None and not df.empty:
             yesterday = df.pandas_df.iloc[-1]
@@ -226,7 +227,7 @@ class ACB(Strategy):
 
         if yesterday['close'] > day_before['high']:
             return "BULLISH"
-        elif yesterday['close'] > yesterday['open'] and day_before['close'] and day_before['open']:
+        elif yesterday['close'] > yesterday['open'] and day_before['close'] < day_before['open']:
             return "BULLISH"
         
         elif yesterday['close'] < day_before['low']:
@@ -240,6 +241,10 @@ class ACB(Strategy):
         """Return the High and Low of the last 60 minutes."""
 
         df = self.get_historical_prices(self.asset, 60, "minute")
+        
+        if df is None or df.pandas_df.empty:
+            return None, None
+            
         return df.pandas_df['high'].max(), df.pandas_df['low'].min()
     
     def on_trading_iteration(self):
@@ -250,12 +255,16 @@ class ACB(Strategy):
             return
         
         signal = self.get_signal_day()
-        if signal == "NO SIGNAL":
+        if signal is None or signal == "NO SIGNAL":
             return
         
         last_price = self.get_last_price(self.asset)
         high, low = self.get_coil_range()
 
+        if high is None or low is None:
+            self.log_message("Could not fetch coil range. Skipping iteration.")
+            return
+            
         stop_loss_distance = abs(high - low)
 
         if signal == "BULLISH" and last_price > high:
@@ -278,7 +287,7 @@ class ACB(Strategy):
             quantity = calculate_quantity(self, self.asset, stop_price)
 
             order = self.create_order(
-                self.symbol, quantity, "buy",
+                self.symbol, quantity, "sell",
                 limit_price=limit_price,
                 stop_price=stop_price
             )
