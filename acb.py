@@ -1,4 +1,4 @@
-import os
+ohimport os
 from lumi_trade import ACB
 from mt5_broker import MetaTrader5
 from lumibot.backtesting import YahooDataBacktesting
@@ -34,7 +34,8 @@ if __name__ == "__main__":
         ACB.backtest(
             YahooDataBacktesting,
             backtesting_start,
-            backtesting_end
+            backtesting_end,
+            parameters={"symbol": "GBPUSD"}
         )
     else:
         acb = MetaTrader5({
