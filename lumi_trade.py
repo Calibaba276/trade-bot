@@ -236,7 +236,7 @@ class ACB(Strategy):
         return df['high'].max(), df['low'].min()
     
     def on_trading_iteration(self):
-        current_time = self.broker.get_datetime().time()
+        current_time = self.get_datetime().time()
 
         if not (self.start <= current_time <= self.end):
             self.log_message("Not Within Trading Period...")
