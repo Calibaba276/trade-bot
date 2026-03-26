@@ -35,7 +35,7 @@ if __name__ == "__main__":
             YahooDataBacktesting,
             backtesting_start,
             backtesting_end,
-            parameters={"symbol": "GBPUSD"}
+            parameters={"symbol": "GBPUSD=X"}
         )
     else:
         acb = MetaTrader5({
@@ -46,7 +46,7 @@ if __name__ == "__main__":
             "path": "C:\\\\Program Files\\\\ACB Strategy\\\\terminal64.exe"
         })
 
-        acbm = ACB(name="ACB Strategy", broker=acb, parameters={"symbol": "GBPUSD"})
+        acbm = ACB(name="ACB Strategy", broker=acb, parameters={"symbol": "GBPUSDm"})
 
         trader = Trader()
         trader.add_strategy(acbm)
