@@ -202,7 +202,7 @@ class TrendStrategy(Strategy):
     
 class ACB(Strategy):
     def initialize(self):
-        self.symbol = self.parameter.get("symbol")
+        self.symbol = self.parameters.get("symbol")
         self.sleeptime = "1M"
 
         self.asset = Asset(symbol=self.symbol, asset_type="forex")
