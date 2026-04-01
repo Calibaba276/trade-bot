@@ -32,13 +32,14 @@ backtesting_end = datetime(2025, 12, 31)
 
 if __name__ == "__main__":
     if ISBACKTESTING:
+        
         SMTDivergence.backtest(
             PolygonDataBacktesting,
             backtesting_start,
             backtesting_end,
             parameters = {
-                "symbol_nq": "NQ", 
-                "symbol_ym": "YM",
+                "symbol_nq": "QQQ",
+                "symbol_ym": "DIA",
                 "risk_per_trade": 500,
                 "ratio": 2
             },
@@ -56,8 +57,8 @@ if __name__ == "__main__":
 
         smtm = SMTDivergence(name="SMT Divergence", broker=smt, 
         parameters = {
-            "symbol_nq": "NQ", 
-            "symbol_ym": "YM", 
+            "symbol_nq": "NAS100",
+            "symbol_ym": "US30",
             "risk_per_trade": 500, 
             "ratio": 2}
         
