@@ -334,6 +334,9 @@ class SMTDivergence(Strategy):
             raise ValueError("Ratio must be greater than 0")
         if self.parameters.get("risk_per_trade") <= 0:
             raise ValueError("Risk per trade must be greater than 0")
+        
+        # Set maximum position size (optional but recommended)
+        self.max_position_value = self.parameters.get("max_position_value", 10000)
 
     def on_trading_iteration(self):
         nq_asset = Asset(self.parameters.get("symbol_nq"), "stock")
@@ -415,13 +418,27 @@ class SMTDivergence(Strategy):
                         self.log_message("Invalid risk distance for bullish trade, skipping")
                         return
 
-                    limit_price = last_price + (risk_distance * self.parameters.get("ratio"))
+                    # Calculate position size based on risk per trade
+                    # Formula: shares = risk_amount / (risk_per_share)
                     quantity = self.parameters.get("risk_per_trade") / risk_distance
                     quantity = int(quantity)
-
+                    
+                    # Calculate actual dollar position size and cap it
+                    position_value = quantity * last_price
+                    
+                    # Cap position size to maximum allowed
+                    if position_value > self.max_position_value:
+                        quantity = int(self.max_position_value / last_price)
+                        position_value = quantity * last_price
+                        self.log_message(f"Position capped: {quantity} shares = ${position_value:.2f} (max: ${self.max_position_value})")
+                    
                     if quantity <= 0:
-                        self.log_message("Quantity too small, skipping trade")
+                        self.log_message(f"Quantity too small ({quantity}), skipping trade")
                         return
+                    
+                    self.log_message(f"BUY Position: {quantity} shares @ ${last_price:.2f} = ${position_value:.2f} | Risk: ${risk_distance:.2f}/share")
+
+                    limit_price = last_price + (risk_distance * self.parameters.get("ratio"))
 
                     order = self.create_order(
                         self.target_asset, 
@@ -449,13 +466,26 @@ class SMTDivergence(Strategy):
                         self.log_message("Invalid risk distance for bearish trade, skipping")
                         return
 
-                    limit_price = last_price - (risk_distance * self.parameters.get("ratio"))
+                    # Calculate position size based on risk per trade
                     quantity = self.parameters.get("risk_per_trade") / risk_distance
                     quantity = int(quantity)
+                    
+                    # Calculate actual dollar position size and cap it
+                    position_value = quantity * last_price
+                    
+                    # Cap position size to maximum allowed
+                    if position_value > self.max_position_value:
+                        quantity = int(self.max_position_value / last_price)
+                        position_value = quantity * last_price
+                        self.log_message(f"Position capped: {quantity} shares = ${position_value:.2f} (max: ${self.max_position_value})")
 
                     if quantity <= 0:
-                        self.log_message("Quantity too small, skipping trade")
+                        self.log_message(f"Quantity too small ({quantity}), skipping trade")
                         return
+                    
+                    self.log_message(f"SELL Position: {quantity} shares @ ${last_price:.2f} = ${position_value:.2f} | Risk: ${risk_distance:.2f}/share")
+
+                    limit_price = last_price - (risk_distance * self.parameters.get("ratio"))
 
                     self.log_message(f"SELL - MSS Confirmed: 1m - {last_price} < {self.mss_level}")
                     order = self.create_order(
