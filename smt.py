@@ -36,7 +36,12 @@ if __name__ == "__main__":
             PolygonDataBacktesting,
             backtesting_start,
             backtesting_end,
-            parameters = {"symbol_nq": "NQ", "symbol_ym": "YM"},
+            parameters = {
+                "symbol_nq": "NQ", 
+                "symbol_ym": "YM",
+                "risk_per_trade": 500,
+                "ratio": 2
+            },
             polygon_api_key=POLYGON_API_KEY,
             quiet_logs=False
         )
@@ -49,7 +54,14 @@ if __name__ == "__main__":
             "path": "C:\\\\Program Files\\\\SMT Divergence\\\\terminal64.exe"
         })
 
-        smtm = SMTDivergence(name="SMT Divergence", broker=smt, parameters = {"symbol_nq": "NQ", "symbol_ym": "YM", "risk_per_trade": 500, "ratio": 2})
+        smtm = SMTDivergence(name="SMT Divergence", broker=smt, 
+        parameters = {
+            "symbol_nq": "NQ", 
+            "symbol_ym": "YM", 
+            "risk_per_trade": 500, 
+            "ratio": 2}
+        
+        )
 
         trader = Trader()
         trader.add_strategy(smtm)
