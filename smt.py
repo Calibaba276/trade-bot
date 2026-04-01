@@ -34,10 +34,10 @@ if __name__ == "__main__":
     if ISBACKTESTING:
         SMTDivergence.backtest(
             PolygonDataBacktesting,
-            polygon_api_key=POLYGON_API_KEY,
             backtesting_start,
             backtesting_end,
             parameters = {"symbol_nq": "NQ", "symbol_ym": "YM"},
+            polygon_api_key=POLYGON_API_KEY,
             quiet_logs=False
         )
     else:
