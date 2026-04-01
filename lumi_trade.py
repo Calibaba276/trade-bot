@@ -313,6 +313,150 @@ class ACB(Strategy):
             self.submit_order(order)
             self.traded_today = True
 
+class SMTDivergence(Strategy):
+    
+    def initialize(self):
+        self.sleeptime = "1m"
+        self.bullish_smt = False
+        self.bearish_smt = False
+        self.mss_level = None
+        self.stop_price = None
+        self.target_asset = None
+        
+        # Validate required parameters
+        required_params = ["symbol_nq", "symbol_ym", "risk_per_trade", "ratio"]
+        for param in required_params:
+            if self.parameters.get(param) is None:
+                raise ValueError(f"Missing required parameter: {param}")
+        
+        # Set defaults if needed
+        if self.parameters.get("ratio") <= 0:
+            raise ValueError("Ratio must be greater than 0")
+        if self.parameters.get("risk_per_trade") <= 0:
+            raise ValueError("Risk per trade must be greater than 0")
+
+    def on_trading_iteration(self):
+        nq_asset = Asset(self.parameters.get("symbol_nq"), "equity")
+        ym_asset = Asset(self.parameters.get("symbol_ym"), "equity")
+
+        nq = self.get_historical_prices(nq_asset, 5, "15m").df
+        ym = self.get_historical_prices(ym_asset, 5, "15m").df
+
+        if len(nq) < 5 or len(ym) < 5: return
+
+        # LOW FOR NASDAQ
+        nq_low_curr = nq["low"].iloc[-1]
+        nq_low_prev = nq["low"].iloc[-2]
+
+        # LOW FOR DOW JONES
+        ym_low_curr = ym["low"].iloc[-1]
+        ym_low_prev = ym["low"].iloc[-2]
+
+        # HIGH FOR NASDAQ
+        nq_high_curr = nq["high"].iloc[-1]
+        nq_high_prev = nq["high"].iloc[-2]
+
+        # HIGH FOR DOW JONES
+        ym_high_curr = ym["high"].iloc[-1]
+        ym_high_prev = ym["high"].iloc[-2]
+
+        # BULLISH SMT
+        if (nq_low_curr < nq_low_prev) and (ym_low_curr > ym_low_prev):
+            self.target_asset = ym_asset
+            self.bullish_smt = True
+            self.stop_price = ym['low'].iloc[-1]
+            self.mss_level = ym['high'].iloc[-1]
+            self.log_message("Bullish SMT Sequence Detected")
+            
+        elif (ym_low_curr < ym_low_prev) and (nq_low_curr > nq_low_prev):
+            self.target_asset = nq_asset
+            self.bullish_smt = True
+            self.stop_price = nq['low'].iloc[-1]
+            self.mss_level = nq['high'].iloc[-1]
+            self.log_message("Bullish SMT Sequence Detected")
+
+        # BEARISH SMT
+        elif (nq_high_curr > nq_high_prev) and (ym_high_curr < ym_high_prev):
+            self.target_asset = ym_asset
+            self.bearish_smt = True
+            self.stop_price = ym['high'].iloc[-1]
+            self.mss_level = ym['low'].iloc[-1]
+            self.log_message("Bearish SMT Sequence Detected")
+            
+        elif (ym_high_curr > ym_high_prev) and (nq_high_curr < nq_high_prev):
+            self.target_asset = nq_asset
+            self.bearish_smt = True
+            self.stop_price = nq['high'].iloc[-1]
+            self.mss_level = nq['low'].iloc[-1]
+            self.log_message("Bearish SMT Sequence Detected")
+
+        if self.target_asset is not None:
+            last_price = self.get_last_price(self.target_asset)
+            
+            if self.bullish_smt:
+                if last_price > self.mss_level:
+                    
+                    risk_distance = last_price - self.stop_price
+
+                    if risk_distance <= 0:
+                        self.log_message("Invalid risk distance for bullish trade, skipping")
+                        return
+
+                    limit_price = last_price + (risk_distance * self.parameters.get("ratio"))
+                    quantity = self.parameters.get("risk_per_trade") / risk_distance
+                    quantity = int(quantity)
+
+                    if quantity <= 0:
+                        self.log_message("Quantity too small, skipping trade")
+                        return
+
+                    order = self.create_order(
+                        self.target_asset, 
+                        quantity, 
+                        "buy",
+                        type="market",
+                        limit_price=limit_price,
+                        stop_price=self.stop_price
+                    )
+                    self.submit_order(order)
+                    self.log_message(f"BUY - MSS Confirmed: 1m - {last_price} > {self.mss_level}")
+
+                    self.stop_price = None
+                    self.mss_level = None
+                    self.bullish_smt = None
+
+            elif self.bearish_smt:
+                if last_price < self.mss_level:
+
+                    risk_distance = self.stop_price - last_price
+
+                    if risk_distance <= 0:
+                        self.log_message("Invalid risk distance for bearish trade, skipping")
+                        return
+
+                    limit_price = last_price - (risk_distance * self.parameters.get("ratio"))
+                    quantity = self.parameters.get("risk_per_trade") / risk_distance
+                    quantity = int(quantity)
+
+                    if quantity <= 0:
+                        self.log_message("Quantity too small, skipping trade")
+                        return
+
+                    self.log_message(f"SELL - MSS Confirmed: 1m - {last_price} < {self.mss_level}")
+                    order = self.create_order(
+                        self.target_asset, 
+                        quantity,
+                        "sell",
+                        type="market",
+                        stop_price=self.stop_price,
+                        limit_price=limit_price
+                    )
+                    self.submit_order(order)
+
+                    self.stop_price = None
+                    self.mss_level = None
+                    self.bearish_smt = None
+
 def calculate_quantity(self, asset, stop_loss=None):
     """Quantity Calculator for Stocks and Forex"""
         
