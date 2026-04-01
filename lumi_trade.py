@@ -336,8 +336,8 @@ class SMTDivergence(Strategy):
             raise ValueError("Risk per trade must be greater than 0")
 
     def on_trading_iteration(self):
-        nq_asset = Asset(self.parameters.get("symbol_nq"), "equity")
-        ym_asset = Asset(self.parameters.get("symbol_ym"), "equity")
+        nq_asset = Asset(self.parameters.get("symbol_nq"), "stock")
+        ym_asset = Asset(self.parameters.get("symbol_ym"), "stock")
 
         nq = self.get_historical_prices(nq_asset, 5, "15m").df
         ym = self.get_historical_prices(ym_asset, 5, "15m").df
