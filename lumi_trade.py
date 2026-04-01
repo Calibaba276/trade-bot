@@ -403,7 +403,7 @@ class SMTDivergence(Strategy):
             self.mss_level = nq['low'].iloc[-1]
             self.log_message("Bearish SMT Sequence Detected")
 
-        if self.target_asset is not None:
+        if self.target_asset is not None and self.mss_level is not None:
             last_price = self.get_last_price(self.target_asset)
             
             if self.bullish_smt:
@@ -434,9 +434,11 @@ class SMTDivergence(Strategy):
                     self.submit_order(order)
                     self.log_message(f"BUY - MSS Confirmed: 1m - {last_price} > {self.mss_level}")
 
+                    # Reset after trade
                     self.stop_price = None
                     self.mss_level = None
-                    self.bullish_smt = None
+                    self.target_asset = None
+                    self.bullish_smt = False
 
             elif self.bearish_smt:
                 if last_price < self.mss_level:
@@ -466,9 +468,11 @@ class SMTDivergence(Strategy):
                     )
                     self.submit_order(order)
 
+                    # Reset after trade
                     self.stop_price = None
                     self.mss_level = None
-                    self.bearish_smt = None
+                    self.target_asset = None
+                    self.bearish_smt = False
 
 def calculate_quantity(self, asset, stop_loss=None):
     """Quantity Calculator for Stocks and Forex"""
