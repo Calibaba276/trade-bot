@@ -339,8 +339,21 @@ class SMTDivergence(Strategy):
         nq_asset = Asset(self.parameters.get("symbol_nq"), "stock")
         ym_asset = Asset(self.parameters.get("symbol_ym"), "stock")
 
-        nq = self.get_historical_prices(nq_asset, 5, "15m").df
-        ym = self.get_historical_prices(ym_asset, 5, "15m").df
+        # Fetch historical data with error handling
+        try:
+            nq_data = self.get_historical_prices(nq_asset, 5, "15m")
+            ym_data = self.get_historical_prices(ym_asset, 5, "15m")
+        except Exception as e:
+            self.log_message(f"Error fetching historical prices: {e}")
+            return
+        
+        # Validate data exists
+        if nq_data is None or ym_data is None:
+            self.log_message("Unable to fetch historical data for NQ or YM")
+            return
+        
+        nq = nq_data.df
+        ym = ym_data.df
 
         if len(nq) < 5 or len(ym) < 5: return
 
