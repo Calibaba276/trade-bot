@@ -1,7 +1,7 @@
 import os
 from lumi_trade import ACB
 from mt5_broker import MetaTrader5
-from lumibot.backtesting import YahooDataBacktesting
+from lumibot.backtesting import PolygonDataBacktesting
 from lumibot.traders import Trader
 
 from datetime import datetime
@@ -24,19 +24,21 @@ def get_azure_secret(name):
 ACCOUNT = get_azure_secret("ACCOUNT")
 PASSWORD = get_azure_secret("PASSWORD")
 SERVER = get_azure_secret("SERVER")
+POLYGON_API_KEY = get_azure_secret("POLYGON-API-KEY")
 
 ISBACKTESTING = True
-backtesting_start = datetime(2020, 1, 1)
+backtesting_start = datetime(2025, 5, 1)
 backtesting_end = datetime(2025, 12, 31)
 
 if __name__ == "__main__":
     if ISBACKTESTING:
         ACB.backtest(
-            YahooDataBacktesting,
+            PolygonDataBacktesting,
             backtesting_start,
             backtesting_end,
             parameters={"symbol": "GBPUSD=X"},
-            quiet_logs=False
+            polygon_api_key=POLYGON_API_KEY,
+            quiet_logs=False,
         )
     else:
         acb = MetaTrader5({
