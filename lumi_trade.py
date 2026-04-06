@@ -317,11 +317,13 @@ class SMTDivergence(Strategy):
     
     def initialize(self):
         self.sleeptime = "1m"
-        self.bullish_smt = False
-        self.bearish_smt = False
+        self.side = None
         self.mss_level = None
         self.stop_price = None
         self.target_asset = None
+
+        self.trades_count = 0
+        self.last_trade_date = None
         
         # Validate required parameters
         required_params = ["symbol_nq", "symbol_ym", "risk_per_trade", "ratio"]
@@ -334,11 +336,21 @@ class SMTDivergence(Strategy):
             raise ValueError("Ratio must be greater than 0")
         if self.parameters.get("risk_per_trade") <= 0:
             raise ValueError("Risk per trade must be greater than 0")
-        
-        # Set maximum position size (optional but recommended)
-        self.max_position_value = self.parameters.get("max_position_value", 10000)
 
     def on_trading_iteration(self):
+
+        current_date = self.get_datetime().date()
+
+        if self.last_trade_date != current_date:
+            self.last_trade_date = current_date
+            self.trades_count = 0
+            self.log_message(f"New trading day started: {current_date}")
+
+        if self.trades_count >= self.parameters.get("trades_per_day"):
+            if self.get_datetime().minute == 0:
+                self.log_message("Daily trade limit reached... Till Tomorrow")
+            return
+
         nq_asset = Asset(self.parameters.get("symbol_nq"), "stock")
         ym_asset = Asset(self.parameters.get("symbol_ym"), "stock")
 
@@ -378,131 +390,90 @@ class SMTDivergence(Strategy):
 
         # BULLISH SMT
         if (nq_low_curr < nq_low_prev) and (ym_low_curr > ym_low_prev):
-            self.target_asset = ym_asset
-            self.bullish_smt = True
+            self.target_asset, self.side = ym_asset, "buy"
             self.stop_price = ym['low'].iloc[-1]
-            self.mss_level = ym['high'].iloc[-1]
             self.log_message("Bullish SMT Sequence Detected")
             
         elif (ym_low_curr < ym_low_prev) and (nq_low_curr > nq_low_prev):
-            self.target_asset = nq_asset
-            self.bullish_smt = True
+            self.target_asset, self.side = nq_asset, "buy"
             self.stop_price = nq['low'].iloc[-1]
-            self.mss_level = nq['high'].iloc[-1]
             self.log_message("Bullish SMT Sequence Detected")
 
         # BEARISH SMT
         elif (nq_high_curr > nq_high_prev) and (ym_high_curr < ym_high_prev):
-            self.target_asset = ym_asset
-            self.bearish_smt = True
+            self.target_asset, self.side = ym_asset, "sell"
             self.stop_price = ym['high'].iloc[-1]
-            self.mss_level = ym['low'].iloc[-1]
             self.log_message("Bearish SMT Sequence Detected")
             
         elif (ym_high_curr > ym_high_prev) and (nq_high_curr < nq_high_prev):
-            self.target_asset = nq_asset
-            self.bearish_smt = True
+            self.target_asset, self.side = nq_asset, "sell"
             self.stop_price = nq['high'].iloc[-1]
-            self.mss_level = nq['low'].iloc[-1]
             self.log_message("Bearish SMT Sequence Detected")
 
-        if self.target_asset is not None and self.mss_level is not None:
+        if self.mss_level is None and self.target_asset:
+            target_data = self.get_historical_prices(self.target_asset, 10, "1m")
+            target = target_data.df
+
+            for i in range(len(target) - 1, 0, -1):
+                curr = target.iloc[i]
+                prev = target.iloc[i-1]
+
+                curr_is_bull = curr['close'] > curr['open']
+                prev_is_bull = prev['close'] > prev['open']
+
+                if curr_is_bull != prev_is_bull:
+                    # For Bullish: Get the Highest point of these two candles
+                    if self.side == "buy":
+                        self.mss_level = max(curr['high'], prev['high'])
+                    # For Bearish: Get the Lowest point of these two candles
+                    else:
+                        self.mss_level = min(curr['low'], prev['low'])
+
+                    self.log_message(f"Cluster Found! MSS set at {self.mss_level}")
+                    break
+
+        if self.target_asset and self.mss_level:
             last_price = self.get_last_price(self.target_asset)
-            
-            if self.bullish_smt:
-                if last_price > self.mss_level:
-                    
-                    risk_distance = last_price - self.stop_price
 
-                    if risk_distance <= 0:
-                        self.log_message("Invalid risk distance for bullish trade, skipping")
-                        return
+            can_enter = False
+            if self.side == "buy" and last_price > self.mss_level:
+                can_enter = True
+            elif self.side == "sell" and last_price < self.mss_level:
+                can_enter = True
 
-                    # Calculate position size based on risk per trade
-                    # Formula: shares = risk_amount / (risk_per_share)
-                    quantity = self.parameters.get("risk_per_trade") / risk_distance
-                    quantity = int(quantity)
-                    
-                    # Calculate actual dollar position size and cap it
-                    position_value = quantity * last_price
-                    
-                    # Cap position size to maximum allowed
-                    if position_value > self.max_position_value:
-                        quantity = int(self.max_position_value / last_price)
-                        position_value = quantity * last_price
-                        self.log_message(f"Position capped: {quantity} shares = ${position_value:.2f} (max: ${self.max_position_value})")
-                    
-                    if quantity <= 0:
-                        self.log_message(f"Quantity too small ({quantity}), skipping trade")
-                        return
-                    
-                    self.log_message(f"BUY Position: {quantity} shares @ ${last_price:.2f} = ${position_value:.2f} | Risk: ${risk_distance:.2f}/share")
+            if can_enter:
+                risk_dist = abs(last_price - self.stop_price) 
 
-                    limit_price = last_price + (risk_distance * self.parameters.get("ratio"))
+                if risk_dist > 0:
+                    quantity = int(self.parameters.get("risk_per_trade") / risk_dist)
 
-                    order = self.create_order(
-                        self.target_asset, 
-                        quantity, 
-                        "buy",
-                        type="market",
-                        limit_price=limit_price,
-                        stop_price=self.stop_price
-                    )
-                    self.submit_order(order)
-                    self.log_message(f"BUY - MSS Confirmed: 1m - {last_price} > {self.mss_level}")
+                    limit_price = last_price + (risk_dist * self.parameters.get("ratio")) if self.side == "buy" \
+                            else last_price - (risk_dist * self.parameters.get("ratio"))
+                else:
+                    quantity = 0
 
-                    # Reset after trade
-                    self.stop_price = None
-                    self.mss_level = None
-                    self.target_asset = None
-                    self.bullish_smt = False
+                if quantity <= 0:
+                    self.log_message(f"Quantity too small ({quantity}), skipping trade")
+                    return
 
-            elif self.bearish_smt:
-                if last_price < self.mss_level:
+                order = self.create_order(
+                    self.target_asset, quantity, self.side, type="market",
+                    stop_price=self.stop_price,
+                    limit_price=limit_price
+                )
 
-                    risk_distance = self.stop_price - last_price
+                self.submit_order(order)
 
-                    if risk_distance <= 0:
-                        self.log_message("Invalid risk distance for bearish trade, skipping")
-                        return
+                self.log_message(f"Trade Executed: {self.side} Signal - {quantity} units. MSS: {self.mss_level}")  
 
-                    # Calculate position size based on risk per trade
-                    quantity = self.parameters.get("risk_per_trade") / risk_distance
-                    quantity = int(quantity)
-                    
-                    # Calculate actual dollar position size and cap it
-                    position_value = quantity * last_price
-                    
-                    # Cap position size to maximum allowed
-                    if position_value > self.max_position_value:
-                        quantity = int(self.max_position_value / last_price)
-                        position_value = quantity * last_price
-                        self.log_message(f"Position capped: {quantity} shares = ${position_value:.2f} (max: ${self.max_position_value})")
+                # Increment Trade Counter
+                self.trades_count += 1
+                self.log_message(f"Trade #{self.trades_count} submitted")          
 
-                    if quantity <= 0:
-                        self.log_message(f"Quantity too small ({quantity}), skipping trade")
-                        return
-                    
-                    self.log_message(f"SELL Position: {quantity} shares @ ${last_price:.2f} = ${position_value:.2f} | Risk: ${risk_distance:.2f}/share")
-
-                    limit_price = last_price - (risk_distance * self.parameters.get("ratio"))
-
-                    self.log_message(f"SELL - MSS Confirmed: 1m - {last_price} < {self.mss_level}")
-                    order = self.create_order(
-                        self.target_asset, 
-                        quantity,
-                        "sell",
-                        type="market",
-                        stop_price=self.stop_price,
-                        limit_price=limit_price
-                    )
-                    self.submit_order(order)
-
-                    # Reset after trade
-                    self.stop_price = None
-                    self.mss_level = None
-                    self.target_asset = None
-                    self.bearish_smt = False
+                # Reset after trade
+                self.stop_price = None
+                self.mss_level = None
+                self.target_asset = None
 
 def calculate_quantity(self, asset, stop_loss=None):
     """Quantity Calculator for Stocks and Forex"""
