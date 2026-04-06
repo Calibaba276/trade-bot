@@ -40,9 +40,10 @@ if __name__ == "__main__":
             parameters = {
                 "symbol_nq": "QQQ",
                 "symbol_ym": "DIA",
-                "risk_per_trade": 50,  # Risk $50 per trade
+                "risk_per_trade": 500,
                 "ratio": 2,  # 2:1 risk-reward ratio
-                "max_position_value": 5000  # Maximum $5000 per position
+                "max_position_value": 5000,  # Maximum $5000 per position
+                "trades_per_day": 3
             },
             polygon_api_key=POLYGON_API_KEY,
             quiet_logs=False
@@ -62,7 +63,8 @@ if __name__ == "__main__":
             "symbol_ym": "US30",
             "risk_per_trade": 500, 
             "ratio": 2,
-            "max_position_value": 5000
+            "max_position_value": 5000,
+            "trades_per_day": 3
             }
         
         )
