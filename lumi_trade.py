@@ -447,8 +447,8 @@ class SMTDivergence(Strategy):
                 if risk_dist > 0:
                     quantity = int(self.parameters.get("risk_per_trade") / risk_dist)
 
-                    limit_price = last_price + (risk_dist * self.parameters.get("ratio")) if self.side == "buy" \
-                            else last_price - (risk_dist * self.parameters.get("ratio"))
+                    limit_price = last_price + (risk_dist) if self.side == "buy" \
+                            else last_price - (risk_dist)
                 else:
                     quantity = 0
 
