@@ -314,13 +314,25 @@ class ACB(Strategy):
             self.traded_today = True
 
 class SMTDivergence(Strategy):
-    
+
+    def is_killzone(self):
+        current_time = self.get_datetime().time()
+
+        ny_start = time(13, 30)
+        ny_end = time(16, 0)
+
+        london_start = time(7, 0)
+        london_end = time(10, 0)
+
+        return (ny_start <= current_time <= ny_end) or (london_start <= current_time <= london_end)
+
     def initialize(self):
         self.sleeptime = "1m"
         self.side = None
         self.mss_level = None
         self.stop_price = None
         self.target_asset = None
+        self.max_daily_drawdown_pct = self.parameters.get("max_daily_drawdown_pct", 0.02)
 
         self.trades_count = 0
         self.last_trade_date = None
@@ -336,19 +348,46 @@ class SMTDivergence(Strategy):
             raise ValueError("Ratio must be greater than 0")
         if self.parameters.get("risk_per_trade") <= 0:
             raise ValueError("Risk per trade must be greater than 0")
+        if self.max_daily_drawdown_pct <= 0:
+            raise ValueError("max_daily_drawdown_pct must be greater than 0")
 
     def on_trading_iteration(self):
+        open_positions = self.get_positions()
+        if hasattr(self.broker, "cleanup_breakeven_tracking"):
+            self.broker.cleanup_breakeven_tracking(self, open_positions)
+        if hasattr(self.broker, "manage_breakeven_positions"):
+            self.broker.manage_breakeven_positions(self, open_positions, self.get_last_price)
+
+        if not self.is_killzone():
+            return
 
         current_date = self.get_datetime().date()
 
         if self.last_trade_date != current_date:
             self.last_trade_date = current_date
             self.trades_count = 0
+            if hasattr(self.broker, "reset_daily_drawdown"):
+                self.broker.reset_daily_drawdown(self, current_date, self.get_portfolio_value())
             self.log_message(f"New trading day started: {current_date}")
 
         if self.trades_count >= self.parameters.get("trades_per_day"):
             if self.get_datetime().minute == 0:
                 self.log_message("Daily trade limit reached... Till Tomorrow")
+            return
+
+        if hasattr(self.broker, "is_daily_drawdown_halted"):
+            halted, realized_pnl, max_daily_loss = self.broker.is_daily_drawdown_halted(
+                self, current_date, self.get_portfolio_value(), self.max_daily_drawdown_pct
+            )
+        else:
+            halted, realized_pnl, max_daily_loss = False, 0.0, 0.0
+
+        if halted:
+            if self.get_datetime().minute == 0:
+                self.log_message(
+                    f"Daily drawdown cap reached. Realized P&L: {realized_pnl:.2f} / "
+                    f"Loss limit: -{max_daily_loss:.2f}. Trading halted until next session."
+                )
             return
 
         nq_asset = Asset(self.parameters.get("symbol_nq"), "stock")
@@ -442,13 +481,17 @@ class SMTDivergence(Strategy):
                 can_enter = True
 
             if can_enter:
-                risk_dist = abs(last_price - self.stop_price) 
+                existing_position = self.get_position(self.target_asset)
+                if existing_position is not None:
+                    self.log_message(f"Open position already exists for {self.target_asset.symbol}, skipping entry")
+                    return
+
+                risk_dist = abs(last_price - self.stop_price)
 
                 if risk_dist > 0:
                     quantity = int(self.parameters.get("risk_per_trade") / risk_dist)
 
-                    limit_price = last_price + (risk_dist) if self.side == "buy" \
-                            else last_price - (risk_dist)
+                    limit_price = last_price + risk_dist if self.side == "buy" else last_price - risk_dist
                 else:
                     quantity = 0
 
@@ -464,17 +507,36 @@ class SMTDivergence(Strategy):
 
                 self.submit_order(order)
 
-                self.log_message(f"Trade Executed: {self.side} Signal - {quantity} units. MSS: {self.mss_level}")  
+                self.log_message(f"Trade Executed: {self.side} Signal - {quantity} units. MSS: {self.mss_level}")
+                if hasattr(self.broker, "register_entry_for_breakeven"):
+                    self.broker.register_entry_for_breakeven(
+                        self, self.target_asset, self.side, last_price, risk_dist
+                    )
 
                 # Increment Trade Counter
                 self.trades_count += 1
-                self.log_message(f"Trade #{self.trades_count} submitted")          
+                self.log_message(f"Trade #{self.trades_count} submitted")
 
                 # Reset after trade
                 self.stop_price = None
                 self.mss_level = None
                 self.target_asset = None
 
+    def on_filled_order(self, position, order, price, quantity, multiplier):
+        if hasattr(self.broker, "handle_filled_order_risk"):
+            self.broker.handle_filled_order_risk(
+                self,
+                position,
+                order,
+                price,
+                quantity,
+                multiplier,
+                self.get_positions(),
+                self.get_datetime().date(),
+                self.get_portfolio_value(),
+                self.max_daily_drawdown_pct,
+            )
+            
 def calculate_quantity(self, asset, stop_loss=None):
     """Quantity Calculator for Stocks and Forex"""
         
