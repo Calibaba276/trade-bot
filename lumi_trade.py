@@ -1,5 +1,6 @@
 import math
 import json
+import pandas as pd
 from datetime import time
 from lumibot.strategies.strategy import Strategy
 from lumibot.entities import Asset
@@ -314,28 +315,34 @@ class ACB(Strategy):
             self.traded_today = True
 
 class SMTDivergence(Strategy):
+    """
+    Smart Money Technique (SMT) Divergence Strategy
+    
+    Detects divergences between two highly correlated assets (e.g., NQ vs YM, ES vs NQ).
+    When one asset makes a new swing high/low but the other fails to follow:
+    - This indicates institutional manipulation and potential reversal
+    - Bullish SMT: Both moving lower, but one makes lower low while other makes higher low
+    - Bearish SMT: Both moving higher, but one makes higher high while other makes lower high
+    """
 
     def is_killzone(self):
         current_time = self.get_datetime().time()
-
         ny_start = time(13, 30)
         ny_end = time(16, 0)
-
         london_start = time(7, 0)
         london_end = time(10, 0)
-
         return (ny_start <= current_time <= ny_end) or (london_start <= current_time <= london_end)
 
     def initialize(self):
         self.sleeptime = "1m"
         self.side = None
-        self.mss_level = None
+        self.entry_price = None
         self.stop_price = None
         self.target_asset = None
         self.max_daily_drawdown_pct = self.parameters.get("max_daily_drawdown_pct", 0.02)
-
         self.trades_count = 0
         self.last_trade_date = None
+        self.swing_lookback = self.parameters.get("swing_lookback", 5)
         
         # Validate required parameters
         required_params = ["symbol_nq", "symbol_ym", "risk_per_trade", "ratio"]
@@ -343,7 +350,7 @@ class SMTDivergence(Strategy):
             if self.parameters.get(param) is None:
                 raise ValueError(f"Missing required parameter: {param}")
         
-        # Set defaults if needed
+        # Validate parameter values
         if self.parameters.get("ratio") <= 0:
             raise ValueError("Ratio must be greater than 0")
         if self.parameters.get("risk_per_trade") <= 0:
@@ -362,7 +369,6 @@ class SMTDivergence(Strategy):
             return
 
         current_date = self.get_datetime().date()
-
         if self.last_trade_date != current_date:
             self.last_trade_date = current_date
             self.trades_count = 0
@@ -370,7 +376,7 @@ class SMTDivergence(Strategy):
                 self.broker.reset_daily_drawdown(self, current_date, self.get_portfolio_value())
             self.log_message(f"New trading day started: {current_date}")
 
-        if self.trades_count >= self.parameters.get("trades_per_day"):
+        if self.trades_count >= self.parameters.get("trades_per_day", 3):
             if self.get_datetime().minute == 0:
                 self.log_message("Daily trade limit reached... Till Tomorrow")
             return
@@ -393,134 +399,175 @@ class SMTDivergence(Strategy):
         nq_asset = Asset(self.parameters.get("symbol_nq"), "stock")
         ym_asset = Asset(self.parameters.get("symbol_ym"), "stock")
 
-        # Fetch historical data with error handling
+        # Fetch 15-minute data for swing detection
         try:
-            nq_data = self.get_historical_prices(nq_asset, 5, "15m")
-            ym_data = self.get_historical_prices(ym_asset, 5, "15m")
+            nq_data = self.get_historical_prices(nq_asset, 20, "15m")
+            ym_data = self.get_historical_prices(ym_asset, 20, "15m")
         except Exception as e:
             self.log_message(f"Error fetching historical prices: {e}")
             return
         
-        # Validate data exists
         if nq_data is None or ym_data is None:
             self.log_message("Unable to fetch historical data for NQ or YM")
             return
         
-        nq = nq_data.df
-        ym = ym_data.df
+        nq_df = nq_data if isinstance(nq_data, pd.DataFrame) else nq_data.df
+        ym_df = ym_data if isinstance(ym_data, pd.DataFrame) else ym_data.df
 
-        if len(nq) < 5 or len(ym) < 5: return
+        if len(nq_df) < self.swing_lookback + 2 or len(ym_df) < self.swing_lookback + 2:
+            return
 
-        # LOW FOR NASDAQ
-        nq_low_curr = nq["low"].iloc[-1]
-        nq_low_prev = nq["low"].iloc[-2]
+        # Detect swings in recent bars
+        nq_swings = self._find_recent_swings(nq_df, self.swing_lookback)
+        ym_swings = self._find_recent_swings(ym_df, self.swing_lookback)
 
-        # LOW FOR DOW JONES
-        ym_low_curr = ym["low"].iloc[-1]
-        ym_low_prev = ym["low"].iloc[-2]
+        if nq_swings is None or ym_swings is None:
+            return
 
-        # HIGH FOR NASDAQ
-        nq_high_curr = nq["high"].iloc[-1]
-        nq_high_prev = nq["high"].iloc[-2]
+        nq_swing_high, nq_swing_low = nq_swings
+        ym_swing_high, ym_swing_low = ym_swings
 
-        # HIGH FOR DOW JONES
-        ym_high_curr = ym["high"].iloc[-1]
-        ym_high_prev = ym["high"].iloc[-2]
+        # Detect SMT divergence
+        signal = self._detect_smt_divergence(nq_swing_high, ym_swing_high, nq_swing_low, ym_swing_low)
 
-        # BULLISH SMT
-        if (nq_low_curr < nq_low_prev) and (ym_low_curr > ym_low_prev):
-            self.target_asset, self.side = ym_asset, "buy"
-            self.stop_price = ym['low'].iloc[-1]
-            self.log_message("Bullish SMT Sequence Detected")
-            
-        elif (ym_low_curr < ym_low_prev) and (nq_low_curr > nq_low_prev):
-            self.target_asset, self.side = nq_asset, "buy"
-            self.stop_price = nq['low'].iloc[-1]
-            self.log_message("Bullish SMT Sequence Detected")
+        if signal is None:
+            return
 
-        # BEARISH SMT
-        elif (nq_high_curr > nq_high_prev) and (ym_high_curr < ym_high_prev):
-            self.target_asset, self.side = ym_asset, "sell"
-            self.stop_price = ym['high'].iloc[-1]
-            self.log_message("Bearish SMT Sequence Detected")
-            
-        elif (ym_high_curr > ym_high_prev) and (nq_high_curr < nq_high_prev):
-            self.target_asset, self.side = nq_asset, "sell"
-            self.stop_price = nq['high'].iloc[-1]
-            self.log_message("Bearish SMT Sequence Detected")
+        self.side, self.target_asset = signal
+        current_price = self.get_last_price(self.target_asset)
 
-        if self.mss_level is None and self.target_asset:
-            target_data = self.get_historical_prices(self.target_asset, 10, "1m")
-            target = target_data.df
+        if current_price is None:
+            return
 
-            for i in range(len(target) - 1, 0, -1):
-                curr = target.iloc[i]
-                prev = target.iloc[i-1]
+        # Execute trade on divergence confirmation
+        self._execute_trade_on_divergence(nq_df, ym_df, current_price, nq_asset, ym_asset)
 
-                curr_is_bull = curr['close'] > curr['open']
-                prev_is_bull = prev['close'] > prev['open']
 
-                if curr_is_bull != prev_is_bull:
-                    # For Bullish: Get the Highest point of these two candles
-                    if self.side == "buy":
-                        self.mss_level = max(curr['high'], prev['high'])
-                    # For Bearish: Get the Lowest point of these two candles
-                    else:
-                        self.mss_level = min(curr['low'], prev['low'])
+    def _find_recent_swings(self, df, lookback):
+        """
+        Find the most recent swing high and swing low in the dataframe.
+        Returns (swing_high_price, swing_low_price) or None if insufficient data.
+        """
+        if len(df) < lookback + 2:
+            return None
 
-                    self.log_message(f"Cluster Found! MSS set at {self.mss_level}")
-                    break
+        recent = df.tail(lookback + 2)
+        
+        swing_highs = []
+        swing_lows = []
 
-        if self.target_asset and self.mss_level:
-            last_price = self.get_last_price(self.target_asset)
+        # Identify swing points (local extremes with at least 1 candle on each side)
+        for i in range(1, len(recent) - 1):
+            high = recent['high'].iloc[i]
+            low = recent['low'].iloc[i]
+            prev_high = recent['high'].iloc[i - 1]
+            next_high = recent['high'].iloc[i + 1]
+            prev_low = recent['low'].iloc[i - 1]
+            next_low = recent['low'].iloc[i + 1]
 
-            can_enter = False
-            if self.side == "buy" and last_price > self.mss_level:
-                can_enter = True
-            elif self.side == "sell" and last_price < self.mss_level:
-                can_enter = True
+            if high > prev_high and high > next_high:
+                swing_highs.append(high)
 
-            if can_enter:
-                existing_position = self.get_position(self.target_asset)
-                if existing_position is not None:
-                    self.log_message(f"Open position already exists for {self.target_asset.symbol}, skipping entry")
-                    return
+            if low < prev_low and low < next_low:
+                swing_lows.append(low)
 
-                risk_dist = abs(last_price - self.stop_price)
+        if not swing_highs or not swing_lows:
+            return None
 
-                if risk_dist > 0:
-                    quantity = int(self.parameters.get("risk_per_trade") / risk_dist)
+        return (max(swing_highs), min(swing_lows))
 
-                    limit_price = last_price + risk_dist if self.side == "buy" else last_price - risk_dist
-                else:
-                    quantity = 0
+    def _detect_smt_divergence(self, nq_high, ym_high, nq_low, ym_low):
+        """
+        Detect SMT divergence between NQ and YM swings.
+        
+        Returns:
+            (side, target_asset) tuple where side is "buy" or "sell"
+            None if no divergence detected
+        """
+        # Bearish SMT: One makes new high, other doesn't (expect reversal down)
+        if nq_high > ym_high:
+            self.log_message(f"Bearish SMT Detected: NQ HH={nq_high:.2f} > YM HH={ym_high:.2f}")
+            return ("sell", Asset(self.parameters.get("symbol_nq"), "stock"))
+        
+        if ym_high > nq_high:
+            self.log_message(f"Bearish SMT Detected: YM HH={ym_high:.2f} > NQ HH={nq_high:.2f}")
+            return ("sell", Asset(self.parameters.get("symbol_ym"), "stock"))
 
-                if quantity <= 0:
-                    self.log_message(f"Quantity too small ({quantity}), skipping trade")
-                    return
+        # Bullish SMT: One makes new low, other doesn't (expect reversal up)
+        if nq_low < ym_low:
+            self.log_message(f"Bullish SMT Detected: NQ LL={nq_low:.2f} < YM LL={ym_low:.2f}")
+            return ("buy", Asset(self.parameters.get("symbol_nq"), "stock"))
+        
+        if ym_low < nq_low:
+            self.log_message(f"Bullish SMT Detected: YM LL={ym_low:.2f} < NQ LL={nq_low:.2f}")
+            return ("buy", Asset(self.parameters.get("symbol_ym"), "stock"))
 
-                order = self.create_order(
-                    self.target_asset, quantity, self.side, type="market",
-                    stop_price=self.stop_price,
-                    limit_price=limit_price
-                )
+        return None
 
-                self.submit_order(order)
+    def _execute_trade_on_divergence(self, nq_df, ym_df, current_price, nq_asset, ym_asset):
+        """Execute trade when SMT divergence is detected."""
+        
+        # Check for existing position
+        existing_position = self.get_position(self.target_asset)
+        if existing_position is not None:
+            self.log_message(f"Position already exists for {self.target_asset.symbol}, skipping entry")
+            return
 
-                self.log_message(f"Trade Executed: {self.side} Signal - {quantity} units. MSS: {self.mss_level}")
-                if hasattr(self.broker, "register_entry_for_breakeven"):
-                    self.broker.register_entry_for_breakeven(
-                        self, self.target_asset, self.side, last_price, risk_dist
-                    )
+        # Get target asset data to find recent swing for stop loss
+        target_is_nq = self.target_asset.symbol == self.parameters.get("symbol_nq")
+        target_df = nq_df if target_is_nq else ym_df
 
-                # Increment Trade Counter
-                self.trades_count += 1
-                self.log_message(f"Trade #{self.trades_count} submitted")
+        if self.side == "buy":
+            # Stop loss below recent swing low
+            self.stop_price = target_df['low'].tail(5).min()
+        else:
+            # Stop loss above recent swing high
+            self.stop_price = target_df['high'].tail(5).max()
 
-                # Reset after trade
-                self.stop_price = None
-                self.mss_level = None
-                self.target_asset = None
+        risk_dist = abs(current_price - self.stop_price)
+
+        if risk_dist <= 0:
+            self.log_message(f"Risk distance invalid ({risk_dist}), skipping trade")
+            return
+
+        quantity = int(self.parameters.get("risk_per_trade") / risk_dist)
+
+        if quantity <= 0:
+            self.log_message(f"Quantity too small ({quantity}), skipping trade")
+            return
+
+        # Calculate take profit using R:R ratio
+        ratio = self.parameters.get("ratio", 2)
+        if self.side == "buy":
+            limit_price = current_price + (risk_dist * ratio)
+        else:
+            limit_price = current_price - (risk_dist * ratio)
+
+        order = self.create_order(
+            self.target_asset, quantity, self.side, type="market",
+            stop_price=self.stop_price,
+            limit_price=limit_price
+        )
+
+        self.submit_order(order)
+        self.log_message(
+            f"SMT Trade Executed: {self.side.upper()} {self.target_asset.symbol} "
+            f"@ {current_price:.2f} | SL: {self.stop_price:.2f} | TP: {limit_price:.2f} | Qty: {quantity}"
+        )
+
+        if hasattr(self.broker, "register_entry_for_breakeven"):
+            self.broker.register_entry_for_breakeven(
+                self, self.target_asset, self.side, current_price, risk_dist
+            )
+
+        self.trades_count += 1
+        self.log_message(f"Trade #{self.trades_count} submitted")
+
+        # Reset after trade
+        self.side = None
+        self.entry_price = None
+        self.stop_price = None
+        self.target_asset = None
 
     def on_filled_order(self, position, order, price, quantity, multiplier):
         if hasattr(self.broker, "handle_filled_order_risk"):
