@@ -55,10 +55,10 @@ def backtest_multiple_pairs(start_date, end_date):
     
     # Major currency pairs for forex
     pairs = [
-        "EURUSD",  # Euro/US Dollar
-        "GBPUSD",  # British Pound/US Dollar
-        "USDJPY",  # US Dollar/Japanese Yen
-        "AUDUSD",  # Australian Dollar/US Dollar
+        "C:EURUSD",  # Euro/US Dollar
+        "C:GBPUSD",  # British Pound/US Dollar
+        "C:USDJPY",  # US Dollar/Japanese Yen
+        "C:AUDUSD",  # Australian Dollar/US Dollar
     ]
     
     print(f"\n{'='*80}")
@@ -121,7 +121,7 @@ if __name__ == "__main__":
         
         if command == "single":
             # Single pair backtest
-            symbol = sys.argv[2] if len(sys.argv) > 2 else "EURUSD"
+            symbol = sys.argv[2] if len(sys.argv) > 2 else "C:EURUSD"
             backtest_single_pair(symbol, backtesting_start, backtesting_end)
         
         elif command == "multi":
@@ -135,7 +135,7 @@ if __name__ == "__main__":
                 print("Example: python ict.py custom EURUSD 2025-05-01 2025-12-31")
                 sys.exit(1)
             
-            symbol = sys.argv[2]
+            symbol = sys.argv[2] if len(sys.argv) > 2 else "C:EURUSD"
             try:
                 start = datetime.strptime(sys.argv[3], "%Y-%m-%d")
                 end = datetime.strptime(sys.argv[4], "%Y-%m-%d")
