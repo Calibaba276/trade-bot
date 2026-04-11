@@ -654,8 +654,10 @@ class ICT2022Strategy(Strategy):
         
         # Trading State
         self.traded_today = False
+        self.last_trade_date = None
         self.last_structure_update = None
         self.liquidity_swept = False
+        self.sweep_direction = None  # "BULLISH" when sweeping above Asian high, "BEARISH" when below Asian low
         self.current_bias = None  # "BULLISH" or "BEARISH"
         self.entry_point = None
         self.stop_price = None
@@ -679,6 +681,7 @@ class ICT2022Strategy(Strategy):
         self.daily_low = None
         self.traded_today = False
         self.liquidity_swept = False
+        self.sweep_direction = None
         self.entry_point = None
         self.stop_price = None
         self.limit_price = None
@@ -689,6 +692,16 @@ class ICT2022Strategy(Strategy):
 
         current_time = dt.time()
         current_date = dt.date()
+
+        # Ensure daily reset works in both backtesting and live brokers.
+        if self.last_trade_date != current_date:
+            self.last_trade_date = current_date
+            self.traded_today = False
+            self.liquidity_swept = False
+            self.sweep_direction = None
+            self.entry_point = None
+            self.stop_price = None
+            self.limit_price = None
         
         # === PHASE 1: Identify Asian Session Range (01:00 - 09:00 Nigerian Time / 00:00 - 08:00 UTC) ===
         if current_time >= time(1, 0) and current_time < time(9, 0):
@@ -729,13 +742,20 @@ class ICT2022Strategy(Strategy):
         This is the institutional setup for the day
         """
         try:
-            df = self.get_historical_prices(self.asset, 480, "minute")
-            
+            bars = self.get_historical_prices(self.asset, 1440, "minute")
+            if bars is None:
+                return
+
+            df = bars.pandas_df if hasattr(bars, "pandas_df") else bars
             if df is None or df.empty:
                 return
-            
-            self.asian_session_high = df["high"].max()
-            self.asian_session_low = df["low"].min()
+
+            asian_data = df.between_time("01:00", "08:59")
+            if asian_data.empty:
+                return
+
+            self.asian_session_high = asian_data["high"].max()
+            self.asian_session_low = asian_data["low"].min()
             
             self.log_message(
                 f"[ASIAN SESSION 01:00-09:00 NGT] High: {self.asian_session_high}, Low: {self.asian_session_low}"
@@ -746,8 +766,11 @@ class ICT2022Strategy(Strategy):
     def _identify_daily_structure(self):
         """Identify key daily structure: highs and lows"""
         try:
-            df = self.get_historical_prices(self.asset, 1440, "minute")
-            
+            bars = self.get_historical_prices(self.asset, 1440, "minute")
+            if bars is None:
+                return
+
+            df = bars.pandas_df if hasattr(bars, "pandas_df") else bars
             if df is None or df.empty:
                 return
             
@@ -764,8 +787,11 @@ class ICT2022Strategy(Strategy):
     def _identify_swing_points(self, lookback_bars=20):
         """Identify swing highs and swing lows"""
         try:
-            df = self.get_historical_prices(self.asset, lookback_bars + 5, "minute")
-            
+            bars = self.get_historical_prices(self.asset, lookback_bars + 5, "minute")
+            if bars is None:
+                return
+
+            df = bars.pandas_df if hasattr(bars, "pandas_df") else bars
             if df is None or df.empty or len(df) < 3:
                 return
             
@@ -793,8 +819,11 @@ class ICT2022Strategy(Strategy):
     def _identify_order_blocks(self):
         """Order Blocks: areas of concentrated selling/buying by institutions"""
         try:
-            df = self.get_historical_prices(self.asset, 100, "minute")
-            
+            bars = self.get_historical_prices(self.asset, 100, "minute")
+            if bars is None:
+                return
+
+            df = bars.pandas_df if hasattr(bars, "pandas_df") else bars
             if df is None or df.empty or len(df) < 10:
                 return
             
@@ -835,8 +864,11 @@ class ICT2022Strategy(Strategy):
     def _identify_fvg(self, lookback=50):
         """Fair Value Gap (FVG): Unfilled gaps in price that typically get filled later"""
         try:
-            df = self.get_historical_prices(self.asset, lookback, "minute")
-            
+            bars = self.get_historical_prices(self.asset, lookback, "minute")
+            if bars is None:
+                return
+
+            df = bars.pandas_df if hasattr(bars, "pandas_df") else bars
             if df is None or df.empty or len(df) < 3:
                 return
             
@@ -921,40 +953,45 @@ class ICT2022Strategy(Strategy):
         4. Enter on the reversal with order block support/resistance
         """
         try:
-            last_price = self.get_last_price(self.symbol)
+            last_price = self.get_last_price(self.asset)
             
             if last_price is None:
                 return
-            
-            # BULLISH SETUP: Sweep above Asian High, then reverse into order block
-            if (self.asian_session_high and last_price > self.asian_session_high 
-                and not self.liquidity_swept and self.current_bias != "BEARISH"):
-                
-                self.liquidity_swept = True
-                self.log_message(
-                    f"[LIQUIDITY SWEEP-BULLISH] Price broke above Asian High {self.asian_session_high}"
-                )
-                
+
+            if self.asian_session_high is None or self.asian_session_low is None:
+                return
+
+            # Step 1: detect the sweep once.
+            if not self.liquidity_swept:
+                if last_price > self.asian_session_high and self.current_bias != "BEARISH":
+                    self.liquidity_swept = True
+                    self.sweep_direction = "BULLISH"
+                    self.log_message(
+                        f"[LIQUIDITY SWEEP-BULLISH] Price broke above Asian High {self.asian_session_high}"
+                    )
+                    return
+
+                if last_price < self.asian_session_low and self.current_bias != "BULLISH":
+                    self.liquidity_swept = True
+                    self.sweep_direction = "BEARISH"
+                    self.log_message(
+                        f"[LIQUIDITY SWEEP-BEARISH] Price broke below Asian Low {self.asian_session_low}"
+                    )
+                    return
+
+                return
+
+            # Step 2: after sweep, wait for retrace into matching order block and enter.
+            if self.sweep_direction == "BULLISH":
                 for ob in self.order_blocks:
-                    if ob["type"] == "BULLISH":
-                        if last_price <= ob["high"] and last_price >= ob["low"]:
-                            self._execute_bullish_entry(last_price, ob)
-                            return
-            
-            # BEARISH SETUP: Sweep below Asian Low, then reverse into order block
-            if (self.asian_session_low and last_price < self.asian_session_low 
-                and not self.liquidity_swept and self.current_bias != "BULLISH"):
-                
-                self.liquidity_swept = True
-                self.log_message(
-                    f"[LIQUIDITY SWEEP-BEARISH] Price broke below Asian Low {self.asian_session_low}"
-                )
-                
+                    if ob["type"] == "BULLISH" and ob["low"] <= last_price <= ob["high"]:
+                        self._execute_bullish_entry(last_price, ob)
+                        return
+            elif self.sweep_direction == "BEARISH":
                 for ob in self.order_blocks:
-                    if ob["type"] == "BEARISH":
-                        if last_price <= ob["high"] and last_price >= ob["low"]:
-                            self._execute_bearish_entry(last_price, ob)
-                            return
+                    if ob["type"] == "BEARISH" and ob["low"] <= last_price <= ob["high"]:
+                        self._execute_bearish_entry(last_price, ob)
+                        return
         except Exception as e:
             self.log_message(f"Error in liquidity sweep strategy: {e}")
 
@@ -982,6 +1019,8 @@ class ICT2022Strategy(Strategy):
                 f"[BULLISH ENTRY] Entry: {self.entry_point}, SL: {self.stop_price}, TP: {self.limit_price}"
             )
             self.traded_today = True
+            self.liquidity_swept = False
+            self.sweep_direction = None
         except Exception as e:
             self.log_message(f"Error executing bullish entry: {e}")
 
@@ -1009,6 +1048,8 @@ class ICT2022Strategy(Strategy):
                 f"[BEARISH ENTRY] Entry: {self.entry_point}, SL: {self.stop_price}, TP: {self.limit_price}"
             )
             self.traded_today = True
+            self.liquidity_swept = False
+            self.sweep_direction = None
         except Exception as e:
             self.log_message(f"Error executing bearish entry: {e}")
 
