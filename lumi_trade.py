@@ -1006,21 +1006,61 @@ class ICT2022Strategy(Strategy):
             # Step 1: detect the sweep once.
             if not self.liquidity_swept:
                 # Sweep above Asian High typically sets up bearish reversal.
-                if last_price > self.asian_session_high and self.current_bias != "BULLISH":
+                if last_price > self.asian_session_high:
                     self.liquidity_swept = True
                     self.sweep_direction = "BEARISH"
                     self.log_message(
                         f"[LIQUIDITY SWEEP-BEARISH] Price broke above Asian High {self.asian_session_high}"
                     )
+
+                    bearish_ob = next(
+                        (
+                            ob
+                            for ob in self.order_blocks
+                            if ob["type"] == "BEARISH" and ob["low"] <= last_price <= ob["high"]
+                        ),
+                        None,
+                    )
+                    if bearish_ob is not None:
+                        self._execute_bearish_entry(last_price, bearish_ob)
+                    else:
+                        self.log_message("[ICT] No bearish order block match; using sweep fallback entry")
+                        self._execute_bearish_entry(
+                            last_price,
+                            {
+                                "high": max(last_price, self.asian_session_high),
+                                "low": self.asian_session_high,
+                            },
+                        )
                     return
 
                 # Sweep below Asian Low typically sets up bullish reversal.
-                if last_price < self.asian_session_low and self.current_bias != "BEARISH":
+                if last_price < self.asian_session_low:
                     self.liquidity_swept = True
                     self.sweep_direction = "BULLISH"
                     self.log_message(
                         f"[LIQUIDITY SWEEP-BULLISH] Price broke below Asian Low {self.asian_session_low}"
                     )
+
+                    bullish_ob = next(
+                        (
+                            ob
+                            for ob in self.order_blocks
+                            if ob["type"] == "BULLISH" and ob["low"] <= last_price <= ob["high"]
+                        ),
+                        None,
+                    )
+                    if bullish_ob is not None:
+                        self._execute_bullish_entry(last_price, bullish_ob)
+                    else:
+                        self.log_message("[ICT] No bullish order block match; using sweep fallback entry")
+                        self._execute_bullish_entry(
+                            last_price,
+                            {
+                                "high": self.asian_session_low,
+                                "low": min(last_price, self.asian_session_low),
+                            },
+                        )
                     return
 
                 return
@@ -1031,11 +1071,23 @@ class ICT2022Strategy(Strategy):
                     if ob["type"] == "BULLISH" and ob["low"] <= last_price <= ob["high"]:
                         self._execute_bullish_entry(last_price, ob)
                         return
+                # Keep strategy actionable even when OB detection lags.
+                self._execute_bullish_entry(
+                    last_price,
+                    {"high": self.asian_session_low, "low": min(last_price, self.asian_session_low)},
+                )
+                return
             elif self.sweep_direction == "BEARISH":
                 for ob in self.order_blocks:
                     if ob["type"] == "BEARISH" and ob["low"] <= last_price <= ob["high"]:
                         self._execute_bearish_entry(last_price, ob)
                         return
+                # Keep strategy actionable even when OB detection lags.
+                self._execute_bearish_entry(
+                    last_price,
+                    {"high": max(last_price, self.asian_session_high), "low": self.asian_session_high},
+                )
+                return
         except Exception as e:
             self.log_message(f"Error in liquidity sweep strategy: {e}")
 
