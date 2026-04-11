@@ -634,7 +634,7 @@ class ICT2022Strategy(Strategy):
     """
 
     def initialize(self):
-        self.symbol = self.parameters.get("symbol", "EURUSD")
+        self.symbol = self.parameters.get("symbol")
         self.sleeptime = "5M"
         self.set_market("24/7")
         
@@ -658,8 +658,8 @@ class ICT2022Strategy(Strategy):
         self.liquidity_swept = False
         self.current_bias = None  # "BULLISH" or "BEARISH"
         self.entry_point = None
-        self.stop_loss = None
-        self.take_profit = None
+        self.stop_price = None
+        self.limit_price = None
         
         # Swing Detection
         self.last_swing_high = None
@@ -680,8 +680,8 @@ class ICT2022Strategy(Strategy):
         self.traded_today = False
         self.liquidity_swept = False
         self.entry_point = None
-        self.stop_loss = None
-        self.take_profit = None
+        self.stop_price = None
+        self.limit_price = None
 
     def on_trading_iteration(self):
         """Main trading logic following ICT 2022 methodology"""
@@ -962,10 +962,10 @@ class ICT2022Strategy(Strategy):
         """Execute bullish entry at order block support"""
         try:
             self.entry_point = order_block["low"]
-            self.stop_loss = order_block["low"] - (order_block["high"] - order_block["low"]) * 0.5
-            self.take_profit = current_price + (current_price - self.stop_loss) * self.risk_reward_ratio
+            self.stop_price = order_block["low"] - (order_block["high"] - order_block["low"]) * 0.5
+            self.limit_price = current_price + (current_price - self.stop_price) * self.risk_reward_ratio
             
-            quantity = calculate_quantity(self, self.asset, self.stop_loss)
+            quantity = calculate_quantity(self, self.asset, self.stop_price)
             
             if quantity <= 0:
                 self.log_message("Insufficient funds for bullish entry")
@@ -974,12 +974,12 @@ class ICT2022Strategy(Strategy):
             order = self.create_order(
                 self.symbol, quantity, "buy",
                 limit_price=self.entry_point,
-                stop_price=self.stop_loss
+                stop_price=self.stop_price
             )
             self.submit_order(order)
             
             self.log_message(
-                f"[BULLISH ENTRY] Entry: {self.entry_point}, SL: {self.stop_loss}, TP: {self.take_profit}"
+                f"[BULLISH ENTRY] Entry: {self.entry_point}, SL: {self.stop_price}, TP: {self.limit_price}"
             )
             self.traded_today = True
         except Exception as e:
@@ -989,10 +989,10 @@ class ICT2022Strategy(Strategy):
         """Execute bearish entry at order block resistance"""
         try:
             self.entry_point = order_block["high"]
-            self.stop_loss = order_block["high"] + (order_block["high"] - order_block["low"]) * 0.5
-            self.take_profit = current_price - (self.stop_loss - current_price) * self.risk_reward_ratio
+            self.stop_price = order_block["high"] + (order_block["high"] - order_block["low"]) * 0.5
+            self.limit_price = current_price - (self.stop_price - current_price) * self.risk_reward_ratio
             
-            quantity = calculate_quantity(self, self.asset, self.stop_loss)
+            quantity = calculate_quantity(self, self.asset, self.stop_price)
             
             if quantity <= 0:
                 self.log_message("Insufficient funds for bearish entry")
@@ -1001,12 +1001,12 @@ class ICT2022Strategy(Strategy):
             order = self.create_order(
                 self.symbol, quantity, "sell",
                 limit_price=self.entry_point,
-                stop_price=self.stop_loss
+                stop_price=self.stop_price
             )
             self.submit_order(order)
             
             self.log_message(
-                f"[BEARISH ENTRY] Entry: {self.entry_point}, SL: {self.stop_loss}, TP: {self.take_profit}"
+                f"[BEARISH ENTRY] Entry: {self.entry_point}, SL: {self.stop_price}, TP: {self.limit_price}"
             )
             self.traded_today = True
         except Exception as e:
@@ -1024,11 +1024,11 @@ class ICT2022Strategy(Strategy):
             
             for position in positions:
                 if position.quantity > 0:
-                    if last_price >= self.take_profit:
+                    if last_price >= self.limit_price:
                         self._close_position(position)
                 
                 elif position.quantity < 0:
-                    if last_price <= self.take_profit:
+                    if last_price <= self.limit_price:
                         self._close_position(position)
         except Exception as e:
             self.log_message(f"Error managing position: {e}")
