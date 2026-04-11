@@ -2,7 +2,6 @@ import math
 import json
 import pandas as pd
 from datetime import time
-import pytz
 from lumibot.strategies.strategy import Strategy
 from lumibot.entities import Asset
 
@@ -10,9 +9,6 @@ from fetch_trends import FetchTrends
 
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
-
-# Nigerian Time (UTC+1) - ALL times in this codebase use this timezone
-NIGERIAN_TZ = pytz.timezone('Africa/Lagos')  # UTC+1
 
 VAULT_URL = "https://calibabasecret.vault.azure.net/"
 credentials = DefaultAzureCredential()
@@ -42,7 +38,6 @@ class LiquiditySweep(Strategy):
         self.symbol = self.parameters.get("symbol")
         self.sleeptime = "1M"
         self.set_market("24/7")
-        self.timezone = NIGERIAN_TZ  # Explicitly set to Nigerian Time (UTC+1)
         self.high = None
         self.low = None
         self.traded_today = False
@@ -167,7 +162,6 @@ class TrendStrategy(Strategy):
     def initialize(self):
         self.result = FetchTrends(NEWS_API_KEY, GEMINI_API_KEY)
         self.sleeptime = "5M"
-        self.timezone = NIGERIAN_TZ  # Explicitly set to Nigerian Time (UTC+1)
         self.set_market("24/5")
         self.risk_amount = 25
     
@@ -240,7 +234,6 @@ class ACB(Strategy):
         self.risk_amount = 25
         self.start = time(14, 0)  # 14:00 NGT (13:00 UTC)
         self.end = time(16, 30)   # 16:30 NGT (15:30 UTC)
-        self.timezone = NIGERIAN_TZ  # Explicitly set to Nigerian Time (UTC+1)
         self.traded_today = False
         self.last_trade_date = None
 
@@ -372,7 +365,6 @@ class SMTDivergence(Strategy):
 
     def initialize(self):
         self.sleeptime = "1m"
-        self.timezone = NIGERIAN_TZ  # Explicitly set to Nigerian Time (UTC+1)
         self.side = None
         self.entry_price = None
         self.stop_price = None
@@ -645,7 +637,6 @@ class ICT2022Strategy(Strategy):
         self.symbol = self.parameters.get("symbol", "EURUSD")
         self.sleeptime = "5M"
         self.set_market("24/7")
-        self.timezone = NIGERIAN_TZ  # Explicitly set to Nigerian Time (UTC+1)
         
         # Risk Management
         self.risk_amount = self.parameters.get("risk_amount", 25)
