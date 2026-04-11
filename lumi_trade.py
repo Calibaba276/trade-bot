@@ -63,7 +63,7 @@ class LiquiditySweep(Strategy):
 
     def on_trading_iteration(self):
 
-        dt = self.broker.get_datetime()
+        dt = self.get_datetime()
         current_time = dt.time()
 
         if current_time >= time(7, 0) and self.last_range_date != dt.date():
@@ -685,7 +685,8 @@ class ICT2022Strategy(Strategy):
 
     def on_trading_iteration(self):
         """Main trading logic following ICT 2022 methodology"""
-        dt = self.broker.get_datetime()
+        dt = self.get_datetime()
+
         current_time = dt.time()
         current_date = dt.date()
         
