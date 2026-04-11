@@ -2,6 +2,7 @@ import math
 import json
 import pandas as pd
 from datetime import time
+import pytz
 from lumibot.strategies.strategy import Strategy
 from lumibot.entities import Asset
 
@@ -9,6 +10,9 @@ from fetch_trends import FetchTrends
 
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
+
+# Nigerian Time (UTC+1) - ALL times in this codebase use this timezone
+NIGERIAN_TZ = pytz.timezone('Africa/Lagos')  # UTC+1
 
 VAULT_URL = "https://calibabasecret.vault.azure.net/"
 credentials = DefaultAzureCredential()
@@ -26,10 +30,19 @@ NEWS_API_KEY = get_azure_secret("NEWS-API-KEY")
 GEMINI_API_KEY = get_azure_secret("GEMINI-API-KEY")
 
 class LiquiditySweep(Strategy):
+    """
+    Liquidity Sweep Strategy - Market Structure Shift (MSS) Based
+    
+    ⏰ TIME ZONE: ALL TIMES ARE IN NIGERIAN TIME (UTC+1)
+    - When you see timestamps in logs: they are in NGT, not UTC
+    - Asian Session: 01:00-09:00 NGT (00:00-08:00 UTC)
+    - All time checks use NGT
+    """
     def initialize(self):
         self.symbol = self.parameters.get("symbol")
         self.sleeptime = "1M"
         self.set_market("24/7")
+        self.timezone = NIGERIAN_TZ  # Explicitly set to Nigerian Time (UTC+1)
         self.high = None
         self.low = None
         self.traded_today = False
@@ -76,6 +89,7 @@ class LiquiditySweep(Strategy):
                 self.log_message(f"--- {dt.date()} - {current_time} Market is Closed (No Data) ---")
 
         if self.high and self.low and not self.traded_today:
+            # Time check: 07:00-17:00 NGT (Nigerian Time, UTC+1)
             if time(7, 0) <= current_time < time(17, 0):
                 last_price = self.get_last_price(self.symbol)
 
@@ -142,9 +156,18 @@ class LiquiditySweep(Strategy):
                     self.traded_today = True
 
 class TrendStrategy(Strategy):
+    """
+    Trend Strategy - AI-Powered Sentiment Analysis
+    
+    ⏰ TIME ZONE: ALL TIMES ARE IN NIGERIAN TIME (UTC+1)
+    - All timestamps in logs: Nigerian Time (UTC+1), not UTC
+    - When backtesting shows times: interpret as NGT
+    - Conversions: 01:00 NGT = 00:00 UTC, etc.
+    """
     def initialize(self):
         self.result = FetchTrends(NEWS_API_KEY, GEMINI_API_KEY)
         self.sleeptime = "5M"
+        self.timezone = NIGERIAN_TZ  # Explicitly set to Nigerian Time (UTC+1)
         self.set_market("24/5")
         self.risk_amount = 25
     
@@ -202,13 +225,22 @@ class TrendStrategy(Strategy):
             self.log_message("No Orders Made... Unto the Next")
     
 class ACB(Strategy):
+    """
+    Asian Close Break (ACB) Strategy
+    
+    ⏰ TIME ZONE: ALL TIMES ARE IN NIGERIAN TIME (UTC+1)
+    - start = time(14, 0) means 14:00 NGT (13:00 UTC)
+    - end = time(16, 30) means 16:30 NGT (15:30 UTC)
+    - All timestamps in backtesting: Nigerian Time (UTC+1)
+    """
     def initialize(self):
         self.symbol = self.parameters.get("symbol")
         self.sleeptime = "1M"
         self.asset = Asset(symbol=self.symbol, asset_type="forex")
         self.risk_amount = 25
-        self.start = time(14, 0)
-        self.end = time(16, 30)
+        self.start = time(14, 0)  # 14:00 NGT (13:00 UTC)
+        self.end = time(16, 30)   # 16:30 NGT (15:30 UTC)
+        self.timezone = NIGERIAN_TZ  # Explicitly set to Nigerian Time (UTC+1)
         self.traded_today = False
         self.last_trade_date = None
 
@@ -323,18 +355,24 @@ class SMTDivergence(Strategy):
     - This indicates institutional manipulation and potential reversal
     - Bullish SMT: Both moving lower, but one makes lower low while other makes higher low
     - Bearish SMT: Both moving higher, but one makes higher high while other makes lower high
+    
+    ⏰ TIME ZONE: ALL TIMES ARE IN NIGERIAN TIME (UTC+1)
+    - NY Session: 13:30-16:00 NGT (12:30-15:00 UTC)
+    - London Session: 07:00-10:00 NGT (06:00-09:00 UTC)
+    - All timestamps in logs/backtesting: Nigerian Time (UTC+1)
     """
 
     def is_killzone(self):
         current_time = self.get_datetime().time()
-        ny_start = time(13, 30)
-        ny_end = time(16, 0)
-        london_start = time(7, 0)
-        london_end = time(10, 0)
+        ny_start = time(13, 30)    # 13:30 NGT (12:30 UTC)
+        ny_end = time(16, 0)       # 16:00 NGT (15:00 UTC)
+        london_start = time(7, 0)  # 07:00 NGT (06:00 UTC)
+        london_end = time(10, 0)   # 10:00 NGT (09:00 UTC)
         return (ny_start <= current_time <= ny_end) or (london_start <= current_time <= london_end)
 
     def initialize(self):
         self.sleeptime = "1m"
+        self.timezone = NIGERIAN_TZ  # Explicitly set to Nigerian Time (UTC+1)
         self.side = None
         self.entry_price = None
         self.stop_price = None
@@ -584,6 +622,442 @@ class SMTDivergence(Strategy):
                 self.max_daily_drawdown_pct,
             )
             
+class ICT2022Strategy(Strategy):
+    """
+    ICT (Inner Circle Trader) 2022 Model Implementation
+    
+    Key Concepts:
+    - Market Structure Analysis (highs/lows, swings)
+    - Order Blocks (institutional trading zones)
+    - Fair Value Gaps (FVG) - unfilled price gaps
+    - Liquidity Sweep & Reversal (MSS - Market Structure Shift)
+    - Institutional Bias Framework
+    - Premium & Discount Zones
+    - Asian Session Focus (optimal institutional liquidity)
+    
+    ⏰ TIME ZONE: ALL TIMES ARE IN NIGERIAN TIME (UTC+1)
+    - Asian Session: 01:00-09:00 NGT (00:00-08:00 UTC)
+    - All timestamps in backtesting logs: Nigerian Time (UTC+1)
+    - All time() comparisons: interpreted as NGT, not UTC
+    """
+
+    def initialize(self):
+        self.symbol = self.parameters.get("symbol", "EURUSD")
+        self.sleeptime = "5M"
+        self.set_market("24/7")
+        self.timezone = NIGERIAN_TZ  # Explicitly set to Nigerian Time (UTC+1)
+        
+        # Risk Management
+        self.risk_amount = self.parameters.get("risk_amount", 25)
+        self.risk_reward_ratio = self.parameters.get("risk_reward_ratio", 1.5)
+        self.max_positions = self.parameters.get("max_positions", 1)
+        
+        # Market Structure
+        self.asset = Asset(symbol=self.symbol, asset_type="forex")
+        self.daily_high = None
+        self.daily_low = None
+        self.asian_session_high = None
+        self.asian_session_low = None
+        self.order_blocks = []
+        self.fair_value_gaps = []
+        
+        # Trading State
+        self.traded_today = False
+        self.last_structure_update = None
+        self.liquidity_swept = False
+        self.current_bias = None  # "BULLISH" or "BEARISH"
+        self.entry_point = None
+        self.stop_loss = None
+        self.take_profit = None
+        
+        # Swing Detection
+        self.last_swing_high = None
+        self.last_swing_low = None
+        self.swing_high_index = None
+        self.swing_low_index = None
+        
+        # Premium/Discount Zones
+        self.premium_zone_high = None
+        self.premium_zone_low = None
+        self.discount_zone_high = None
+        self.discount_zone_low = None
+
+    def before_market_opens(self):
+        """Reset daily markers"""
+        self.daily_high = None
+        self.daily_low = None
+        self.traded_today = False
+        self.liquidity_swept = False
+        self.entry_point = None
+        self.stop_loss = None
+        self.take_profit = None
+
+    def on_trading_iteration(self):
+        """Main trading logic following ICT 2022 methodology"""
+        dt = self.broker.get_datetime()
+        current_time = dt.time()
+        current_date = dt.date()
+        
+        # === PHASE 1: Identify Asian Session Range (01:00 - 09:00 Nigerian Time / 00:00 - 08:00 UTC) ===
+        if current_time >= time(1, 0) and current_time < time(9, 0):
+            if self.last_structure_update != current_date:
+                self._identify_asian_session_structure()
+                self.last_structure_update = current_date
+        
+        # === PHASE 2: Identify Daily Market Structure ===
+        if current_time >= time(9, 0) and self.daily_high is None:
+            self._identify_daily_structure()
+        
+        # === PHASE 3: Identify Order Blocks ===
+        if len(self.order_blocks) < 2:
+            self._identify_order_blocks()
+        
+        # === PHASE 4: Identify Fair Value Gaps (FVG) ===
+        if len(self.fair_value_gaps) < 3:
+            self._identify_fvg()
+        
+        # === PHASE 5: Premium & Discount Zone Identification ===
+        if self.premium_zone_high is None:
+            self._identify_premium_discount_zones()
+        
+        # === PHASE 6: Determine Market Bias (Institutional Direction) ===
+        self.current_bias = self._determine_market_bias()
+        
+        # === PHASE 7: Liquidity Sweep & Entry Logic ===
+        if not self.traded_today:
+            self._execute_liquidity_sweep_strategy()
+        
+        # === PHASE 8: Trade Management ===
+        if self.entry_point is not None:
+            self._manage_position()
+
+    def _identify_asian_session_structure(self):
+        """
+        Identify Asian session range (01:00 - 09:00 Nigerian Time / 00:00 - 08:00 UTC)
+        This is the institutional setup for the day
+        """
+        try:
+            df = self.get_historical_prices(self.asset, 480, "minute")
+            
+            if df is None or df.empty:
+                return
+            
+            self.asian_session_high = df["high"].max()
+            self.asian_session_low = df["low"].min()
+            
+            self.log_message(
+                f"[ASIAN SESSION 01:00-09:00 NGT] High: {self.asian_session_high}, Low: {self.asian_session_low}"
+            )
+        except Exception as e:
+            self.log_message(f"Error identifying Asian session: {e}")
+
+    def _identify_daily_structure(self):
+        """Identify key daily structure: highs and lows"""
+        try:
+            df = self.get_historical_prices(self.asset, 1440, "minute")
+            
+            if df is None or df.empty:
+                return
+            
+            self.daily_high = df["high"].max()
+            self.daily_low = df["low"].min()
+            
+            self.log_message(
+                f"[DAILY STRUCTURE] High: {self.daily_high}, Low: {self.daily_low}, "
+                f"Range: {self.daily_high - self.daily_low}"
+            )
+        except Exception as e:
+            self.log_message(f"Error identifying daily structure: {e}")
+
+    def _identify_swing_points(self, lookback_bars=20):
+        """Identify swing highs and swing lows"""
+        try:
+            df = self.get_historical_prices(self.asset, lookback_bars + 5, "minute")
+            
+            if df is None or df.empty or len(df) < 3:
+                return
+            
+            highs = df["high"].values
+            lows = df["low"].values
+            
+            for i in range(len(highs) - 2, 1, -1):
+                if highs[i] > highs[i - 1] and highs[i] > highs[i + 1]:
+                    self.last_swing_high = float(highs[i])
+                    self.swing_high_index = i
+                    break
+            
+            for i in range(len(lows) - 2, 1, -1):
+                if lows[i] < lows[i - 1] and lows[i] < lows[i + 1]:
+                    self.last_swing_low = float(lows[i])
+                    self.swing_low_index = i
+                    break
+            
+            self.log_message(
+                f"[SWING POINTS] High: {self.last_swing_high}, Low: {self.last_swing_low}"
+            )
+        except Exception as e:
+            self.log_message(f"Error identifying swing points: {e}")
+
+    def _identify_order_blocks(self):
+        """Order Blocks: areas of concentrated selling/buying by institutions"""
+        try:
+            df = self.get_historical_prices(self.asset, 100, "minute")
+            
+            if df is None or df.empty or len(df) < 10:
+                return
+            
+            closes = df["close"].values
+            highs = df["high"].values
+            lows = df["low"].values
+            
+            for i in range(3, len(closes) - 3):
+                # Bearish Order Block (after strong bearish move)
+                if closes[i] < closes[i-1] and closes[i-1] < closes[i-2]:
+                    if closes[i+1] > closes[i] and closes[i+2] > closes[i+1]:
+                        ob = {
+                            "type": "BEARISH",
+                            "high": max(highs[i-2:i+1]),
+                            "low": min(lows[i-2:i+1]),
+                            "index": i
+                        }
+                        if ob not in self.order_blocks:
+                            self.order_blocks.append(ob)
+                
+                # Bullish Order Block (after strong bullish move)
+                if closes[i] > closes[i-1] and closes[i-1] > closes[i-2]:
+                    if closes[i+1] < closes[i] and closes[i+2] < closes[i+1]:
+                        ob = {
+                            "type": "BULLISH",
+                            "high": max(highs[i-2:i+1]),
+                            "low": min(lows[i-2:i+1]),
+                            "index": i
+                        }
+                        if ob not in self.order_blocks:
+                            self.order_blocks.append(ob)
+            
+            if self.order_blocks:
+                self.log_message(f"[ORDER BLOCKS] Identified {len(self.order_blocks)} blocks")
+        except Exception as e:
+            self.log_message(f"Error identifying order blocks: {e}")
+
+    def _identify_fvg(self, lookback=50):
+        """Fair Value Gap (FVG): Unfilled gaps in price that typically get filled later"""
+        try:
+            df = self.get_historical_prices(self.asset, lookback, "minute")
+            
+            if df is None or df.empty or len(df) < 3:
+                return
+            
+            highs = df["high"].values
+            lows = df["low"].values
+            
+            for i in range(2, len(highs)):
+                # Bullish FVG: Price gaps up
+                if lows[i] > highs[i-2]:
+                    fvg = {
+                        "type": "BULLISH",
+                        "top": highs[i-2],
+                        "bottom": lows[i],
+                        "index": i
+                    }
+                    if fvg not in self.fair_value_gaps:
+                        self.fair_value_gaps.append(fvg)
+                
+                # Bearish FVG: Price gaps down
+                if highs[i] < lows[i-2]:
+                    fvg = {
+                        "type": "BEARISH",
+                        "top": lows[i-2],
+                        "bottom": highs[i],
+                        "index": i
+                    }
+                    if fvg not in self.fair_value_gaps:
+                        self.fair_value_gaps.append(fvg)
+            
+            if self.fair_value_gaps:
+                self.log_message(f"[FVG] Identified {len(self.fair_value_gaps)} gaps")
+        except Exception as e:
+            self.log_message(f"Error identifying FVG: {e}")
+
+    def _identify_premium_discount_zones(self):
+        """
+        Premium Zone: Area above the Asian session high (institutional selling)
+        Discount Zone: Area below the Asian session low (institutional buying)
+        """
+        if self.asian_session_high and self.asian_session_low:
+            range_size = self.asian_session_high - self.asian_session_low
+            
+            self.premium_zone_low = self.asian_session_high
+            self.premium_zone_high = self.asian_session_high + (range_size * 0.2)
+            
+            self.discount_zone_high = self.asian_session_low
+            self.discount_zone_low = self.asian_session_low - (range_size * 0.2)
+            
+            self.log_message(
+                f"[ZONES] Premium: {self.premium_zone_low}-{self.premium_zone_high}, "
+                f"Discount: {self.discount_zone_low}-{self.discount_zone_high}"
+            )
+
+    def _determine_market_bias(self):
+        """
+        Determine if market is BULLISH or BEARISH
+        BULLISH: Higher lows and higher highs
+        BEARISH: Lower highs and lower lows
+        """
+        try:
+            self._identify_swing_points()
+            
+            if self.last_swing_high is None or self.last_swing_low is None:
+                return None
+            
+            if self.swing_low_index is not None and self.swing_high_index is not None:
+                if self.swing_low_index > self.swing_high_index:
+                    return "BULLISH"
+                else:
+                    return "BEARISH"
+        except Exception as e:
+            self.log_message(f"Error determining bias: {e}")
+        
+        return None
+
+    def _execute_liquidity_sweep_strategy(self):
+        """
+        ICT Liquidity Sweep Strategy (MSS - Market Structure Shift):
+        1. Price sweeps the Asian session high (bullish) or low (bearish)
+        2. Creates a liquidity event
+        3. Institutions reverse after collecting liquidity
+        4. Enter on the reversal with order block support/resistance
+        """
+        try:
+            last_price = self.get_last_price(self.symbol)
+            
+            if last_price is None:
+                return
+            
+            # BULLISH SETUP: Sweep above Asian High, then reverse into order block
+            if (self.asian_session_high and last_price > self.asian_session_high 
+                and not self.liquidity_swept and self.current_bias != "BEARISH"):
+                
+                self.liquidity_swept = True
+                self.log_message(
+                    f"[LIQUIDITY SWEEP-BULLISH] Price broke above Asian High {self.asian_session_high}"
+                )
+                
+                for ob in self.order_blocks:
+                    if ob["type"] == "BULLISH":
+                        if last_price <= ob["high"] and last_price >= ob["low"]:
+                            self._execute_bullish_entry(last_price, ob)
+                            return
+            
+            # BEARISH SETUP: Sweep below Asian Low, then reverse into order block
+            if (self.asian_session_low and last_price < self.asian_session_low 
+                and not self.liquidity_swept and self.current_bias != "BULLISH"):
+                
+                self.liquidity_swept = True
+                self.log_message(
+                    f"[LIQUIDITY SWEEP-BEARISH] Price broke below Asian Low {self.asian_session_low}"
+                )
+                
+                for ob in self.order_blocks:
+                    if ob["type"] == "BEARISH":
+                        if last_price <= ob["high"] and last_price >= ob["low"]:
+                            self._execute_bearish_entry(last_price, ob)
+                            return
+        except Exception as e:
+            self.log_message(f"Error in liquidity sweep strategy: {e}")
+
+    def _execute_bullish_entry(self, current_price, order_block):
+        """Execute bullish entry at order block support"""
+        try:
+            self.entry_point = order_block["low"]
+            self.stop_loss = order_block["low"] - (order_block["high"] - order_block["low"]) * 0.5
+            self.take_profit = current_price + (current_price - self.stop_loss) * self.risk_reward_ratio
+            
+            quantity = calculate_quantity(self, self.asset, self.stop_loss)
+            
+            if quantity <= 0:
+                self.log_message("Insufficient funds for bullish entry")
+                return
+            
+            order = self.create_order(
+                self.symbol, quantity, "buy",
+                limit_price=self.entry_point,
+                stop_price=self.stop_loss
+            )
+            self.submit_order(order)
+            
+            self.log_message(
+                f"[BULLISH ENTRY] Entry: {self.entry_point}, SL: {self.stop_loss}, TP: {self.take_profit}"
+            )
+            self.traded_today = True
+        except Exception as e:
+            self.log_message(f"Error executing bullish entry: {e}")
+
+    def _execute_bearish_entry(self, current_price, order_block):
+        """Execute bearish entry at order block resistance"""
+        try:
+            self.entry_point = order_block["high"]
+            self.stop_loss = order_block["high"] + (order_block["high"] - order_block["low"]) * 0.5
+            self.take_profit = current_price - (self.stop_loss - current_price) * self.risk_reward_ratio
+            
+            quantity = calculate_quantity(self, self.asset, self.stop_loss)
+            
+            if quantity <= 0:
+                self.log_message("Insufficient funds for bearish entry")
+                return
+            
+            order = self.create_order(
+                self.symbol, quantity, "sell",
+                limit_price=self.entry_point,
+                stop_price=self.stop_loss
+            )
+            self.submit_order(order)
+            
+            self.log_message(
+                f"[BEARISH ENTRY] Entry: {self.entry_point}, SL: {self.stop_loss}, TP: {self.take_profit}"
+            )
+            self.traded_today = True
+        except Exception as e:
+            self.log_message(f"Error executing bearish entry: {e}")
+
+    def _manage_position(self):
+        """Manage active positions using ICT framework"""
+        try:
+            positions = self.get_positions()
+            
+            if not positions:
+                return
+            
+            last_price = self.get_last_price(self.symbol)
+            
+            for position in positions:
+                if position.quantity > 0:
+                    if last_price >= self.take_profit:
+                        self._close_position(position)
+                
+                elif position.quantity < 0:
+                    if last_price <= self.take_profit:
+                        self._close_position(position)
+        except Exception as e:
+            self.log_message(f"Error managing position: {e}")
+
+    def _close_position(self, position):
+        """Close a position at market price"""
+        try:
+            order = self.create_order(
+                position.asset,
+                position.quantity,
+                "sell" if position.quantity > 0 else "buy",
+                order_type="market"
+            )
+            self.submit_order(order)
+            self.log_message(f"Position closed at market price")
+            self.entry_point = None
+            self.traded_today = True
+        except Exception as e:
+            self.log_message(f"Error closing position: {e}")
+
+
 def calculate_quantity(self, asset, stop_loss=None):
     """Quantity Calculator for Stocks and Forex"""
         
