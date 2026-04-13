@@ -6,8 +6,6 @@ import pytz
 from lumibot.strategies.strategy import Strategy
 from lumibot.entities import Asset
 
-from fetch_trends import FetchTrends
-
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 
@@ -22,17 +20,6 @@ def get_azure_secret(name):
     except Exception as e:
         print(f"Error fetching {name}: {e}")
         return None
-
-NEWS_API_KEY = get_azure_secret("NEWS-API-KEY")
-GEMINI_API_KEY = get_azure_secret("GEMINI-API-KEY")
-NIGERIAN_TZ = pytz.timezone("Africa/Lagos")
-
-
-def _to_nigerian_time(dt):
-    if dt.tzinfo is None:
-        return NIGERIAN_TZ.localize(dt)
-    return dt.astimezone(NIGERIAN_TZ)
-
 
 class LiquiditySweep(Strategy):
     """
@@ -159,74 +146,6 @@ class LiquiditySweep(Strategy):
                     self.submit_order(order)
                     self.traded_today = True
 
-class TrendStrategy(Strategy):
-    """
-    Trend Strategy - AI-Powered Sentiment Analysis
-    
-    ⏰ TIME ZONE: ALL TIMES ARE IN NIGERIAN TIME (UTC+1)
-    - All timestamps in logs: Nigerian Time (UTC+1), not UTC
-    - When backtesting shows times: interpret as NGT
-    - Conversions: 01:00 NGT = 00:00 UTC, etc.
-    """
-    def initialize(self):
-        self.result = FetchTrends(NEWS_API_KEY, GEMINI_API_KEY)
-        self.sleeptime = "5M"
-        self.set_market("24/5")
-        self.risk_amount = 25
-    
-    def on_trading_iteration(self):
-
-        dt = self.get_datetime()
-
-        date = dt.date()
-        time = dt.time()
-
-        payload = json.loads(self.result.get_ai_response())
-        signals = payload.get("signals", [])
-        self.order_sent = False
-
-        if not signals:
-            return
-
-        for signal in signals:
-            ticker = signal["ticker"]
-            score = signal["sentiment_score"]
-            reason = signal["reason"]
-
-            asset = Asset(symbol=ticker, asset_type="stock")
-            
-            try:
-                self.broker.select_symbol(asset)
-            except Exception:
-                self.log_message(f"Could not enable {ticker}. Skipping...")
-                continue
-
-            if score > 0.7:
-                pos = self.get_position(asset)
-                if pos is None:
-                    quantity = calculate_quantity(self, asset)
-
-                    if quantity <= 0:
-                        self.log_message(f"Skipping {ticker}. Price is too high for $25 trade limit.")
-                        continue
-                    
-                    order = self.create_order(asset, quantity, "buy", order_type="market")
-                    self.submit_order(order)
-                    self.log_message(f"{date} - {time} BUY {ticker} | Score: {score} | Reason: {reason}")
-                    self.order_sent = True
-
-            elif score <= -0.5:
-                pos = self.get_position(asset)
-                if pos is not None:
-
-                    order = self.create_order(asset, pos.quantity, "sell", order_type="market")
-                    self.submit_order(order)
-                    self.log_message(f"{date} - {time} SELL {ticker} | Score: {score} | Reason: {signal['reason']}")
-                    self.order_sent = True
-
-        if not self.order_sent:
-            self.log_message("No Orders Made... Unto the Next")
-    
 class ACB(Strategy):
     """
     Asian Close Break (ACB) Strategy
@@ -622,699 +541,447 @@ class SMTDivergence(Strategy):
                 self.get_portfolio_value(),
                 self.max_daily_drawdown_pct,
             )
-            
-class ICT2022Strategy(Strategy):
-    """
-    ICT 2022 Model (institutional workflow):
-    1. Determine daily bias.
-    2. Mark liquidity levels (previous day, Asian, and London range).
-    3. Wait for a liquidity sweep in London/NY kill zones.
-    4. Confirm Market Structure Shift (MSS).
-    5. Identify PD array (FVG/Order Block) in premium/discount context.
-    6. Enter on retracement to PD array with strict risk control.
 
-    ⏰ TIME ZONE: ALL TIMES ARE IN NIGERIAN TIME (UTC+1).
-    """
-
+class ICTModel(Strategy):
     def initialize(self):
-        self.symbol = self.parameters.get("symbol", "EURUSD")
-        self.sleeptime = self.parameters.get("sleeptime", "1M")
-        self.set_market("24/7")
-
+        self.symbol = self.parameters.get("symbol")
+        self.sleeptime = "1M"
         self.asset = Asset(symbol=self.symbol, asset_type="forex")
+        self.risk_amount = self.parameters.get("risk_amount", 25)
+        self.max_daily_drawdown_pct = self.parameters.get("max_daily_drawdown_pct", 0.02)
+        self.stop_buffer_pips = self.parameters.get("stop_buffer_pips", 2)
+        self.est_tz = pytz.timezone("America/New_York")
+        self.slots = {
+            "london_open": (time(2, 0), time(5, 0)),
+            "ny_am": (time(9, 30), time(11, 0)),
+            "ny_pm": (time(13, 30), time(16, 0)),
+        }
+        self.trades_per_day = 3
+        self.current_est_date = None
+        self.daily_trade_count = 0
+        self.slot_used = {slot: False for slot in self.slots}
+        self.active_slot = None
+        self.daily_equity_start = None
+        self.drawdown_halted = False
+        self.previous_session_high = None
+        self.previous_session_low = None
+        self.session_levels_for_est_date = None
+        self.swept_high = False
+        self.swept_low = False
+        self.reversal_confirmed = None
+        self.pre_sweep_swing_low = None
+        self.pre_sweep_swing_high = None
+        self.active_fvg = None
+        self.sweep_extreme = None
+        self.pending_setup_slot = None
+        self.has_open_position = False
+        self.pending_entry_order = None
+        self.pending_entry_slot = None
+        self.entry_order_slots = {}
+        self.filled_entry_order_ids = set()
 
-        self.risk_amount = float(self.parameters.get("risk_amount", 25))
-        self.risk_reward_ratio = float(self.parameters.get("risk_reward_ratio", 3.0))
-        self.min_risk_reward = float(self.parameters.get("min_risk_reward", 3.0))
-        self.max_positions = int(self.parameters.get("max_positions", 1))
-
-        self.history_bars = int(self.parameters.get("history_bars", 2200))
-        self.sweep_lookback_bars = int(self.parameters.get("sweep_lookback_bars", 120))
-        self.mss_lookback_bars = int(self.parameters.get("mss_lookback_bars", 120))
-        self.fvg_lookback_bars = int(self.parameters.get("fvg_lookback_bars", 180))
-        self.signal_valid_minutes = int(self.parameters.get("signal_valid_minutes", 90))
-
-        self.last_state_date = None
-        self.previous_day_date = None
-        self.previous_day_high = None
-        self.previous_day_low = None
-        self.previous_day_open = None
-        self.previous_day_close = None
-
-        self.asian_session_high = None
-        self.asian_session_low = None
-        self.london_range_high = None
-        self.london_range_low = None
-
-        self.daily_bias = None
-        self.traded_today = False
-
-        self.liquidity_event = None
-        self.mss_event = None
-        self.entry_zone = None
-        self.active_trade = None
-
-    def _reset_daily_state(self):
-        self.asian_session_high = None
-        self.asian_session_low = None
-        self.london_range_high = None
-        self.london_range_low = None
-        self.daily_bias = None
-        self.traded_today = False
-        self.liquidity_event = None
-        self.mss_event = None
-        self.entry_zone = None
-        self.active_trade = None
-
-    def before_market_opens(self):
-        self._reset_daily_state()
-
-    def on_trading_iteration(self):
-        dt = _to_nigerian_time(self.get_datetime())
-        current_time = dt.time()
-        current_date = dt.date()
-
-        if self.last_state_date != current_date:
-            self.last_state_date = current_date
-            self._reset_daily_state()
-
-        minute_df = self._get_minute_data(self.history_bars)
-        if minute_df is None:
-            return
-
-        self._update_reference_levels(minute_df, current_date, current_time)
-        self._manage_position()
-
-        if self.traded_today:
-            return
-
-        if len(self._asset_positions()) >= self.max_positions:
-            return
-
-        if not self._is_killzone(current_time):
-            return
-
-        self.daily_bias = self._determine_daily_bias(minute_df, current_date)
-        if self.daily_bias is None:
-            return
-
-        if self.liquidity_event is None:
-            self.liquidity_event = self._detect_liquidity_sweep(minute_df, dt)
-            if self.liquidity_event is None:
-                return
-            self.log_message(
-                f"[LIQUIDITY SWEEP] {self.liquidity_event['swept_name']} swept -> "
-                f"{self.liquidity_event['trade_direction']}"
-            )
-
-        if self.mss_event is None:
-            self.mss_event = self._confirm_market_structure_shift(minute_df, self.liquidity_event)
-            if self.mss_event is None:
-                return
-            self.log_message(
-                f"[MSS] {self.mss_event['direction']} confirmed at pivot {self.mss_event['pivot_price']}"
-            )
-
-        if self.entry_zone is None:
-            self.entry_zone = self._select_entry_zone(minute_df, self.mss_event)
-            if self.entry_zone is None:
-                return
-            self.log_message(
-                f"[PD ARRAY] {self.entry_zone['type']} "
-                f"{self.entry_zone['low']:.5f}-{self.entry_zone['high']:.5f}"
-            )
-
-        if self._setup_invalidated(minute_df):
-            self.log_message("[ICT RESET] Setup invalidated before entry.")
-            self._clear_setup()
-            return
-
-        self._execute_entry_if_ready(minute_df, dt)
-
-    def _get_minute_data(self, lookback_bars):
-        bars = self.get_historical_prices(self.asset, lookback_bars, "minute")
+    def _extract_price_df(self, bars):
         if bars is None:
             return None
-
-        df = bars.pandas_df if hasattr(bars, "pandas_df") else bars
+        if isinstance(bars, pd.DataFrame):
+            df = bars
+        elif hasattr(bars, "pandas_df"):
+            df = bars.pandas_df
+        else:
+            return None
         if df is None or df.empty:
             return None
+        return df.sort_index()
 
-        if not isinstance(df.index, pd.DatetimeIndex):
-            if "datetime" not in df.columns:
-                return None
-            df = df.copy()
-            df["datetime"] = pd.to_datetime(df["datetime"])
-            df = df.set_index("datetime")
+    def _to_est_datetime(self, dt):
+        if dt.tzinfo is None:
+            dt = pytz.UTC.localize(dt)
+        return dt.astimezone(self.est_tz)
 
-        if df.index.tz is None:
-            df.index = df.index.tz_localize(NIGERIAN_TZ)
-        else:
-            df = df.tz_convert(NIGERIAN_TZ)
-
-        required_columns = ["open", "high", "low", "close"]
-        if not set(required_columns).issubset(df.columns):
-            return None
-
-        df = df.sort_index()
-        return df[required_columns].dropna()
-
-    def _update_reference_levels(self, minute_df, current_date, current_time):
-        previous_days = minute_df[minute_df.index.date < current_date]
-        if not previous_days.empty:
-            last_prev_date = previous_days.index[-1].date()
-            if self.previous_day_date != last_prev_date:
-                previous_day_data = minute_df[minute_df.index.date == last_prev_date]
-                self.previous_day_date = last_prev_date
-                self.previous_day_high = float(previous_day_data["high"].max())
-                self.previous_day_low = float(previous_day_data["low"].min())
-                self.previous_day_open = float(previous_day_data["open"].iloc[0])
-                self.previous_day_close = float(previous_day_data["close"].iloc[-1])
-                self.log_message(
-                    f"[PREVIOUS DAY] High: {self.previous_day_high}, Low: {self.previous_day_low}"
-                )
-
-        today_data = minute_df[minute_df.index.date == current_date]
-        if today_data.empty:
-            return
-
-        if self.asian_session_high is None and current_time >= time(9, 0):
-            asian_data = today_data.between_time("01:00", "08:59")
-            if not asian_data.empty:
-                self.asian_session_high = float(asian_data["high"].max())
-                self.asian_session_low = float(asian_data["low"].min())
-                self.log_message(
-                    f"[ASIAN SESSION 01:00-09:00 NGT] High: {self.asian_session_high}, "
-                    f"Low: {self.asian_session_low}"
-                )
-
-        if self.london_range_high is None and current_time >= time(13, 30):
-            london_data = today_data.between_time("08:00", "13:29")
-            if not london_data.empty:
-                self.london_range_high = float(london_data["high"].max())
-                self.london_range_low = float(london_data["low"].min())
-                self.log_message(
-                    f"[LONDON RANGE 08:00-13:30 NGT] High: {self.london_range_high}, "
-                    f"Low: {self.london_range_low}"
-                )
-
-    def _determine_daily_bias(self, minute_df, current_date):
-        if self.previous_day_high is None or self.previous_day_low is None:
-            return None
-
-        today_data = minute_df[minute_df.index.date == current_date]
-        if today_data.empty:
-            return None
-
-        today_high = float(today_data["high"].max())
-        today_low = float(today_data["low"].min())
-        current_close = float(today_data["close"].iloc[-1])
-
-        if today_low < self.previous_day_low and current_close > self.previous_day_low:
-            return "BULLISH"
-
-        if today_high > self.previous_day_high and current_close < self.previous_day_high:
-            return "BEARISH"
-
-        if self.asian_session_high is not None and self.asian_session_low is not None:
-            asian_midpoint = (self.asian_session_high + self.asian_session_low) / 2
-            if current_close > asian_midpoint:
-                return "BULLISH"
-            if current_close < asian_midpoint:
-                return "BEARISH"
-
-        if self.previous_day_close is None or self.previous_day_open is None:
-            return None
-
-        if self.previous_day_close > self.previous_day_open:
-            return "BULLISH"
-        if self.previous_day_close < self.previous_day_open:
-            return "BEARISH"
-
+    def _active_slot_for_time(self, est_time):
+        for slot_name, (start, end) in self.slots.items():
+            if start <= est_time < end:
+                return slot_name
         return None
 
-    def _is_killzone(self, current_time):
-        london_killzone = time(8, 0) <= current_time < time(11, 0)
-        new_york_killzone = time(13, 30) <= current_time < time(16, 0)
-        return london_killzone or new_york_killzone
+    def _pip_value(self):
+        return 0.01 if "JPY" in self.symbol.upper() else 0.0001
 
-    def _active_liquidity_levels(self, current_time):
-        levels = []
+    def _reset_daily_state(self, est_date):
+        self.current_est_date = est_date
+        self.daily_trade_count = 0
+        self.slot_used = {slot: False for slot in self.slots}
+        self.drawdown_halted = False
+        self.daily_equity_start = self.get_portfolio_value()
+        self.previous_session_high = None
+        self.previous_session_low = None
+        self.session_levels_for_est_date = None
+        self.entry_order_slots = {}
+        self.filled_entry_order_ids = set()
+        self.pending_entry_order = None
+        self.pending_entry_slot = None
+        self._reset_setup_state()
+        if hasattr(self.broker, "reset_daily_drawdown"):
+            self.broker.reset_daily_drawdown(self, est_date, self.daily_equity_start)
 
-        if self.asian_session_high is not None and self.asian_session_low is not None:
-            levels.append({"name": "ASIAN_HIGH", "price": self.asian_session_high, "sweep_side": "HIGH"})
-            levels.append({"name": "ASIAN_LOW", "price": self.asian_session_low, "sweep_side": "LOW"})
+    def _reset_setup_state(self):
+        self.swept_high = False
+        self.swept_low = False
+        self.reversal_confirmed = None
+        self.pre_sweep_swing_low = None
+        self.pre_sweep_swing_high = None
+        self.active_fvg = None
+        self.sweep_extreme = None
+        self.pending_setup_slot = None
 
-        if self.previous_day_high is not None and self.previous_day_low is not None:
-            levels.append({"name": "PDH", "price": self.previous_day_high, "sweep_side": "HIGH"})
-            levels.append({"name": "PDL", "price": self.previous_day_low, "sweep_side": "LOW"})
+    def _has_open_position(self):
+        position = self.get_position(self.asset)
+        return position is not None and getattr(position, "quantity", 0) != 0
 
-        if current_time >= time(13, 30) and self.london_range_high is not None and self.london_range_low is not None:
-            levels.append({"name": "LONDON_HIGH", "price": self.london_range_high, "sweep_side": "HIGH"})
-            levels.append({"name": "LONDON_LOW", "price": self.london_range_low, "sweep_side": "LOW"})
+    def _cancel_pending_entry(self, reason):
+        if self.pending_entry_order is None:
+            return
+        if hasattr(self.broker, "cancel_order"):
+            self.broker.cancel_order(self.pending_entry_order)
+        self.log_message(f"[ORDER CANCELED] Pending entry canceled: {reason}")
+        self.pending_entry_order = None
+        self.pending_entry_slot = None
+        self._reset_setup_state()
 
-        return levels
+    def _mark_entry_filled(self, filled_slot, order_id=None):
+        if filled_slot is None:
+            return
+        if order_id is not None:
+            if order_id in self.filled_entry_order_ids:
+                return
+            self.filled_entry_order_ids.add(order_id)
+            self.entry_order_slots.pop(order_id, None)
+        if not self.slot_used.get(filled_slot, False):
+            self.slot_used[filled_slot] = True
+            self.daily_trade_count += 1
+            self.log_message(
+                f"[ENTRY FILLED] Slot: {filled_slot} | Daily Trades: {self.daily_trade_count}/3"
+            )
 
-    def _compute_atr(self, minute_df, length=14):
-        if len(minute_df) < length + 2:
-            return 0.0
+    def _is_drawdown_halted(self, est_date):
+        equity_now = self.get_portfolio_value()
+        if self.daily_equity_start is None:
+            self.daily_equity_start = equity_now
 
-        high_low = minute_df["high"] - minute_df["low"]
-        high_close = (minute_df["high"] - minute_df["close"].shift(1)).abs()
-        low_close = (minute_df["low"] - minute_df["close"].shift(1)).abs()
-        true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-        atr = true_range.rolling(length).mean().iloc[-1]
-        return float(atr) if pd.notna(atr) else 0.0
+        if hasattr(self.broker, "is_daily_drawdown_halted"):
+            halted, _, _ = self.broker.is_daily_drawdown_halted(
+                self, est_date, self.daily_equity_start, self.max_daily_drawdown_pct
+            )
+            return halted
 
-    def _sweep_buffer(self, minute_df):
-        atr = self._compute_atr(minute_df, 14)
-        return max(atr * 0.05, 0.00003)
+        max_loss = self.daily_equity_start * self.max_daily_drawdown_pct
+        return equity_now <= (self.daily_equity_start - max_loss)
 
-    def _has_displacement(self, minute_df, direction):
-        recent = minute_df.tail(30)
-        if len(recent) < 10:
-            return False
-
-        body_sizes = (recent["close"] - recent["open"]).abs()
-        baseline = float(body_sizes.iloc[:-5].tail(20).mean())
-        if baseline <= 0:
-            return False
-
-        if direction == "BULLISH":
-            impulse = recent.tail(5)["close"] - recent.tail(5)["open"]
-            return bool((impulse > baseline * 1.5).any())
-
-        impulse = recent.tail(5)["open"] - recent.tail(5)["close"]
-        return bool((impulse > baseline * 1.5).any())
-
-    def _detect_liquidity_sweep(self, minute_df, current_dt):
-        lookback = minute_df.tail(self.sweep_lookback_bars)
-        if len(lookback) < 10:
-            return None
-
-        buffer = self._sweep_buffer(lookback)
-        last_close = float(lookback["close"].iloc[-1])
-        levels = self._active_liquidity_levels(current_dt.time())
-        if not levels:
-            return None
-
-        valid_after = lookback.index[-1] - timedelta(minutes=self.signal_valid_minutes)
-        candidates = []
-
-        for level in levels:
-            price = float(level["price"])
-            if level["sweep_side"] == "HIGH":
-                swept_rows = lookback[lookback["high"] > price + buffer]
-                swept_rows = swept_rows[swept_rows.index >= valid_after]
-                if swept_rows.empty:
-                    continue
-                if self.daily_bias != "BEARISH" or last_close >= price:
-                    continue
-                if not self._has_displacement(lookback, "BEARISH"):
-                    continue
-                candidates.append(
-                    {
-                        "trade_direction": "BEARISH",
-                        "swept_name": level["name"],
-                        "swept_level": price,
-                        "sweep_price": float(swept_rows["high"].iloc[-1]),
-                        "sweep_time": swept_rows.index[-1],
-                    }
-                )
-            else:
-                swept_rows = lookback[lookback["low"] < price - buffer]
-                swept_rows = swept_rows[swept_rows.index >= valid_after]
-                if swept_rows.empty:
-                    continue
-                if self.daily_bias != "BULLISH" or last_close <= price:
-                    continue
-                if not self._has_displacement(lookback, "BULLISH"):
-                    continue
-                candidates.append(
-                    {
-                        "trade_direction": "BULLISH",
-                        "swept_name": level["name"],
-                        "swept_level": price,
-                        "sweep_price": float(swept_rows["low"].iloc[-1]),
-                        "sweep_time": swept_rows.index[-1],
-                    }
-                )
-
-        if not candidates:
-            return None
-
-        candidates.sort(key=lambda item: item["sweep_time"])
-        return candidates[-1]
-
-    def _find_fractal_swing(self, minute_df, swing_type):
-        if len(minute_df) < 7:
-            return None, None
-
-        highs = minute_df["high"].values
-        lows = minute_df["low"].values
-        idx = minute_df.index
-
-        for i in range(len(minute_df) - 3, 1, -1):
-            if swing_type == "HIGH":
-                if (
-                    highs[i] > highs[i - 1]
-                    and highs[i] > highs[i - 2]
-                    and highs[i] > highs[i + 1]
-                    and highs[i] > highs[i + 2]
-                ):
-                    return float(highs[i]), idx[i]
-            else:
-                if (
-                    lows[i] < lows[i - 1]
-                    and lows[i] < lows[i - 2]
-                    and lows[i] < lows[i + 1]
-                    and lows[i] < lows[i + 2]
-                ):
-                    return float(lows[i]), idx[i]
-
-        return None, None
-
-    def _confirm_market_structure_shift(self, minute_df, liquidity_event):
-        sweep_time = liquidity_event["sweep_time"]
-        trade_direction = liquidity_event["trade_direction"]
-
-        pre_sweep = minute_df[minute_df.index <= sweep_time].tail(self.mss_lookback_bars)
-        post_sweep = minute_df[minute_df.index > sweep_time].tail(self.mss_lookback_bars)
-        if len(pre_sweep) < 7 or len(post_sweep) < 3:
-            return None
-
-        if trade_direction == "BULLISH":
-            pivot_price, pivot_time = self._find_fractal_swing(pre_sweep, "HIGH")
-            if pivot_price is None:
-                return None
-            confirmation = post_sweep[post_sweep["close"] > pivot_price]
-            if confirmation.empty:
-                return None
-            confirm_time = confirmation.index[0]
-            if not self._has_displacement(post_sweep.loc[:confirm_time], "BULLISH"):
-                return None
-            return {
-                "direction": "BULLISH",
-                "pivot_price": float(pivot_price),
-                "pivot_time": pivot_time,
-                "confirmation_time": confirm_time,
-            }
-
-        pivot_price, pivot_time = self._find_fractal_swing(pre_sweep, "LOW")
-        if pivot_price is None:
-            return None
-        confirmation = post_sweep[post_sweep["close"] < pivot_price]
-        if confirmation.empty:
-            return None
-        confirm_time = confirmation.index[0]
-        if not self._has_displacement(post_sweep.loc[:confirm_time], "BEARISH"):
-            return None
-        return {
-            "direction": "BEARISH",
-            "pivot_price": float(pivot_price),
-            "pivot_time": pivot_time,
-            "confirmation_time": confirm_time,
-        }
-
-    def _dealing_range(self):
-        highs = [
-            value
-            for value in [self.previous_day_high, self.asian_session_high, self.london_range_high]
-            if value is not None
-        ]
-        lows = [
-            value
-            for value in [self.previous_day_low, self.asian_session_low, self.london_range_low]
-            if value is not None
-        ]
-
-        if not highs or not lows:
-            return None, None, None
-
-        range_high = max(highs)
-        range_low = min(lows)
-        if range_high <= range_low:
-            return None, None, None
-
-        return range_low, range_high, (range_low + range_high) / 2
-
-    def _find_fvgs(self, minute_df, direction, start_time):
-        data = minute_df[minute_df.index >= start_time].tail(self.fvg_lookback_bars)
-        if len(data) < 3:
-            return []
-
-        highs = data["high"].values
-        lows = data["low"].values
-        zones = []
-
-        for i in range(2, len(data)):
-            if direction == "BULLISH":
-                if lows[i] > highs[i - 2]:
-                    zones.append(
-                        {
-                            "type": "FVG",
-                            "direction": "BULLISH",
-                            "low": float(highs[i - 2]),
-                            "high": float(lows[i]),
-                            "created_at": data.index[i],
-                        }
-                    )
-            else:
-                if highs[i] < lows[i - 2]:
-                    zones.append(
-                        {
-                            "type": "FVG",
-                            "direction": "BEARISH",
-                            "low": float(highs[i]),
-                            "high": float(lows[i - 2]),
-                            "created_at": data.index[i],
-                        }
-                    )
-
-        return zones
-
-    def _find_order_block(self, minute_df, mss_event):
-        direction = mss_event["direction"]
-        confirm_time = mss_event["confirmation_time"]
-        data = minute_df[minute_df.index <= confirm_time].tail(20)
-        if data.empty:
-            return None
-
-        if direction == "BULLISH":
-            bearish_candles = data[data["close"] < data["open"]]
-            if bearish_candles.empty:
-                return None
-            candle = bearish_candles.iloc[-1]
-            created_at = bearish_candles.index[-1]
-        else:
-            bullish_candles = data[data["close"] > data["open"]]
-            if bullish_candles.empty:
-                return None
-            candle = bullish_candles.iloc[-1]
-            created_at = bullish_candles.index[-1]
-
-        return {
-            "type": "ORDER_BLOCK",
-            "direction": direction,
-            "low": float(candle["low"]),
-            "high": float(candle["high"]),
-            "created_at": created_at,
-        }
-
-    def _zone_in_pd_context(self, zone, direction, midpoint):
-        if midpoint is None:
+    def _update_previous_session_levels(self, est_date):
+        if (
+            self.session_levels_for_est_date == est_date
+            and self.previous_session_high is not None
+            and self.previous_session_low is not None
+        ):
             return True
 
-        zone_mid = (zone["low"] + zone["high"]) / 2
-        if direction == "BULLISH":
-            return zone_mid <= midpoint
-        return zone_mid >= midpoint
-
-    def _select_entry_zone(self, minute_df, mss_event):
-        _, _, midpoint = self._dealing_range()
-        direction = mss_event["direction"]
-
-        fvgs = self._find_fvgs(minute_df, direction, mss_event["confirmation_time"])
-        valid_fvgs = [zone for zone in fvgs if self._zone_in_pd_context(zone, direction, midpoint)]
-        if valid_fvgs:
-            return valid_fvgs[-1]
-
-        order_block = self._find_order_block(minute_df, mss_event)
-        if order_block is not None and self._zone_in_pd_context(order_block, direction, midpoint):
-            return order_block
-
-        return None
-
-    def _setup_invalidated(self, minute_df):
-        if self.liquidity_event is None:
+        minute_df = self._extract_price_df(self.get_historical_prices(self.asset, 1800, "minute"))
+        if minute_df is None:
             return False
 
-        last_close = float(minute_df["close"].iloc[-1])
-        buffer = self._sweep_buffer(minute_df.tail(30))
-        sweep_price = float(self.liquidity_event["sweep_price"])
-        direction = self.liquidity_event["trade_direction"]
+        est_index = minute_df.index
+        if getattr(est_index, "tz", None) is None:
+            est_index = est_index.tz_localize("UTC")
+        est_index = est_index.tz_convert(self.est_tz)
+        est_dates = pd.Series(est_index.date, index=minute_df.index)
+        previous_dates = sorted({d for d in est_dates.unique() if d < est_date})
+        if not previous_dates:
+            return False
 
-        if direction == "BULLISH":
-            return last_close < sweep_price - buffer
-        return last_close > sweep_price + buffer
+        previous_session_date = previous_dates[-1]
+        previous_session_df = minute_df[est_dates == previous_session_date]
+        if previous_session_df.empty:
+            return False
 
-    def _nearest_liquidity_target(self, entry_price, direction):
-        highs = [
-            value
-            for value in [self.asian_session_high, self.previous_day_high, self.london_range_high]
-            if value is not None and value > entry_price
-        ]
-        lows = [
-            value
-            for value in [self.asian_session_low, self.previous_day_low, self.london_range_low]
-            if value is not None and value < entry_price
-        ]
-
-        if direction == "BULLISH":
-            return min(highs) if highs else None
-        return max(lows) if lows else None
-
-    def _build_trade_plan(self, minute_df, entry_price):
-        direction = self.mss_event["direction"]
-        sweep_price = float(self.liquidity_event["sweep_price"])
-        buffer = self._sweep_buffer(minute_df.tail(40))
-
-        if direction == "BULLISH":
-            stop_loss = sweep_price - buffer
-        else:
-            stop_loss = sweep_price + buffer
-
-        risk = abs(entry_price - stop_loss)
-        if risk <= 0:
-            return None
-
-        rr_multiple = max(self.risk_reward_ratio, self.min_risk_reward)
-        liquidity_target = self._nearest_liquidity_target(entry_price, direction)
-
-        if direction == "BULLISH":
-            minimum_target = entry_price + (risk * rr_multiple)
-            take_profit = max(minimum_target, liquidity_target) if liquidity_target is not None else minimum_target
-        else:
-            minimum_target = entry_price - (risk * rr_multiple)
-            take_profit = min(minimum_target, liquidity_target) if liquidity_target is not None else minimum_target
-
-        reward = abs(take_profit - entry_price)
-        if reward <= 0:
-            return None
-
-        achieved_rr = reward / risk
-        if achieved_rr < self.min_risk_reward:
-            return None
-
-        return {
-            "direction": direction,
-            "entry_price": float(entry_price),
-            "stop_loss": float(stop_loss),
-            "take_profit": float(take_profit),
-            "risk_reward": float(achieved_rr),
-        }
-
-    def _zone_touched(self, minute_df, zone, current_price):
-        buffer = self._sweep_buffer(minute_df.tail(30))
-        return (zone["low"] - buffer) <= current_price <= (zone["high"] + buffer)
-
-    def _execute_entry_if_ready(self, minute_df, dt):
-        if self.entry_zone is None or self.active_trade is not None:
-            return
-
-        last_price = self.get_last_price(self.asset)
-        if last_price is None:
-            return
-
-        current_price = float(last_price)
-        if not self._zone_touched(minute_df, self.entry_zone, current_price):
-            return
-
-        trade_plan = self._build_trade_plan(minute_df, current_price)
-        if trade_plan is None:
-            return
-
-        quantity = calculate_quantity(self, self.asset, trade_plan["stop_loss"])
-        if quantity <= 0:
-            self.log_message("[ICT ENTRY] Quantity <= 0; skipping trade.")
-            return
-
-        side = "buy" if trade_plan["direction"] == "BULLISH" else "sell"
-        order = self.create_order(self.asset, quantity, side, order_type="market")
-        self.submit_order(order)
-
-        trade_plan["side"] = side
-        trade_plan["quantity"] = quantity
-        trade_plan["entry_time"] = dt
-        self.active_trade = trade_plan
-        self.traded_today = True
+        self.previous_session_high = float(previous_session_df["high"].max())
+        self.previous_session_low = float(previous_session_df["low"].min())
+        self.session_levels_for_est_date = est_date
+        self._reset_setup_state()
 
         self.log_message(
-            f"[ICT ENTRY] {trade_plan['direction']} {self.symbol} @ {trade_plan['entry_price']:.5f} "
-            f"| SL: {trade_plan['stop_loss']:.5f} | TP: {trade_plan['take_profit']:.5f} "
-            f"| RR: {trade_plan['risk_reward']:.2f} | Zone: {self.entry_zone['type']}"
+            f"[SESSION LEVELS] Prev session high={self.previous_session_high}, "
+            f"low={self.previous_session_low}"
         )
+        return True
 
-        self._clear_setup()
+    def _find_latest_swing_low(self, df):
+        lows = df["low"].values
+        for i in range(len(lows) - 2, 0, -1):
+            if lows[i] < lows[i - 1] and lows[i] < lows[i + 1]:
+                return float(lows[i])
+        return None
 
-    def _asset_positions(self):
-        positions = self.get_positions()
-        if not positions:
-            return []
+    def _find_latest_swing_high(self, df):
+        highs = df["high"].values
+        for i in range(len(highs) - 2, 0, -1):
+            if highs[i] > highs[i - 1] and highs[i] > highs[i + 1]:
+                return float(highs[i])
+        return None
 
-        matched = []
-        for position in positions:
-            position_asset = getattr(position, "asset", None)
-            symbol = getattr(position_asset, "symbol", None)
-            if symbol == self.asset.symbol and position.quantity != 0:
-                matched.append(position)
-        return matched
+    def _is_displacement_break(self, closed_df):
+        if len(closed_df) < 21:
+            return False
 
-    def _manage_position(self):
-        if self.active_trade is None:
+        break_candle = closed_df.iloc[-1]
+        prior_candles = closed_df.iloc[-21:-1]
+
+        average_range = (prior_candles["high"] - prior_candles["low"]).mean()
+        candle_range = break_candle["high"] - break_candle["low"]
+        candle_body = abs(break_candle["close"] - break_candle["open"])
+
+        if candle_range <= 0 or average_range <= 0:
+            return False
+
+        body_ratio = candle_body / candle_range
+        return body_ratio >= 0.60 and candle_range >= (1.5 * average_range)
+
+    def _fvg_from_last_three(self, closed_df, direction):
+        if len(closed_df) < 3:
+            return None
+
+        first = closed_df.iloc[-3]
+        third = closed_df.iloc[-1]
+
+        if direction == "bullish":
+            if float(first["high"]) < float(third["low"]):
+                lower = float(first["high"])
+                upper = float(third["low"])
+                return lower, upper
+        elif direction == "bearish":
+            if float(first["low"]) > float(third["high"]):
+                lower = float(third["high"])
+                upper = float(first["low"])
+                return lower, upper
+        return None
+
+    def on_trading_iteration(self):
+        dt = self.get_datetime()
+        est_dt = self._to_est_datetime(dt)
+        est_date = est_dt.date()
+        est_time = est_dt.time()
+
+        if self.current_est_date != est_date:
+            self._cancel_pending_entry("EST day reset")
+            self._reset_daily_state(est_date)
+
+        self.has_open_position = self._has_open_position()
+
+        if self.daily_trade_count >= self.trades_per_day:
             return
 
-        positions = self._asset_positions()
-        if not positions:
-            self.active_trade = None
+        self.drawdown_halted = self._is_drawdown_halted(est_date)
+        if self.drawdown_halted:
+            self._cancel_pending_entry("daily drawdown halt")
+            return
+
+        active_slot = self._active_slot_for_time(est_time)
+        if self.pending_entry_order is not None and active_slot != self.pending_entry_slot:
+            self._cancel_pending_entry("killzone ended")
+            return
+
+        if active_slot is None or self.slot_used.get(active_slot, False):
+            self.active_slot = None
+            if not self.has_open_position:
+                self._reset_setup_state()
+            return
+
+        if self.active_slot != active_slot and not self.has_open_position:
+            self.active_slot = active_slot
+            self._reset_setup_state()
+
+        if not self._update_previous_session_levels(est_date):
+            return
+
+        minute_df = self._extract_price_df(self.get_historical_prices(self.asset, 60, "minute"))
+        if minute_df is None or len(minute_df) < 25:
+            return
+
+        closed_df = minute_df.iloc[:-1]
+        if closed_df.empty:
+            return
+
+        if self.has_open_position:
+            if self.pending_entry_order is not None and self.pending_entry_slot is not None:
+                self._mark_entry_filled(
+                    self.pending_entry_slot,
+                    getattr(self.pending_entry_order, "identifier", None),
+                )
+            self.pending_entry_order = None
+            self.pending_entry_slot = None
+            self._reset_setup_state()
             return
 
         last_price = self.get_last_price(self.asset)
         if last_price is None:
             return
 
-        current_price = float(last_price)
-        side = self.active_trade["side"]
-        stop_loss = self.active_trade["stop_loss"]
-        take_profit = self.active_trade["take_profit"]
+        if not self.swept_high and not self.swept_low:
+            current_candle_high = float(minute_df.iloc[-1]["high"])
+            current_candle_low = float(minute_df.iloc[-1]["low"])
+            if last_price > self.previous_session_high:
+                self.swept_high = True
+                self.pre_sweep_swing_low = self._find_latest_swing_low(closed_df)
+                self.sweep_extreme = max(current_candle_high, float(self.previous_session_high))
+                self.pending_setup_slot = active_slot
+                self.log_message(
+                    f"[SWEEP] Price swept previous session high "
+                    f"({self.previous_session_high}) at {last_price}"
+                )
+            elif last_price < self.previous_session_low:
+                self.swept_low = True
+                self.pre_sweep_swing_high = self._find_latest_swing_high(closed_df)
+                self.sweep_extreme = min(current_candle_low, float(self.previous_session_low))
+                self.pending_setup_slot = active_slot
+                self.log_message(
+                    f"[SWEEP] Price swept previous session low "
+                    f"({self.previous_session_low}) at {last_price}"
+                )
+            return
 
-        if side == "buy":
-            if current_price <= stop_loss:
-                for position in positions:
-                    self._close_position(position, current_price, "STOP LOSS")
-            elif current_price >= take_profit:
-                for position in positions:
-                    self._close_position(position, current_price, "TAKE PROFIT")
+        if self.pending_setup_slot != active_slot:
+            self._reset_setup_state()
+            return
+
+        current_candle_high = float(minute_df.iloc[-1]["high"])
+        current_candle_low = float(minute_df.iloc[-1]["low"])
+        if self.swept_high:
+            self.sweep_extreme = max(float(self.sweep_extreme), current_candle_high)
+        elif self.swept_low:
+            self.sweep_extreme = min(float(self.sweep_extreme), current_candle_low)
+
+        if self.swept_high and self.reversal_confirmed is None:
+            if (
+                last_price < self.previous_session_high
+                and self.pre_sweep_swing_low is not None
+                and len(closed_df) >= 2
+            ):
+                previous_close = float(closed_df.iloc[-2]["close"])
+                break_close = float(closed_df.iloc[-1]["close"])
+                if (
+                    previous_close >= self.pre_sweep_swing_low
+                    and break_close < self.pre_sweep_swing_low
+                    and self._is_displacement_break(closed_df)
+                ):
+                    bearish_fvg = self._fvg_from_last_three(closed_df, "bearish")
+                    if bearish_fvg is not None:
+                        self.reversal_confirmed = "bearish"
+                        self.active_fvg = {
+                            "direction": "bearish",
+                            "lower": bearish_fvg[0],
+                            "upper": bearish_fvg[1],
+                        }
+                        self.log_message(
+                            f"[REVERSAL CONFIRMED] Bearish displaced MSS after high sweep. "
+                            f"Break close {break_close} below pre-sweep swing low "
+                            f"{self.pre_sweep_swing_low}. FVG: {bearish_fvg[0]}-{bearish_fvg[1]}"
+                        )
+
+        elif self.swept_low and self.reversal_confirmed is None:
+            if (
+                last_price > self.previous_session_low
+                and self.pre_sweep_swing_high is not None
+                and len(closed_df) >= 2
+            ):
+                previous_close = float(closed_df.iloc[-2]["close"])
+                break_close = float(closed_df.iloc[-1]["close"])
+                if (
+                    previous_close <= self.pre_sweep_swing_high
+                    and break_close > self.pre_sweep_swing_high
+                    and self._is_displacement_break(closed_df)
+                ):
+                    bullish_fvg = self._fvg_from_last_three(closed_df, "bullish")
+                    if bullish_fvg is not None:
+                        self.reversal_confirmed = "bullish"
+                        self.active_fvg = {
+                            "direction": "bullish",
+                            "lower": bullish_fvg[0],
+                            "upper": bullish_fvg[1],
+                        }
+                        self.log_message(
+                            f"[REVERSAL CONFIRMED] Bullish displaced MSS after low sweep. "
+                            f"Break close {break_close} above pre-sweep swing high "
+                            f"{self.pre_sweep_swing_high}. FVG: {bullish_fvg[0]}-{bullish_fvg[1]}"
+                        )
+
+        if self.reversal_confirmed is None or self.active_fvg is None:
+            return
+
+        if self.pending_entry_order is not None:
+            return
+
+        fvg_midpoint = (self.active_fvg["lower"] + self.active_fvg["upper"]) / 2
+        entry_side = "buy" if self.reversal_confirmed == "bullish" else "sell"
+
+        stop_buffer = self.stop_buffer_pips * self._pip_value()
+        if entry_side == "buy":
+            stop_price = float(self.sweep_extreme) - stop_buffer
+            opposing_liquidity_tp = float(self.previous_session_high)
+            fallback_tp = fvg_midpoint + (2 * (fvg_midpoint - stop_price))
+            take_profit = opposing_liquidity_tp if opposing_liquidity_tp > fvg_midpoint else fallback_tp
         else:
-            if current_price >= stop_loss:
-                for position in positions:
-                    self._close_position(position, current_price, "STOP LOSS")
-            elif current_price <= take_profit:
-                for position in positions:
-                    self._close_position(position, current_price, "TAKE PROFIT")
+            stop_price = float(self.sweep_extreme) + stop_buffer
+            opposing_liquidity_tp = float(self.previous_session_low)
+            fallback_tp = fvg_midpoint - (2 * (stop_price - fvg_midpoint))
+            take_profit = opposing_liquidity_tp if opposing_liquidity_tp < fvg_midpoint else fallback_tp
 
-    def _close_position(self, position, price, reason):
-        exit_side = "sell" if position.quantity > 0 else "buy"
-        order = self.create_order(position.asset, abs(position.quantity), exit_side, order_type="market")
+        if abs(fvg_midpoint - stop_price) <= 0:
+            self._reset_setup_state()
+            return
+
+        quantity = calculate_quantity(self, self.asset, stop_price)
+        if quantity <= 0:
+            self._reset_setup_state()
+            return
+
+        order = self.create_order(
+            self.asset,
+            quantity,
+            entry_side,
+            order_type="limit",
+            limit_price=fvg_midpoint,
+        )
+        order.stop_loss_price = stop_price
+        order.take_profit_price = take_profit
         self.submit_order(order)
-        self.log_message(f"[ICT EXIT] {reason} @ {price:.5f}")
-        self.active_trade = None
 
-    def _clear_setup(self):
-        self.liquidity_event = None
-        self.mss_event = None
-        self.entry_zone = None
+        if getattr(order, "status", None) == "error":
+            self._reset_setup_state()
+            return
 
+        if getattr(order, "identifier", None):
+            self.entry_order_slots[order.identifier] = active_slot
+        self.pending_entry_order = order
+        self.pending_entry_slot = active_slot
+        self.log_message(
+            f"[ENTRY ORDER] {entry_side.upper()} {self.symbol} limit @ CE {fvg_midpoint} | "
+            f"SL: {stop_price} | TP: {take_profit} | Slot: {active_slot} | "
+            f"Daily Trades: {self.daily_trade_count}/3"
+        )
+
+    def on_filled_order(self, position, order, price, quantity, multiplier):
+        order_id = getattr(order, "identifier", None)
+        if order_id is None:
+            return
+        if order_id not in self.entry_order_slots:
+            return
+
+        filled_slot = self.entry_order_slots.get(order_id)
+        self._mark_entry_filled(filled_slot, order_id)
+
+        if self.pending_entry_order is not None and getattr(self.pending_entry_order, "identifier", None) == order_id:
+            self.pending_entry_order = None
+            self.pending_entry_slot = None
+        self._reset_setup_state()
 
 def calculate_quantity(self, asset, stop_loss=None):
     """Quantity Calculator for Stocks and Forex"""

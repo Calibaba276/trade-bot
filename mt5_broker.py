@@ -294,7 +294,8 @@ class MetaTrader5(Broker):
             order.status = "error"
             return order
 
-        price = tick.ask if order.side == "buy" else tick.bid
+        market_price = tick.ask if order.side == "buy" else tick.bid
+        order_kind = str(getattr(order, "order_type", getattr(order, "type", "market"))).lower()
 
         # Lumibot may provide order.strategy as either the strategy object or its name string.
         if isinstance(order.strategy, str):
@@ -305,25 +306,51 @@ class MetaTrader5(Broker):
             strategy_name = "Unknown"
         magic_number = generate_magic_number(strategy_name)
 
-        request = {
-            "action": mt5.TRADE_ACTION_DEAL,
-            "symbol": symbol,
-            "volume": float(order.quantity),
-            "order_type": mt5.ORDER_TYPE_BUY if order.side == "buy" else mt5.ORDER_TYPE_SELL,
-            "price": price,
-            "sl": float(sl) if sl else 0.0,
-            "tp": float(tp) if tp else 0.0,
-            "magic": magic_number,
-            "comment": "Lumibot MT5 Trade",
-            "type_time": mt5.ORDER_TIME_GTC,
-            "type_filling": mt5.ORDER_FILLING_IOC,
-        }
+        if order_kind == "limit":
+            limit_price = float(getattr(order, "limit_price", 0.0) or 0.0)
+            if limit_price <= 0:
+                print(f"MT5 ERROR: Missing valid limit_price for {symbol} limit order.")
+                order.status = "error"
+                return order
+
+            request = {
+                "action": mt5.TRADE_ACTION_PENDING,
+                "symbol": symbol,
+                "volume": float(order.quantity),
+                "order_type": mt5.ORDER_TYPE_BUY_LIMIT if order.side == "buy" else mt5.ORDER_TYPE_SELL_LIMIT,
+                "price": limit_price,
+                "sl": float(sl) if sl else 0.0,
+                "tp": float(tp) if tp else 0.0,
+                "magic": magic_number,
+                "comment": "Lumibot MT5 Limit Entry",
+                "type_time": mt5.ORDER_TIME_GTC,
+                "type_filling": mt5.ORDER_FILLING_RETURN,
+            }
+        else:
+            request = {
+                "action": mt5.TRADE_ACTION_DEAL,
+                "symbol": symbol,
+                "volume": float(order.quantity),
+                "order_type": mt5.ORDER_TYPE_BUY if order.side == "buy" else mt5.ORDER_TYPE_SELL,
+                "price": market_price,
+                "sl": float(sl) if sl else 0.0,
+                "tp": float(tp) if tp else 0.0,
+                "magic": magic_number,
+                "comment": "Lumibot MT5 Trade",
+                "type_time": mt5.ORDER_TIME_GTC,
+                "type_filling": mt5.ORDER_FILLING_IOC,
+            }
 
         result = mt5.order_send(request)
 
-        if result.retcode == mt5.TRADE_RETCODE_DONE:
-            order.identifier = result.order
-            order.status = "filled"
+        placed_retcode = getattr(mt5, "TRADE_RETCODE_PLACED", None)
+        successful_retcodes = {mt5.TRADE_RETCODE_DONE}
+        if placed_retcode is not None:
+            successful_retcodes.add(placed_retcode)
+
+        if result.retcode in successful_retcodes:
+            order.identifier = result.order if result.order else result.deal
+            order.status = "submitted" if order_kind == "limit" else "filled"
         else:
             print(f"MT5 ERROR: {result.comment.upper()} | Code: {result.retcode}")
             order.status = "error"
@@ -385,4 +412,22 @@ class MetaTrader5(Broker):
     def _pull_position(self, asset): return None
     def _update_datetime(self, *args, **kwargs): pass
     def get_historical_account_value(self): return []
-    def cancel_order(self, order): return None
+    def cancel_order(self, order):
+        if order is None:
+            return None
+
+        order_id = getattr(order, "identifier", None)
+        if not order_id:
+            return None
+
+        request = {
+            "action": mt5.TRADE_ACTION_REMOVE,
+            "order": int(order_id),
+            "comment": "Lumibot MT5 Cancel Pending",
+        }
+        result = mt5.order_send(request)
+        if result.retcode == mt5.TRADE_RETCODE_DONE:
+            order.status = "canceled"
+        else:
+            print(f"MT5 CANCEL ERROR: {result.comment.upper()} | Code: {result.retcode}")
+        return order

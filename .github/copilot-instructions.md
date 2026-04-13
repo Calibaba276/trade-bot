@@ -2,21 +2,21 @@
 
 ## ⚠️ CRITICAL: Nigerian Time (UTC+1) - Read First
 
-**ALL times in backtesting results, strategy logs, and code are in Nigerian Time (UTC+1), NOT UTC.**
+**ALL times in backtesting results, strategy logs, and code are in Eastern Standard Time EST, NOT UTC.**
 
 When backtesting shows timestamps or analyzing logs:
-- **01:00-09:00 NGT** = Asian Session (00:00-08:00 UTC)
-- **08:00-17:00 NGT** = London Session (07:00-16:00 UTC)  
-- **13:30-20:00 NGT** = New York Session (12:30-19:00 UTC)
+- Asian Session (07:00 PM -04:00 AM EST)
+- London Session (03:00 AM - 12:00 PM EST)  
+- New York Session (8:00 AM - 5:00 PM EST)
 
 **Example backtest log:**
 ```
-[ASIAN SESSION 01:00-09:00 NGT] High: 1.0950, Low: 1.0820
+[ASIAN SESSION] High: 1.0950, Low: 1.0820
 [DAILY STRUCTURE] High: 1.0980, Low: 1.0800
 [BULLISH ENTRY] Entry: 1.0840 @ 09:15 NGT
 ```
 
-All those times are **Nigerian Time, not UTC.** When the strategy checks `if current_time >= time(1, 0)`, it's comparing against 01:00 NGT (which is 00:00 UTC).
+All those times are **Eastern Standard Time not UTC.** When the strategy checks `if current_time >= time(1, 0)`, it's comparing against 01:00 EST.
 
 ---
 
@@ -30,8 +30,6 @@ pip install -r requirements.txt
 **Run backtests:**
 ```bash
 python ict.py                          # ICT 2022 strategy (EURUSD)
-python ict.py single GBPUSD            # ICT 2022 on different pair
-python ict.py multi                    # ICT 2022 multi-pair
 python smt.py                          # SMT divergence strategy
 ```
 
@@ -55,7 +53,7 @@ python tester.py                       # Test MT5 broker connection
 
 **1. Strategy Definition Layer** (`lumi_trade.py`)
 - All trading strategies as classes inheriting from `lumibot.strategies.strategy.Strategy`
-- Five implemented strategies: `LiquiditySweep`, `TrendStrategy`, `ACB`, `SMTDivergence`, `ICT2022Strategy`
+- Five implemented strategies: `LiquiditySweep`, `TrendStrategy`, `ACB`, `SMTDivergence`, `ICTModel`
 - Each strategy implements: `initialize()`, `on_trading_iteration()`, helper methods
 - Shared helper: `calculate_quantity()` for position sizing based on risk
 
@@ -89,10 +87,10 @@ Results logged + statistics
 
 ## Key Conventions
 
-### Time Zone: Nigerian Time (UTC+1)
+### Time Zone: Eastern Standard Time (EST)
 
-**All strategies use Nigerian Time throughout.** This is critical for:
-- Session identification: Asian (01:00-09:00 NGT), London (08:00-17:00 NGT), NY (13:30-20:00 NGT)
+**All strategies use Eastern Standard Time throughout.** This is critical for:
+- Session identification: Asian (07:00 PM -04:00 AM EST), London (03:00 AM - 12:00 PM EST), NY (8:00 AM - 5:00 PM EST)
 - Time-based entry/exit rules
 - Backtesting results
 
@@ -157,7 +155,7 @@ def calculate_quantity(self, asset, stop_loss=None):
     return final_qty if final_qty > 0 else 0
 ```
 
-Default risk: `$25 per trade`. Configurable via `parameters={"risk_amount": 50}`.
+Default risk: `$500 per trade`. Configurable via `parameters={"risk_amount": 50}`.
 
 ### Data Fetching Pattern
 
@@ -229,7 +227,7 @@ POLYGON_API_KEY = get_azure_secret("POLYGON-API-KEY")
 ## Trading Strategy Patterns
 
 ### Market Structure Shift (MSS) Pattern
-Used in LiquiditySweep and ICT2022Strategy:
+Used in LiquiditySweep and ICTModel:
 
 1. Identify session range (high/low)
 2. Detect liquidity sweep (price breaks range)
@@ -238,7 +236,7 @@ Used in LiquiditySweep and ICT2022Strategy:
 5. Stop loss at opposite end of structure
 
 ### Institutional Order Flow Pattern
-Used in SMTDivergence and ICT2022Strategy:
+Used in SMTDivergence and ICTModel:
 
 1. Analyze two correlated assets (e.g., QQQ vs DIA)
 2. Find swing divergence (one extremes, other doesn't)
@@ -279,14 +277,14 @@ Used in TrendStrategy:
 - Coil identification in last 60 minutes
 - One trade/day, specific hours only (14:00-16:30 NGT)
 
-**4. SMTDivergence** (`lumi_trade.py:317`)
+**4. SMTDivergence** (`lumi_trade.py:254`)
 - Two-asset divergence detection (NQ vs YM)
 - Identifies institutional manipulation
 - Risk per trade: $500, configurable
 - Risk:Reward: 2:1, configurable
 - Killzone hours only (NY 13:30-16:00, London 07:00-10:00)
 
-**5. ICT2022Strategy** (`lumi_trade.py:587`)
+**5. ICTModel** (`lumi_trade.py:304`)
 - 8-phase institutional framework
 - Order blocks, fair value gaps, premium/discount zones
 - Asian session foundation (01:00-09:00 NGT)
@@ -317,18 +315,6 @@ Strategy.backtest(
     polygon_api_key=POLYGON_API_KEY,
     quiet_logs=False
 )
-```
-
-### Multi-Pair Pattern
-
-```python
-for pair in ["EURUSD", "GBPUSD", "USDJPY"]:
-    Strategy.backtest(
-        PolygonDataBacktesting,
-        start_date, end_date,
-        parameters={"symbol": pair, ...},
-        polygon_api_key=POLYGON_API_KEY
-    )
 ```
 
 **To add a new backtest runner:**

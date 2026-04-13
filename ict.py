@@ -1,4 +1,4 @@
-from lumi_trade import ICT2022Strategy
+from lumi_trade import ICTModel
 from mt5_broker import MetaTrader5
 from lumibot.backtesting import PolygonDataBacktesting
 from lumibot.traders import Trader
@@ -34,15 +34,15 @@ if __name__ == "__main__":
         start_date = datetime.strptime(BACKTESTING_START, "%Y-%m-%d")
         end_date = datetime.strptime(BACKTESTING_END, "%Y-%m-%d")
 
-        ICT2022Strategy.backtest(
+        ICTModel.backtest(
         PolygonDataBacktesting,
         start_date,
         end_date,
         parameters={
             "symbol": "C:EURUSD",
             "risk_amount": 500,
-            "risk_reward_ratio": 1.2,
-            "max_positions": 1
+            "max_daily_drawdown_pct": 0.02,
+            "stop_buffer_pips": 2
         },
         polygon_api_key=POLYGON_API_KEY,
         quiet_logs=False
@@ -54,12 +54,12 @@ if __name__ == "__main__":
             "server": SERVER
         })
 
-        strategy = ICT2022Strategy(broker=broker, 
+        strategy = ICTModel(broker=broker, 
             parameters={
             "symbol": "EURUSDm",
             "risk_amount": 500,
-            "risk_reward_ratio": 1.2,
-            "max_positions": 1
+            "max_daily_drawdown_pct": 0.02,
+            "stop_buffer_pips": 2
         })
 
         trader = Trader()
