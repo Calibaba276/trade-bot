@@ -1,4 +1,3 @@
-import os
 from lumi_trade import SMTDivergence
 from mt5_broker import MetaTrader5
 from lumibot.backtesting import PolygonDataBacktesting
