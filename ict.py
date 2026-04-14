@@ -30,7 +30,7 @@ PASSWORD = get_azure_secret("PASSWORD")
 SERVER = get_azure_secret("SERVER")
 
 if __name__ == "__main__":
-    if ISBACKTESTING:
+    if 5 < 3:
         start_date = datetime.strptime(BACKTESTING_START, "%Y-%m-%d")
         end_date = datetime.strptime(BACKTESTING_END, "%Y-%m-%d")
 
@@ -51,7 +51,9 @@ if __name__ == "__main__":
         broker = MetaTrader5({
             "login": int(ACCOUNT),
             "password": PASSWORD,
-            "server": SERVER
+            "server": SERVER,
+            "timezone": "Africa/Lagos",
+            "path": "C:\\\\Program Files\\\\SMT\\\\terminal64.exe"
         })
 
         strategy = ICTModel(broker=broker, 
