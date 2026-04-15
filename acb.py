@@ -36,7 +36,7 @@ if __name__ == "__main__":
             PolygonDataBacktesting,
             backtesting_start,
             backtesting_end,
-            parameters={"symbol": "GBPUSD=X"},
+            parameters={"symbol": "C:GBPUSD"},
             polygon_api_key=POLYGON_API_KEY,
             quiet_logs=False,
         )
