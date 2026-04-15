@@ -173,12 +173,24 @@ class ACB(Strategy):
             self.log_message(f"Error: {e}")
             return None
 
-        if df is not None and not df.empty:
-            yesterday = df.pandas_df.iloc[-1]
-            day_before = df.pandas_df.iloc[-2]
-        else:
+        if df is None or df.pandas_df.empty or len(df.pandas_df) < 2:
             self.log_message("Warning: No data found for the current signal request.")
-            return None 
+            return None
+
+        yesterday = df.pandas_df.iloc[-1]
+        day_before = df.pandas_df.iloc[-2]
+
+        required_values = {
+            "yesterday_close": yesterday.get("close"),
+            "yesterday_open": yesterday.get("open"),
+            "day_before_high": day_before.get("high"),
+            "day_before_low": day_before.get("low"),
+            "day_before_close": day_before.get("close"),
+            "day_before_open": day_before.get("open"),
+        }
+        if any(value is None or pd.isna(value) for value in required_values.values()):
+            self.log_message(f"{current_time} --- Missing daily OHLC data. Skipping signal calculation ---")
+            return "NO SIGNAL"
 
         if yesterday['close'] > day_before['high']:
             self.log_message(f"{current_time} --- EXPECTING BULLISH TREND TODAY ---")
