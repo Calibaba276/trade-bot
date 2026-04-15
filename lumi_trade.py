@@ -173,24 +173,43 @@ class ACB(Strategy):
             self.log_message(f"Error: {e}")
             return None
 
-        if df is not None and not df.empty:
-            yesterday = df.pandas_df.iloc[-1]
-            day_before = df.pandas_df.iloc[-2]
-        else:
+        if df is None or df.pandas_df.empty or len(df.pandas_df) < 2:
             self.log_message("Warning: No data found for the current signal request.")
-            return None 
+            return None
 
-        if yesterday['close'] > day_before['high']:
+        yesterday = df.pandas_df.iloc[-1]
+        day_before = df.pandas_df.iloc[-2]
+
+        try:
+            yesterday_close = float(yesterday.get("close"))
+            yesterday_open = float(yesterday.get("open"))
+            day_before_high = float(day_before.get("high"))
+            day_before_low = float(day_before.get("low"))
+            day_before_close = float(day_before.get("close"))
+            day_before_open = float(day_before.get("open"))
+        except (TypeError, ValueError):
+            self.log_message(f"{current_time} --- Missing daily OHLC data. Skipping signal calculation ---")
+            return None
+
+        values_to_check = [
+            yesterday_close, yesterday_open, day_before_high,
+            day_before_low, day_before_close, day_before_open
+        ]
+        if any(pd.isna(value) for value in values_to_check):
+            self.log_message(f"{current_time} --- Missing daily OHLC data. Skipping signal calculation ---")
+            return None
+
+        if yesterday_close > day_before_high:
             self.log_message(f"{current_time} --- EXPECTING BULLISH TREND TODAY ---")
             return "BULLISH"
-        elif yesterday['close'] > yesterday['open'] and day_before['close'] < day_before['open']:
+        elif yesterday_close > yesterday_open and day_before_close < day_before_open:
             self.log_message(f"{current_time} --- EXPECTING BULLISH TREND TODAY --- ")
             return "BULLISH"
         
-        elif yesterday['close'] < day_before['low']:
+        elif yesterday_close < day_before_low:
             self.log_message(f"{current_time} --- EXPECTING BEARISH TREND TODAY ---")
             return "BEARISH"
-        elif yesterday['close'] < yesterday['open'] and day_before['close'] > day_before['open']:
+        elif yesterday_close < yesterday_open and day_before_close > day_before_open:
             self.log_message(f"{current_time} -- EXPECTING BEARISH TREND TODAY --")
             return "BEARISH"
         
