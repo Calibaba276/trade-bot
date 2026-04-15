@@ -188,21 +188,29 @@ class ACB(Strategy):
             "day_before_close": day_before.get("close"),
             "day_before_open": day_before.get("open"),
         }
-        if any(value is None or pd.isna(value) for value in required_values.values()):
+        normalized_values = pd.to_numeric(pd.Series(required_values), errors="coerce")
+        if normalized_values.isna().any():
             self.log_message(f"{current_time} --- Missing daily OHLC data. Skipping signal calculation ---")
             return "NO SIGNAL"
 
-        if yesterday['close'] > day_before['high']:
+        yesterday_close = normalized_values["yesterday_close"]
+        yesterday_open = normalized_values["yesterday_open"]
+        day_before_high = normalized_values["day_before_high"]
+        day_before_low = normalized_values["day_before_low"]
+        day_before_close = normalized_values["day_before_close"]
+        day_before_open = normalized_values["day_before_open"]
+
+        if yesterday_close > day_before_high:
             self.log_message(f"{current_time} --- EXPECTING BULLISH TREND TODAY ---")
             return "BULLISH"
-        elif yesterday['close'] > yesterday['open'] and day_before['close'] < day_before['open']:
+        elif yesterday_close > yesterday_open and day_before_close < day_before_open:
             self.log_message(f"{current_time} --- EXPECTING BULLISH TREND TODAY --- ")
             return "BULLISH"
         
-        elif yesterday['close'] < day_before['low']:
+        elif yesterday_close < day_before_low:
             self.log_message(f"{current_time} --- EXPECTING BEARISH TREND TODAY ---")
             return "BEARISH"
-        elif yesterday['close'] < yesterday['open'] and day_before['close'] > day_before['open']:
+        elif yesterday_close < yesterday_open and day_before_close > day_before_open:
             self.log_message(f"{current_time} -- EXPECTING BEARISH TREND TODAY --")
             return "BEARISH"
         
