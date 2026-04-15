@@ -180,25 +180,24 @@ class ACB(Strategy):
         yesterday = df.pandas_df.iloc[-1]
         day_before = df.pandas_df.iloc[-2]
 
-        required_values = {
-            "yesterday_close": yesterday.get("close"),
-            "yesterday_open": yesterday.get("open"),
-            "day_before_high": day_before.get("high"),
-            "day_before_low": day_before.get("low"),
-            "day_before_close": day_before.get("close"),
-            "day_before_open": day_before.get("open"),
-        }
-        normalized_values = pd.to_numeric(pd.Series(required_values), errors="coerce")
-        if normalized_values.isna().any():
+        try:
+            yesterday_close = float(yesterday.get("close"))
+            yesterday_open = float(yesterday.get("open"))
+            day_before_high = float(day_before.get("high"))
+            day_before_low = float(day_before.get("low"))
+            day_before_close = float(day_before.get("close"))
+            day_before_open = float(day_before.get("open"))
+        except (TypeError, ValueError):
             self.log_message(f"{current_time} --- Missing daily OHLC data. Skipping signal calculation ---")
-            return "NO SIGNAL"
+            return None
 
-        yesterday_close = normalized_values["yesterday_close"]
-        yesterday_open = normalized_values["yesterday_open"]
-        day_before_high = normalized_values["day_before_high"]
-        day_before_low = normalized_values["day_before_low"]
-        day_before_close = normalized_values["day_before_close"]
-        day_before_open = normalized_values["day_before_open"]
+        values_to_check = [
+            yesterday_close, yesterday_open, day_before_high,
+            day_before_low, day_before_close, day_before_open
+        ]
+        if any(pd.isna(value) for value in values_to_check):
+            self.log_message(f"{current_time} --- Missing daily OHLC data. Skipping signal calculation ---")
+            return None
 
         if yesterday_close > day_before_high:
             self.log_message(f"{current_time} --- EXPECTING BULLISH TREND TODAY ---")
