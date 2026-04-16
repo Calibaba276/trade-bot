@@ -1,4 +1,4 @@
-from lumi_trade import LiquiditySweep
+from lumi_trade import TrendStrategy
 from mt5_broker import MetaTrader5
 from lumibot.traders import Trader
 
@@ -22,26 +22,27 @@ PASSWORD = get_azure_secret("PASSWORD")
 SERVER = get_azure_secret("SERVER")
 
 if __name__ == "__main__":
-    liquidity_sweep = MetaTrader5({
+    trend_strategy = MetaTrader5({
             "login": int(ACCOUNT),
             "password": PASSWORD,
             "server": SERVER,
             "timezone": "Africa/Lagos",
-            "path": "C:\\\\Program Files\\\\Liquidity Sweep\\\\terminal64.exe"
+            "path": "C:\\\\Program Files\\\\Trend Strategy\\\\terminal64.exe"
         })
+
     
-    ls = LiquiditySweep(
-        name="Liquidity Sweep", 
-        broker=liquidity_sweep, 
+    ts = TrendStrategy(
+        name="Trend Strategy", 
+        broker=trend_strategy,
         parameters={
-            "symbol": "EURUSDm",
             "risk_amount": 500,
             "rr_ratio": 2,
+            "stop_loss_percent": 0.02,
             "max_daily_drawdown_pct": 0.02
         }
     )
 
     trader = Trader()
-    trader.add_strategy(ls)
+    trader.add_strategy(ts)
 
     trader.run_all()

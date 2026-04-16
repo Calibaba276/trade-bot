@@ -22,6 +22,26 @@ class MetaTrader5(Broker):
         self._daily_drawdown = {}
         self._initialize_mt5()
 
+    def _initialize_mt5(self):
+
+        path = self.config.get("path")
+        
+        if not mt5.initialize(path=path):
+            raise RuntimeError(f"MT5 Initialize Failed: {mt5.last_error()}")
+
+        authorized = mt5.login(
+        login=self.config.get('login'),
+        password=self.config.get('password'),
+        server=self.config.get('server')
+        )
+
+        if not authorized:
+            error = mt5.last_error()
+            mt5.shutdown() # Close connection if login fails
+            raise RuntimeError(f"MT5 Login failed for account {self.config['login']}: {error}")
+        
+        print(f"Successfully logged into {self.config['server']} as {self.config['login']}")
+    
     def _strategy_key(self, strategy):
         if strategy is None:
             return "default"
@@ -188,26 +208,6 @@ class MetaTrader5(Broker):
 
         self.cleanup_breakeven_tracking(strategy, open_positions)
 
-    def _initialize_mt5(self):
-
-        path = self.config.get("path")
-        
-        if not mt5.initialize(path=path):
-            raise RuntimeError(f"MT5 Initialize Failed: {mt5.last_error()}")
-
-        authorized = mt5.login(
-        login=self.config.get('login'),
-        password=self.config.get('password'),
-        server=self.config.get('server')
-        )
-
-        if not authorized:
-            error = mt5.last_error()
-            mt5.shutdown() # Close connection if login fails
-            raise RuntimeError(f"MT5 Login failed for account {self.config['login']}: {error}")
-        
-        print(f"Successfully logged into {self.config['server']} as {self.config['login']}")
-    
     def _get_balances_at_broker(self, *args, **kwargs):
         """
         This is the internal source for self.get_cash() 
