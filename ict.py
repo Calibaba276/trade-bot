@@ -53,7 +53,7 @@ if __name__ == "__main__":
             "password": PASSWORD,
             "server": SERVER,
             "timezone": "Africa/Lagos",
-            "path": "C:\\\\Program Files\\\\SMT\\\\terminal64.exe"
+            "path": "C:\\\\Program Files\\\\ICT\\\\terminal64.exe"
         })
 
         strategy = ICTModel(broker=broker, 
