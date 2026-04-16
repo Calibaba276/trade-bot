@@ -109,8 +109,9 @@ class LiquiditySweep(Strategy):
                     self.log_message(f"{current_time} -- SELL (Bearish MSS) -- Price {last_price} broke below swing low {self.mss_swing_low}")
                     order = self.create_order(
                         self.symbol, quantity, "sell",
-                        limit_price = self.low,
-                        stop_price = self.mss_swing_low + self.buffer
+                        order_class = "bracket",
+                        take_profit_price = self.low,
+                        stop_loss_price = self.mss_swing_low + self.buffer
                     )
                     self.submit_order(order)
                     self.traded_today = True
@@ -140,8 +141,9 @@ class LiquiditySweep(Strategy):
                     self.log_message(f"{current_time} -- BUY (Bullish MSS) -- Price {last_price} broke above swing high {self.mss_swing_high}")
                     order = self.create_order(
                         self.symbol, quantity, "buy",
-                        limit_price = self.high,
-                        stop_price = self.mss_swing_high - self.buffer
+                        order_class = "bracket",
+                        take_profit_price = self.high,
+                        stop_loss_price = self.mss_swing_high - self.buffer
                     )
                     self.submit_order(order)
                     self.traded_today = True
