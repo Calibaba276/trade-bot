@@ -35,9 +35,9 @@ class BreakevenDrawdownMixin:
     Expects the host strategy to expose these instance attributes (normally
     set in ``initialize()``):
         - ``self.entry_prices``         dict  – {symbol: avg_fill_price}
-        - ``self.rr_ratio``             float – risk/reward threshold for
-                                                moving SL to breakeven
-        - ``self.max_daily_drawdown_pct`` float – e.g. 0.02 for 2 %
+        - ``self.rr_ratio``             float – profit multiple of initial risk
+                                                that triggers the breakeven move
+        - ``self.max_daily_drawdown_pct`` float – e.g. 0.02 for 2%
         - ``self.daily_equity_start``   float|None – portfolio value at day open
         - ``self.last_trade_date``      date|None  – last date drawdown was reset
 
