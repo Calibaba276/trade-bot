@@ -80,7 +80,7 @@ class LiquiditySweep(Strategy):
         current_date = dt.date()
         
         # ✅ BREAKEVEN & DRAWDOWN MANAGEMENT
-        self._manage_breakeven_and_drawdown(current_date)
+        self._manage_breakeven_and_drawdown()
         
         # Check if drawdown halted trading
         if self._is_daily_drawdown_halted(current_date):
@@ -174,7 +174,7 @@ class LiquiditySweep(Strategy):
                     self.submit_order(order)
                     self.traded_today = True
     
-    def _manage_breakeven_and_drawdown(self, current_date):
+    def _manage_breakeven_and_drawdown(self):
         """
         Manages breakeven stops and cleanup for active positions.
         When a position reaches 1:2 RR, moves SL to entry (with commission buffer).
