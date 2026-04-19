@@ -27,138 +27,14 @@ NEWS_API_KEY = get_azure_secret("NEWS-API-KEY")
 GEMINI_API_KEY = get_azure_secret("GEMINI-API-KEY")
 
 
-class BreakevenDrawdownMixin:
-    """
-    Reusable mixin that adds breakeven stop management and daily drawdown
-    protection to any Lumibot strategy.
-
-    Expects the host strategy to expose these instance attributes (normally
-    set in ``initialize()``):
-        - ``self.entry_prices``         dict  – {symbol: avg_fill_price}
-        - ``self.rr_ratio``             float – profit multiple of initial risk
-                                                that triggers the breakeven move
-        - ``self.max_daily_drawdown_pct`` float – e.g. 0.02 for 2%
-        - ``self.daily_equity_start``   float|None – portfolio value at day open
-        - ``self.last_trade_date``      date|None  – last date drawdown was reset
-
-    Call order in ``on_trading_iteration``:
-        1. ``self._manage_breakeven_and_drawdown()``
-        2. ``if self._is_daily_drawdown_halted(current_date): return``
-    """
-
-    def _manage_breakeven_and_drawdown(self):
-        """
-        Iterate over all open positions and move the stop loss to breakeven
-        once the position has reached ``self.rr_ratio`` times the initial risk.
-
-        Breakeven level includes a small commission buffer:
-          - long  → entry_price * 1.0005
-          - short → entry_price * 0.9995
-        """
-        open_positions = self.get_positions()
-        if not open_positions:
-            return
-
-        if not hasattr(self, "entry_prices") or self.entry_prices is None:
-            self.entry_prices = {}
-
-        for position in open_positions:
-            symbol = position.symbol
-            current_price = self.get_last_price(symbol)
-            if current_price is None:
-                continue
-
-            # Seed entry price from the fill price when not yet recorded
-            if symbol not in self.entry_prices:
-                self.entry_prices[symbol] = position.avg_fill_price
-
-            entry_price = self.entry_prices[symbol]
-
-            if position.side == "long":
-                pnl = current_price - entry_price
-                max_risk = abs(entry_price - position.stop_price) if position.stop_price else 0
-                if max_risk > 0 and pnl >= (max_risk * self.rr_ratio):
-                    breakeven_sl = entry_price * 1.0005
-                    self._update_stop_loss(position, breakeven_sl)
-                    self.log_message(
-                        f"[BREAKEVEN] LONG {symbol}: Moved SL to breakeven {breakeven_sl:.5f}"
-                    )
-
-            elif position.side == "short":
-                pnl = entry_price - current_price
-                max_risk = abs(position.stop_price - entry_price) if position.stop_price else 0
-                if max_risk > 0 and pnl >= (max_risk * self.rr_ratio):
-                    breakeven_sl = entry_price * 0.9995
-                    self._update_stop_loss(position, breakeven_sl)
-                    self.log_message(
-                        f"[BREAKEVEN] SHORT {symbol}: Moved SL to breakeven {breakeven_sl:.5f}"
-                    )
-
-    def _update_stop_loss(self, position, new_stop_price):
-        """
-        Cancel the existing stop order for *position* and place a new one at
-        *new_stop_price*.
-
-        Works for any asset type (forex, stock, …) because the order symbol is
-        derived directly from the position object.
-        """
-        symbol = position.symbol
-        side = "sell" if position.side == "long" else "buy"
-        try:
-            for order in self.get_orders():
-                if order.asset.symbol == symbol and order.status == "open":
-                    if order.order_type == "stop" or (
-                        hasattr(order, "stop_price") and order.stop_price is not None
-                    ):
-                        self.cancel_order(order)
-
-            stop_order = self.create_order(
-                symbol,
-                position.quantity,
-                side,
-                order_type="stop",
-                stop_price=new_stop_price,
-            )
-            self.submit_order(stop_order)
-        except Exception as e:
-            self.log_message(f"[ERROR] Failed to update SL for {symbol}: {e}")
-
-    def _is_daily_drawdown_halted(self, current_date):
-        """
-        Return ``True`` when the portfolio has lost more than
-        ``self.max_daily_drawdown_pct`` of its value since the start of
-        *current_date*, halting further trading for that day.
-        """
-        if self.last_trade_date != current_date:
-            self.last_trade_date = current_date
-            self.daily_equity_start = self.get_portfolio_value()
-            return False
-
-        if self.daily_equity_start is None:
-            self.daily_equity_start = self.get_portfolio_value()
-            return False
-
-        current_equity = self.get_portfolio_value()
-        max_loss = self.daily_equity_start * self.max_daily_drawdown_pct
-
-        if current_equity <= (self.daily_equity_start - max_loss):
-            return True
-
-        return False
-
-
-class LiquiditySweep(BreakevenDrawdownMixin, Strategy):
+class LiquiditySweep(Strategy):
     """
     Liquidity Sweep Strategy - Market Structure Shift (MSS) Based
-    
+
     ⏰ TIME ZONE: ALL TIMES ARE IN NIGERIAN TIME (UTC+1)
     - When you see timestamps in logs: they are in NGT, not UTC
     - Asian Session: 01:00-09:00 NGT (00:00-08:00 UTC)
     - All time checks use NGT
-    
-    ✅ FEATURES:
-    - Breakeven protection: Moves SL to entry when reaching 1:2 RR
-    - Daily drawdown cap: Halts trading if daily loss exceeds threshold
     """
     def initialize(self):
         self.symbol = self.parameters.get("symbol")
@@ -201,10 +77,10 @@ class LiquiditySweep(BreakevenDrawdownMixin, Strategy):
         current_date = dt.date()
         
         # ✅ BREAKEVEN & DRAWDOWN MANAGEMENT
-        self._manage_breakeven_and_drawdown()
-        
+        manage_breakeven_and_drawdown(self)
+
         # Check if drawdown halted trading
-        if self._is_daily_drawdown_halted(current_date):
+        if is_daily_drawdown_halted(self, current_date):
             if current_time.minute == 0:
                 self.log_message("[DRAWDOWN] Daily drawdown cap reached. Trading halted.")
             return
@@ -295,14 +171,10 @@ class LiquiditySweep(BreakevenDrawdownMixin, Strategy):
                     self.submit_order(order)
                     self.traded_today = True
 
-class TrendStrategy(BreakevenDrawdownMixin, Strategy):
+class TrendStrategy(Strategy):
     """
     Sentiment-based trading strategy using AI analysis.
     Uses 1:2 risk-reward ratio with proper stop loss and take profit.
-    
-    ✅ FEATURES:
-    - Breakeven protection: Moves SL to entry when reaching 1:2 RR
-    - Daily drawdown cap: Halts trading if daily loss exceeds threshold
     """
     def initialize(self):
         self.result = FetchTrends(NEWS_API_KEY, GEMINI_API_KEY)
@@ -323,10 +195,10 @@ class TrendStrategy(BreakevenDrawdownMixin, Strategy):
         current_date = dt.date()
         
         # ✅ BREAKEVEN & DRAWDOWN MANAGEMENT
-        self._manage_breakeven_and_drawdown()
-        
+        manage_breakeven_and_drawdown(self)
+
         # Check if drawdown halted trading
-        if self._is_daily_drawdown_halted(current_date):
+        if is_daily_drawdown_halted(self, current_date):
             if dt.minute == 0:
                 self.log_message("[DRAWDOWN] Daily drawdown cap reached. Trading halted.")
             return
@@ -364,7 +236,7 @@ class TrendStrategy(BreakevenDrawdownMixin, Strategy):
                     
                     stop_loss_price = price * (1 - self.stop_loss_percent)
                     take_profit_price = price + (price - stop_loss_price) * self.rr_ratio
-                    quantity = self.calculate_quantity(asset, stop_loss_price)
+                    quantity = calculate_quantity(self, asset, stop_loss_price)
 
                     if quantity <= 0:
                         self.log_message(f"Skipping {ticker}. Price is too high for ${self.risk_amount} trade limit.")
@@ -410,14 +282,14 @@ class TrendStrategy(BreakevenDrawdownMixin, Strategy):
 
 def calculate_quantity(self, asset, stop_loss=None):
     """Quantity Calculator for Stocks and Forex"""
-        
+
     # Simple logic: Use 5% of available cash per trade
     price = self.get_last_price(asset)
-        
+
     if price is None or price == 0:
         self.log_message(f"Warning: Price for {asset.symbol} is 0 or None. Cannot calculate $25 trade.")
         return 0
-        
+
     if stop_loss is not None:
         sl_distance = abs(price - stop_loss)
         if sl_distance == 0:
@@ -437,9 +309,105 @@ def calculate_quantity(self, asset, stop_loss=None):
 
     else:
         final_qty = self.risk_amount / price
-             
+
     if final_qty <= 0:
         self.log_message(f"Quantity too small for {asset.symbol} with $25 Limit.")
         return 0
-        
+
     return final_qty
+
+
+def manage_breakeven_and_drawdown(self):
+    """
+    Iterate over all open positions and move the stop loss to breakeven
+    once the position has reached rr_ratio times the initial risk.
+
+    Breakeven level includes a small commission buffer:
+      - long  → entry_price * 1.0005
+      - short → entry_price * 0.9995
+    """
+    open_positions = self.get_positions()
+    if not open_positions:
+        return
+
+    if not hasattr(self, "entry_prices") or self.entry_prices is None:
+        self.entry_prices = {}
+
+    for position in open_positions:
+        symbol = position.symbol
+        current_price = self.get_last_price(symbol)
+        if current_price is None:
+            continue
+
+        # Seed entry price from the fill price when not yet recorded
+        if symbol not in self.entry_prices:
+            self.entry_prices[symbol] = position.avg_fill_price
+
+        entry_price = self.entry_prices[symbol]
+
+        if position.side == "long":
+            pnl = current_price - entry_price
+            max_risk = abs(entry_price - position.stop_price) if position.stop_price else 0
+            if max_risk > 0 and pnl >= (max_risk * self.rr_ratio):
+                breakeven_sl = entry_price * 1.0005
+                update_stop_loss(self, position, breakeven_sl)
+                self.log_message(
+                    f"[BREAKEVEN] LONG {symbol}: Moved SL to breakeven {breakeven_sl:.5f}"
+                )
+
+        elif position.side == "short":
+            pnl = entry_price - current_price
+            max_risk = abs(position.stop_price - entry_price) if position.stop_price else 0
+            if max_risk > 0 and pnl >= (max_risk * self.rr_ratio):
+                breakeven_sl = entry_price * 0.9995
+                update_stop_loss(self, position, breakeven_sl)
+                self.log_message(
+                    f"[BREAKEVEN] SHORT {symbol}: Moved SL to breakeven {breakeven_sl:.5f}"
+                )
+
+
+def update_stop_loss(self, position, new_stop_price):
+    """Cancel the existing stop order for position and place a new one at new_stop_price."""
+    symbol = position.symbol
+    side = "sell" if position.side == "long" else "buy"
+    try:
+        for order in self.get_orders():
+            if order.asset.symbol == symbol and order.status == "open":
+                if order.order_type == "stop" or (
+                    hasattr(order, "stop_price") and order.stop_price is not None
+                ):
+                    self.cancel_order(order)
+
+        stop_order = self.create_order(
+            symbol,
+            position.quantity,
+            side,
+            order_type="stop",
+            stop_price=new_stop_price,
+        )
+        self.submit_order(stop_order)
+    except Exception as e:
+        self.log_message(f"[ERROR] Failed to update SL for {symbol}: {e}")
+
+
+def is_daily_drawdown_halted(self, current_date):
+    """
+    Return True when the portfolio has lost more than max_daily_drawdown_pct
+    of its value since the start of current_date, halting further trading for that day.
+    """
+    if self.last_trade_date != current_date:
+        self.last_trade_date = current_date
+        self.daily_equity_start = self.get_portfolio_value()
+        return False
+
+    if self.daily_equity_start is None:
+        self.daily_equity_start = self.get_portfolio_value()
+        return False
+
+    current_equity = self.get_portfolio_value()
+    max_loss = self.daily_equity_start * self.max_daily_drawdown_pct
+
+    if current_equity <= (self.daily_equity_start - max_loss):
+        return True
+
+    return False
