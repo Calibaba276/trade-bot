@@ -143,7 +143,7 @@ class LiquiditySweep(Strategy):
                 # Step 1: Detect sweep below the low
                 elif last_price < self.low:
                     self.swept_low = True
-                    self.log_message(f"{current_time} -- Current Price has surpassed the Highest Point --")
+                    self.log_message(f"{current_time} -- Current Price has surpassed the Lowest Point --")
 
                 # Step 2: Price reverses above low — scan recent bars for a swing high (lower high)
                 if self.swept_low and last_price > self.low and self.mss_swing_high is None:
