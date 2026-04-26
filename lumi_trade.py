@@ -133,8 +133,8 @@ class LiquiditySweep(Strategy):
                     order = self.create_order(
                         self.symbol, quantity, "sell",
                         order_class = "bracket",
-                        take_profit_price = self.low,
-                        stop_loss_price = self.mss_swing_low + self.buffer
+                        limit_price = self.low,
+                        stop_price = self.mss_swing_low + self.buffer
                     )
                     self.submit_order(order)
                     self.traded_today = True
@@ -165,8 +165,8 @@ class LiquiditySweep(Strategy):
                     order = self.create_order(
                         self.symbol, quantity, "buy",
                         order_class = "bracket",
-                        take_profit_price = self.high,
-                        stop_loss_price = self.mss_swing_high - self.buffer
+                        limit_price = self.high,
+                        stop_price = self.mss_swing_high - self.buffer
                     )
                     self.submit_order(order)
                     self.traded_today = True
@@ -194,7 +194,8 @@ class ICTModel(Strategy):
         self.mss_swing_high = None
         self.fvg_top = None
         self.fvg_bottom = None
-        self.fvg_confirmed = False
+        self.bearish_fvg_confirmed = False
+        self.bullish_fvg_confirmed = False
         self.highest_sweep_point = None
         self.lowest_sweep_point = None
         self.london_low = None
@@ -211,7 +212,8 @@ class ICTModel(Strategy):
         self.mss_swing_high = None
         self.fvg_top = None
         self.fvg_bottom = None
-        self.fvg_confirmed = False
+        self.bearish_fvg_confirmed = False
+        self.bullish_fvg_confirmed = False
         self.highest_sweep_point = None
         self.lowest_sweep_point = None
         self.london_low = None
@@ -242,13 +244,14 @@ class ICTModel(Strategy):
                 previous_day = candles[0]
                 self.pdh = previous_day['high']
                 self.pdl = previous_day['low']
+                self.last_range_date = current_date
 
                 self.log_message(f"[{self.symbol}] Levels Set - PDH: {self.pdh} PDL: {self.pdl}")
             else:
                 self.log_message(f"Error fetching daily levels for {self.symbol}")
 
             if self.pdh and self.pdl and not self.traded_today:
-                if time(6, 0) >= current_time <= time(8,0):
+                if time(6, 0) <= current_time <= time(8, 0):
                     last_price = self.get_last_price(self.asset)
 
                     if self.london_low is None or last_price < self.london_low:
@@ -263,7 +266,7 @@ class ICTModel(Strategy):
                     if last_price > self.pdh:
                         self.swept_high = True
 
-                        if last_price > self.highest_sweep_point:
+                        if self.highest_sweep_point is None or last_price > self.highest_sweep_point:
                             self.highest_sweep_point = last_price
 
                         self.log_message(f"{current_time} - [BEARISH BIAS] -- Current Price has Surpassed the Highest Point --")
@@ -279,7 +282,7 @@ class ICTModel(Strategy):
                                 break
                             
                     # Step 3: Price breaks below the swing low - MSS Confirmed
-                    if self.mss_swing_low and last_price < self.mss_swing_low and not self.fvg_confirmed:
+                    if self.mss_swing_low and last_price < self.mss_swing_low and not self.bearish_fvg_confirmed:
                         # Getting candles to check for a bearish FVG
                         df = self.get_historical_prices(self.asset, 5, "minute")
 
@@ -291,7 +294,8 @@ class ICTModel(Strategy):
                             self.fvg_top = c1
                             self.fvg_bottom = c2
                             
-                            self.fvg_confirmed = True
+                            self.bearish_fvg_confirmed = True
+                            self.bullish_fvg_confirmed = False
                             self.log_message(f"--- MSS & FVG CONFIRMED ---")
                             self.log_message(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}")
                         else:
@@ -299,7 +303,7 @@ class ICTModel(Strategy):
                             self.log_message("Price broke swing low but no displacement (FVG) found. Skipping entry.")
 
                     # Trade Execution (BEARISH)
-                    if self.fvg_confirmed:
+                    if self.bearish_fvg_confirmed and self.highest_sweep_point is not None:
                         entry_price = self.fvg_bottom
                         sl = self.highest_sweep_point + self.buffer
                         tp = self.london_low if self.london_low else self.pdl
@@ -313,8 +317,8 @@ class ICTModel(Strategy):
                             order = self.create_order(
                                 self.symbol, quantity, "sell",
                                 order_class = "bracket",
-                                take_profit_price = tp,
-                                stop_loss_price = sl
+                                limit_price = tp,
+                                stop_price = sl
                             )
                             self.submit_order(order)
                             self.traded_today = True
@@ -330,7 +334,7 @@ class ICTModel(Strategy):
                     elif last_price < self.pdl:
                         self.swept_low = True
 
-                        if last_price < self.lowest_sweep_point:
+                        if self.lowest_sweep_point is None or last_price < self.lowest_sweep_point:
                             self.lowest_sweep_point = last_price
 
                         self.log_message(f"{current_time} - [BULLISH BIAS] -- Current Price has Surpassed the Lowest Point --")         
@@ -346,7 +350,7 @@ class ICTModel(Strategy):
                                 break
 
                     # Step 3: Price breaks above the swing high - MSS Confirmed
-                    if self.mss_swing_high and last_price > self.mss_swing_high and not self.fvg_confirmed:
+                    if self.mss_swing_high and last_price > self.mss_swing_high and not self.bullish_fvg_confirmed:
                         # Getting candles to check for a bullish FVG
                         df = self.get_historical_prices(self.asset, 5, "minute")
 
@@ -359,7 +363,8 @@ class ICTModel(Strategy):
                             self.fvg_top = c2
                             self.fvg_bottom = c1
 
-                            self.fvg_confirmed = True
+                            self.bullish_fvg_confirmed = True
+                            self.bearish_fvg_confirmed = False
                             self.log_message(f"--- MSS & FVG CONFIRMED ---")
                             self.log_message(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}")
                         else:
@@ -367,7 +372,7 @@ class ICTModel(Strategy):
                             self.log_message("Price broke swing high but no displacement (FVG) found. Skipping entry.")
 
                     # Trade Execution (BULLISH)
-                    if self.fvg_confirmed:
+                    elif self.bullish_fvg_confirmed and self.lowest_sweep_point is not None:
                         entry_price = self.fvg_top
                         sl = self.lowest_sweep_point - self.buffer
                         tp = self.london_high if self.london_high else self.pdh
@@ -381,8 +386,8 @@ class ICTModel(Strategy):
                             order = self.create_order(
                                 self.symbol, quantity, "buy",
                                 order_class="bracket",
-                                take_profit_price=tp,
-                                stop_loss_price=sl
+                                limit_price=tp,
+                                stop_price=sl
                             )
                             self.submit_order(order)
                             self.traded_today = True
@@ -463,8 +468,8 @@ class TrendStrategy(Strategy):
                     order = self.create_order(
                         asset, quantity, "buy",
                         order_class="bracket",
-                        take_profit_price=take_profit_price,
-                        stop_loss_price=stop_loss_price
+                        limit_price=take_profit_price,
+                        stop_price=stop_loss_price
                     )
                     self.submit_order(order)
                     self.entry_prices[ticker] = price
@@ -486,8 +491,8 @@ class TrendStrategy(Strategy):
                     order = self.create_order(
                         asset, pos.quantity, "sell",
                         order_class="bracket",
-                        take_profit_price=take_profit_price,
-                        stop_loss_price=stop_loss_price
+                        limit_price=take_profit_price,
+                        stop_price=stop_loss_price
                     )
                     self.submit_order(order)
                     if ticker in self.entry_prices:
