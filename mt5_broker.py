@@ -4,6 +4,7 @@ from lumibot.brokers import Broker
 from lumibot.entities import Asset, Position, Order
 
 from datetime import datetime
+from decimal import Decimal
 import pytz
 import zlib
 
@@ -279,14 +280,84 @@ class MetaTrader5(Broker):
         df['time'] = pd.to_datetime(df['time'], unit='s', utc=True).dt.tz_convert(self.timezone)
         df.set_index('time', inplace=True)
         return df
+
+    def _normalize_volume(self, symbol, volume):
+        info = mt5.symbol_info(symbol)
+        if info is None:
+            return 0.0
+
+        min_volume = float(getattr(info, "volume_min", 0.01) or 0.01)
+        max_volume = float(getattr(info, "volume_max", 100.0) or 100.0)
+        step = float(getattr(info, "volume_step", 0.01) or 0.01)
+        if step <= 0:
+            return 0.0
+
+        if volume < min_volume:
+            return 0.0
+
+        capped = min(volume, max_volume)
+        steps = int((capped - min_volume) / step)
+        normalized = min_volume + (steps * step)
+        precision = max(0, -Decimal(str(step)).as_tuple().exponent)
+        return round(normalized, precision)
+
+    def _is_exposure_reducing_order(self, symbol, side):
+        positions = mt5.positions_get(symbol=symbol)
+        if not positions:
+            return False
+
+        has_same_side = False
+        has_opposite_side = False
+        requested_side = str(side).lower()
+
+        for pos in positions:
+            position_side = "buy" if int(pos.type) == mt5.POSITION_TYPE_BUY else "sell"
+            if position_side == requested_side:
+                has_same_side = True
+            else:
+                has_opposite_side = True
+
+        return has_opposite_side and not has_same_side
+
+    def _cap_volume_to_margin(self, symbol, side, requested_volume, reference_price):
+        normalized_volume = self._normalize_volume(symbol, float(requested_volume))
+        if normalized_volume <= 0:
+            return 0.0
+
+        account = mt5.account_info()
+        if account is None:
+            return normalized_volume
+
+        free_margin = float(getattr(account, "margin_free", 0.0) or 0.0)
+        order_type = mt5.ORDER_TYPE_BUY if side == "buy" else mt5.ORDER_TYPE_SELL
+
+        required_margin = mt5.order_calc_margin(order_type, symbol, normalized_volume, float(reference_price))
+        if required_margin is None:
+            return normalized_volume
+
+        required_margin = float(required_margin)
+        if required_margin <= free_margin:
+            return normalized_volume
+
+        if required_margin <= 0:
+            return normalized_volume
+
+        scaled_volume = normalized_volume * (free_margin / required_margin)
+        return self._normalize_volume(symbol, scaled_volume)
     
     def _submit_order(self, order: Order):
         """Sends orders to MT5 and updates order status"""
 
         symbol = self._symbol(order.asset)
 
-        sl = order.stop_loss_price
-        tp = order.take_profit_price
+        order_class = str(getattr(order, "order_class", "")).lower()
+        sl = getattr(order, "stop_loss_price", None)
+        tp = getattr(order, "take_profit_price", None)
+        if order_class == "bracket":
+            if sl is None:
+                sl = getattr(order, "stop_price", None)
+            if tp is None:
+                tp = getattr(order, "limit_price", None)
         tick = mt5.symbol_info_tick(symbol)
 
         if tick is None:
@@ -313,10 +384,25 @@ class MetaTrader5(Broker):
                 order.status = "error"
                 return order
 
+            requested_volume = self._normalize_volume(symbol, float(order.quantity))
+            if requested_volume <= 0:
+                print(f"MT5 ERROR: Invalid lot size for {symbol}: {order.quantity}")
+                order.status = "error"
+                return order
+
+            if self._is_exposure_reducing_order(symbol, order.side):
+                volume = requested_volume
+            else:
+                volume = self._cap_volume_to_margin(symbol, order.side, requested_volume, limit_price)
+            if volume <= 0:
+                print(f"MT5 ERROR: Not enough free margin for minimum lot on {symbol}.")
+                order.status = "error"
+                return order
+
             request = {
                 "action": mt5.TRADE_ACTION_PENDING,
                 "symbol": symbol,
-                "volume": float(order.quantity),
+                "volume": volume,
                 "order_type": mt5.ORDER_TYPE_BUY_LIMIT if order.side == "buy" else mt5.ORDER_TYPE_SELL_LIMIT,
                 "price": limit_price,
                 "sl": float(sl) if sl else 0.0,
@@ -327,10 +413,25 @@ class MetaTrader5(Broker):
                 "type_filling": mt5.ORDER_FILLING_RETURN,
             }
         else:
+            requested_volume = self._normalize_volume(symbol, float(order.quantity))
+            if requested_volume <= 0:
+                print(f"MT5 ERROR: Invalid lot size for {symbol}: {order.quantity}")
+                order.status = "error"
+                return order
+
+            if self._is_exposure_reducing_order(symbol, order.side):
+                volume = requested_volume
+            else:
+                volume = self._cap_volume_to_margin(symbol, order.side, requested_volume, market_price)
+            if volume <= 0:
+                print(f"MT5 ERROR: Not enough free margin for minimum lot on {symbol}.")
+                order.status = "error"
+                return order
+
             request = {
                 "action": mt5.TRADE_ACTION_DEAL,
                 "symbol": symbol,
-                "volume": float(order.quantity),
+                "volume": volume,
                 "order_type": mt5.ORDER_TYPE_BUY if order.side == "buy" else mt5.ORDER_TYPE_SELL,
                 "price": market_price,
                 "sl": float(sl) if sl else 0.0,
