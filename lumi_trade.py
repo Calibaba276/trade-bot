@@ -171,6 +171,224 @@ class LiquiditySweep(Strategy):
                     self.submit_order(order)
                     self.traded_today = True
 
+class ICTModel(Strategy):
+    """
+    ICT Model Coded as Observed... HOPE IT WORKS!!!
+    """
+
+    def initialize(self):
+        self.symbol = self.parameters.get("symbol")
+        self.sleeptime = "1M"
+        self.set_market("24/5")
+        self.risk_amount = self.parameters.get("risk_amount")
+        self.asset = Asset(symbol=self.symbol, asset_type="forex")
+        self.buffer = 0.0002
+
+        self.traded_today = False
+        self.last_range_date = None
+        self.pdh = None
+        self.pdl = None
+        self.swept_high = None
+        self.swept_low = None
+        self.mss_swing_low = None
+        self.mss_swing_high = None
+        self.fvg_top = None
+        self.fvg_bottom = None
+        self.fvg_confirmed = False
+        self.highest_sweep_point = None
+        self.lowest_sweep_point = None
+        self.london_low = None
+        self.london_high = None
+
+    def before_market_opens(self):
+        self.traded_today = False
+        self.last_range_date = None
+        self.pdh = None
+        self.pdl = None
+        self.swept_high = None
+        self.swept_low = None
+        self.mss_swing_low = None
+        self.mss_swing_high = None
+        self.fvg_top = None
+        self.fvg_bottom = None
+        self.fvg_confirmed = False
+        self.highest_sweep_point = None
+        self.lowest_sweep_point = None
+        self.london_low = None
+        self.london_high = None
+
+    def on_trading_iteration(self):
+        dt = self.get_datetime()
+        current_time = dt.time()
+        current_date = dt.date()
+
+        # ✅ BREAKEVEN & DRAWDOWN MANAGEMENT
+        manage_breakeven_and_drawdown(self)
+
+        # Check if drawdown halted trading
+        if is_daily_drawdown_halted(self, current_date):
+            if current_time.minute == 0:
+                self.log_message("[DRAWDOWN] Daily drawdown cap reached. Trading halted.")
+            return
+        
+        if current_time >= time(6, 0) and self.last_range_date != current_date:
+            try:
+                candles = self.get_historical_prices(self.asset, 1, "day")
+            except Exception:
+                self.log_message(f" --- {current_time} Failed to fetch Historical Prices ---")
+                return
+
+            if candles is not None and len(candles) > 0:
+                previous_day = candles[0]
+                self.pdh = previous_day['high']
+                self.pdl = previous_day['low']
+
+                self.log_message(f"[{self.symbol}] Levels Set - PDH: {self.pdh} PDL: {self.pdl}")
+            else:
+                self.log_message(f"Error fetching daily levels for {self.symbol}")
+
+            if self.pdh and self.pdl and not self.traded_today:
+                if time(6, 0) >= current_time <= time(8,0):
+                    last_price = self.get_last_price(self.asset)
+
+                    if self.london_low is None or last_price < self.london_low:
+                        self.london_low = last_price
+                    if self.london_high is None or last_price > self.london_high:
+                        self.london_high = last_price
+
+                    # -- BEARISH --
+
+                    # BEARISH MSS
+                    # Step 1: Detect sweep above the high
+                    if last_price > self.pdh:
+                        self.swept_high = True
+
+                        if last_price > self.highest_sweep_point:
+                            self.highest_sweep_point = last_price
+
+                        self.log_message(f"{current_time} - [BEARISH BIAS] -- Current Price has Surpassed the Highest Point --")
+                    
+                    # Step 2: Price reverses below high
+                    if self.swept_high and last_price < self.pdh and self.mss_swing_low is None:
+                        df = self.get_historical_prices(self.asset, 20, "minute")
+                        lows = df["low"].values
+                        for i in range(len(lows) - 2, 0, -1):
+                            if lows[i] < lows[i - 1] and lows[i] < lows[i + 1] and lows[i] > self.pdl:
+                                self.mss_swing_low = float(lows[i])
+                                self.log_message(f"{current_time} -- Bearish MSS: Swing Low identified at {self.mss_swing_low}")
+                                break
+                            
+                    # Step 3: Price breaks below the swing low - MSS Confirmed
+                    if self.mss_swing_low and last_price < self.mss_swing_low and not self.fvg_confirmed:
+                        # Getting candles to check for a bearish FVG
+                        df = self.get_historical_prices(self.asset, 5, "minute")
+
+                        # The Low and High Candles
+                        c1 = float(df.iloc[-3]["low"])
+                        c2 = float(df.iloc[-1]["high"])
+
+                        if c1 > c2:
+                            self.fvg_top = c1
+                            self.fvg_bottom = c2
+                            
+                            self.fvg_confirmed = True
+                            self.log_message(f"--- MSS & FVG CONFIRMED ---")
+                            self.log_message(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}")
+                        else:
+                            # If no FVG is formed, ICT traders usually wait for a secondary break
+                            self.log_message("Price broke swing low but no displacement (FVG) found. Skipping entry.")
+
+                    # Trade Execution (BEARISH)
+                    if self.fvg_confirmed:
+                        entry_price = self.fvg_bottom
+                        sl = self.highest_sweep_point + self.buffer
+                        tp = self.london_low if self.london_low else self.pdl
+
+                        risk = sl - entry_price
+                        reward = entry_price - tp
+
+                        if risk > 0 and (reward / risk) >= 3.0:
+                            quantity = round(self.risk_amount / (risk * 100000), 2)
+
+                            order = self.create_order(
+                                self.symbol, quantity, "sell",
+                                order_class = "bracket",
+                                take_profit_price = tp,
+                                stop_loss_price = sl
+                            )
+                            self.submit_order(order)
+                            self.traded_today = True
+
+                            self.log_message(f"{current_time} -- SELL (Bearish MSS) -- Price {last_price} broke below swing low {self.mss_swing_low}")
+
+
+
+                    # -- BULLISH --
+
+                    # BULLISH MSS
+                    # Step 1: Detect sweep above the high
+                    elif last_price < self.pdl:
+                        self.swept_low = True
+
+                        if last_price < self.lowest_sweep_point:
+                            self.lowest_sweep_point = last_price
+
+                        self.log_message(f"{current_time} - [BULLISH BIAS] -- Current Price has Surpassed the Lowest Point --")         
+
+                    # Step 2: Price reverses above low
+                    if self.swept_low and last_price > self.pdl and self.mss_swing_high is None:
+                        df = self.get_historical_prices(self.asset, 20, "minute")
+                        highs = df["high"].values
+                        for i in range(len(highs) - 2, 0, -1):
+                            if highs[i] > highs[i - 1] and highs[i] > highs[i + 1] and highs[i] < self.pdh:
+                                self.mss_swing_high = float(highs[i])
+                                self.log_message(f"{current_time} -- Bullish MSS: Swing High identified at {self.mss_swing_high}")
+                                break
+
+                    # Step 3: Price breaks above the swing high - MSS Confirmed
+                    if self.mss_swing_high and last_price > self.mss_swing_high and not self.fvg_confirmed:
+                        # Getting candles to check for a bullish FVG
+                        df = self.get_historical_prices(self.asset, 5, "minute")
+
+                        # The Low and High Candles
+
+                        c1 = float(df.iloc[-3]["high"])
+                        c2 = float(df.iloc[-1]["low"])
+
+                        if c1 < c2:
+                            self.fvg_top = c2
+                            self.fvg_bottom = c1
+
+                            self.fvg_confirmed = True
+                            self.log_message(f"--- MSS & FVG CONFIRMED ---")
+                            self.log_message(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}")
+                        else:
+                            # If no FVG is formed, ICT traders usually wait for a secondary break
+                            self.log_message("Price broke swing high but no displacement (FVG) found. Skipping entry.")
+
+                    # Trade Execution (BULLISH)
+                    if self.fvg_confirmed:
+                        entry_price = self.fvg_top
+                        sl = self.lowest_sweep_point - self.buffer
+                        tp = self.london_high if self.london_high else self.pdh
+
+                        risk = entry_price - sl
+                        reward = tp - entry_price
+
+                        if risk > 0 and (reward / risk) >= 3.0:
+                            quantity = round(self.risk_amount / (risk * 100000), 2)
+
+                            order = self.create_order(
+                                self.symbol, quantity, "buy",
+                                order_class="bracket",
+                                take_profit_price=tp,
+                                stop_loss_price=sl
+                            )
+                            self.submit_order(order)
+                            self.traded_today = True
+
+                            self.log_message(f"{current_time} -- BUY (Bullish MSS) -- Price {last_price} broke above swing high {self.mss_swing_high}")
+                            
 class TrendStrategy(Strategy):
     """
     Sentiment-based trading strategy using AI analysis.
