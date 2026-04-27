@@ -236,7 +236,7 @@ class ICTModel(Strategy):
         # After 9 AM, capture the 6:00–9:00 AM session high/low as PDH/PDL
         if current_time >= time(9, 0) and self.last_range_date != current_date:
             try:
-                df = self.get_historical_prices(self.asset, 420, "minute")
+                df = self.get_historical_prices(self.asset, 200, "minute")
             except Exception:
                 self.log_message(f" --- {current_time} Failed to fetch Historical Prices ---")
                 return
@@ -317,16 +317,17 @@ class ICTModel(Strategy):
                     if risk > 0 and (reward / risk) >= 3.0:
                         quantity = round(self.risk_amount / (risk * 100000), 2)
 
-                        order = self.create_order(
-                            self.symbol, quantity, "sell",
-                            order_class = "bracket",
+                        self.sell_limit(
+                            asset=self.asset, 
+                            quantity,
+                            price=entry_price,
                             limit_price = tp,
                             stop_price = sl
                         )
-                        self.submit_order(order)
+                        
                         self.traded_today = True
 
-                        self.log_message(f"{current_time} -- SELL (Bearish MSS) -- Price {last_price} broke below swing low {self.mss_swing_low}")
+                        self.log_message(f"{current_time} -- SELL LIMIT PLACED at {entry_price}")
 
 
 
@@ -386,16 +387,17 @@ class ICTModel(Strategy):
                     if risk > 0 and (reward / risk) >= 3.0:
                         quantity = round(self.risk_amount / (risk * 100000), 2)
 
-                        order = self.create_order(
-                            self.symbol, quantity, "buy",
-                            order_class="bracket",
+                        self.buy_limit(
+                            asset=self.asset,
+                            quantity, "buy",
+                            price=entry_price
                             limit_price=tp,
                             stop_price=sl
                         )
-                        self.submit_order(order)
+                        
                         self.traded_today = True
 
-                        self.log_message(f"{current_time} -- BUY (Bullish MSS) -- Price {last_price} broke above swing high {self.mss_swing_high}")
+                        self.log_message(f"{current_time} -- BUY LIMIT PLACED at {entry_price}")
                             
 class TrendStrategy(Strategy):
     """
