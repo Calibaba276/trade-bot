@@ -132,7 +132,7 @@ class LiquiditySweep(Strategy):
                     self.log_message(f"{current_time} -- SELL (Bearish MSS) -- Price {last_price} broke below swing low {self.mss_swing_low}")
                     order = self.create_order(
                         self.symbol, quantity, "sell",
-                        order_class = "bracket",
+                        order_class = "stop_limit",
                         limit_price = self.low,
                         stop_price = self.mss_swing_low + self.buffer
                     )
@@ -164,7 +164,7 @@ class LiquiditySweep(Strategy):
                     self.log_message(f"{current_time} -- BUY (Bullish MSS) -- Price {last_price} broke above swing high {self.mss_swing_high}")
                     order = self.create_order(
                         self.symbol, quantity, "buy",
-                        order_class = "bracket",
+                        order_class = "stop_limit",
                         limit_price = self.high,
                         stop_price = self.mss_swing_high - self.buffer
                     )
@@ -330,7 +330,7 @@ class ICTModel(Strategy):
 
                         order = self.create_order(
                             self.asset, quantity, "sell",
-                            order_class="bracket",
+                            order_class="stop_limit",
                             limit_price=tp,
                             stop_price=sl
                         )
@@ -406,7 +406,7 @@ class ICTModel(Strategy):
 
                         order = self.create_order(
                             self.asset, quantity, "buy",
-                            order_class="bracket",
+                            order_class="stop_limit",
                             limit_price=tp,
                             stop_price=sl
                         )
@@ -536,7 +536,7 @@ class TrendStrategy(Strategy):
                     
                     order = self.create_order(
                         asset, quantity, "buy",
-                        order_class="bracket",
+                        order_class="stop_limit",
                         limit_price=take_profit_price,
                         stop_price=stop_loss_price
                     )
@@ -559,7 +559,7 @@ class TrendStrategy(Strategy):
                     
                     order = self.create_order(
                         asset, pos.quantity, "sell",
-                        order_class="bracket",
+                        order_class="stop_limit",
                         limit_price=take_profit_price,
                         stop_price=stop_loss_price
                     )
