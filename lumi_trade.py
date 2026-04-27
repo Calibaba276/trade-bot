@@ -200,6 +200,9 @@ class ICTModel(Strategy):
         self.lowest_sweep_point = None
         self.london_low = None
         self.london_high = None
+        self.active_take_profit = None
+        self.active_stop_loss = None
+        self.order_side = None
 
     def before_market_opens(self):
         self.traded_today = False
@@ -218,6 +221,9 @@ class ICTModel(Strategy):
         self.lowest_sweep_point = None
         self.london_low = None
         self.london_high = None
+        self.active_take_profit = None
+        self.active_stop_loss = None
+        self.order_side = None
 
     def on_trading_iteration(self):
         dt = self.get_datetime()
@@ -273,8 +279,8 @@ class ICTModel(Strategy):
                         self.highest_sweep_point = last_price
 
                     self.log_message(f"{current_time} - [BEARISH BIAS] -- Current Price has Surpassed the Highest Point --")
-                
-                # Step 2: Price reverses below high
+
+                # Step 2: Price reverses below high — scan for swing low
                 if self.swept_high and last_price < self.pdh and self.mss_swing_low is None:
                     df = self.get_historical_prices(self.asset, 20, "minute")
                     lows = df["low"].values
@@ -283,8 +289,11 @@ class ICTModel(Strategy):
                             self.mss_swing_low = float(lows[i])
                             self.log_message(f"{current_time} -- Bearish MSS: Swing Low identified at {self.mss_swing_low}")
                             break
-                        
-                # Step 3: Price breaks below the swing low - MSS Confirmed
+                    if self.mss_swing_low is None:
+                        self.log_message(f"{current_time} -- [STEP 2 NOT COMPLETE - BEARISH] Price reversed below PDH but no valid swing low found, skipping")
+                        return
+
+                # Step 3: Price breaks below the swing low — MSS Confirmed
                 if self.mss_swing_low and last_price < self.mss_swing_low and not self.bearish_fvg_confirmed:
                     # Getting candles to check for a bearish FVG
                     df = self.get_historical_prices(self.asset, 5, "minute")
@@ -296,7 +305,7 @@ class ICTModel(Strategy):
                     if c1 > c2:
                         self.fvg_top = c1
                         self.fvg_bottom = c2
-                        
+
                         self.bearish_fvg_confirmed = True
                         self.bullish_fvg_confirmed = False
                         self.log_message(f"--- MSS & FVG CONFIRMED ---")
@@ -304,6 +313,7 @@ class ICTModel(Strategy):
                     else:
                         # If no FVG is formed, ICT traders usually wait for a secondary break
                         self.log_message("Price broke swing low but no displacement (FVG) found. Skipping entry.")
+                        return
 
                 # Trade Execution (BEARISH)
                 if self.bearish_fvg_confirmed and self.highest_sweep_point is not None:
@@ -313,23 +323,26 @@ class ICTModel(Strategy):
 
                     risk = sl - entry_price
                     reward = entry_price - tp
+                    rr = reward / risk if risk > 0 else 0
 
-                    if risk > 0 and (reward / risk) >= 3.0:
+                    if risk > 0 and rr >= 3.0:
                         quantity = round(self.risk_amount / (risk * 100000), 2)
 
-                        self.sell_limit(
-                            asset=self.asset, 
-                            quantity,
-                            price=entry_price,
-                            limit_price = tp,
-                            stop_price = sl
+                        order = self.create_order(
+                            self.asset, quantity, "sell",
+                            order_class="bracket",
+                            limit_price=tp,
+                            stop_price=sl
                         )
-                        
+                        self.submit_order(order)
+                        self.active_take_profit = tp
+                        self.active_stop_loss = sl
+                        self.order_side = "sell"
                         self.traded_today = True
-
-                        self.log_message(f"{current_time} -- SELL LIMIT PLACED at | Price: {entry_price} | SL: {sl} | TP: {tp}")
-
-
+                        self.log_message(f"{current_time} -- [SELL ORDER PLACED] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity}")
+                    else:
+                        self.log_message(f"{current_time} -- [BEARISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping")
+                        return
 
                 # -- BULLISH --
 
@@ -341,9 +354,9 @@ class ICTModel(Strategy):
                     if self.lowest_sweep_point is None or last_price < self.lowest_sweep_point:
                         self.lowest_sweep_point = last_price
 
-                    self.log_message(f"{current_time} - [BULLISH BIAS] -- Current Price has Surpassed the Lowest Point --")         
+                    self.log_message(f"{current_time} - [BULLISH BIAS] -- Current Price has Surpassed the Lowest Point --")
 
-                # Step 2: Price reverses above low
+                # Step 2: Price reverses above low — scan for swing high
                 if self.swept_low and last_price > self.pdl and self.mss_swing_high is None:
                     df = self.get_historical_prices(self.asset, 20, "minute")
                     highs = df["high"].values
@@ -352,14 +365,16 @@ class ICTModel(Strategy):
                             self.mss_swing_high = float(highs[i])
                             self.log_message(f"{current_time} -- Bullish MSS: Swing High identified at {self.mss_swing_high}")
                             break
+                    if self.mss_swing_high is None:
+                        self.log_message(f"{current_time} -- [STEP 2 NOT COMPLETE - BULLISH] Price reversed above PDL but no valid swing high found, skipping")
+                        return
 
-                # Step 3: Price breaks above the swing high - MSS Confirmed
+                # Step 3: Price breaks above the swing high — MSS Confirmed
                 if self.mss_swing_high and last_price > self.mss_swing_high and not self.bullish_fvg_confirmed:
                     # Getting candles to check for a bullish FVG
                     df = self.get_historical_prices(self.asset, 5, "minute")
 
                     # The Low and High Candles
-
                     c1 = float(df.iloc[-3]["high"])
                     c2 = float(df.iloc[-1]["low"])
 
@@ -374,6 +389,7 @@ class ICTModel(Strategy):
                     else:
                         # If no FVG is formed, ICT traders usually wait for a secondary break
                         self.log_message("Price broke swing high but no displacement (FVG) found. Skipping entry.")
+                        return
 
                 # Trade Execution (BULLISH)
                 elif self.bullish_fvg_confirmed and self.lowest_sweep_point is not None:
@@ -383,21 +399,69 @@ class ICTModel(Strategy):
 
                     risk = entry_price - sl
                     reward = tp - entry_price
+                    rr = reward / risk if risk > 0 else 0
 
-                    if risk > 0 and (reward / risk) >= 3.0:
+                    if risk > 0 and rr >= 3.0:
                         quantity = round(self.risk_amount / (risk * 100000), 2)
 
-                        self.buy_limit(
-                            asset=self.asset,
-                            quantity, "buy",
-                            price=entry_price
+                        order = self.create_order(
+                            self.asset, quantity, "buy",
+                            order_class="bracket",
                             limit_price=tp,
                             stop_price=sl
                         )
-                        
+                        self.submit_order(order)
+                        self.active_take_profit = tp
+                        self.active_stop_loss = sl
+                        self.order_side = "buy"
                         self.traded_today = True
+                        self.log_message(f"{current_time} -- [BUY ORDER PLACED] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity}")
+                    else:
+                        self.log_message(f"{current_time} -- [BULLISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping")
+                        return
 
-                        self.log_message(f"{current_time} -- BUY LIMIT PLACED at | Price: {entry_price} | SL: {sl} | TP: {tp}")
+    def on_filled_order(self, position, order, price, quantity, multiplier):
+        """Log when take profit or stop loss is hit for ICTModel orders.
+
+        In a Lumibot bracket order the TP child is a limit order and the SL
+        child is a stop order.  Both have the opposite side to the entry, so
+        we use (order_type + opposite-side) to distinguish TP from SL without
+        relying on order IDs.
+        """
+        if self.active_take_profit is None and self.active_stop_loss is None:
+            return
+
+        # getattr guards handle any Lumibot version differences in attribute names
+        order_type = getattr(order, "order_type", None)
+        order_side = getattr(order, "side", None)
+
+        if order_type is None or order_side is None:
+            return
+
+        # Exit orders have the opposite side to the entry
+        is_exit = (
+            (self.order_side == "sell" and order_side == "buy") or
+            (self.order_side == "buy" and order_side == "sell")
+        )
+
+        if not is_exit:
+            return
+
+        # Bracket TP child → limit order; SL child → stop order
+        if order_type in ("limit", "stop_limit"):
+            self.log_message(
+                f"[TAKE PROFIT HIT] {self.symbol} closed at {price:.5f} "
+                f"| TP was: {self.active_take_profit:.5f} | SL was: {self.active_stop_loss:.5f}"
+            )
+        elif order_type in ("stop", "stop_market"):
+            self.log_message(
+                f"[STOP LOSS HIT] {self.symbol} closed at {price:.5f} "
+                f"| SL was: {self.active_stop_loss:.5f} | TP was: {self.active_take_profit:.5f}"
+            )
+
+        self.active_take_profit = None
+        self.active_stop_loss = None
+        self.order_side = None
 
 class TrendStrategy(Strategy):
     """
