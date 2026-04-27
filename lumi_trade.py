@@ -327,7 +327,7 @@ class ICTModel(Strategy):
                         
                         self.traded_today = True
 
-                        self.log_message(f"{current_time} -- SELL LIMIT PLACED at {entry_price}")
+                        self.log_message(f"{current_time} -- SELL LIMIT PLACED at | Price: {entry_price} | SL: {sl} | TP: {tp}")
 
 
 
@@ -397,8 +397,8 @@ class ICTModel(Strategy):
                         
                         self.traded_today = True
 
-                        self.log_message(f"{current_time} -- BUY LIMIT PLACED at {entry_price}")
-                            
+                        self.log_message(f"{current_time} -- BUY LIMIT PLACED at | Price: {entry_price} | SL: {sl} | TP: {tp}")
+
 class TrendStrategy(Strategy):
     """
     Sentiment-based trading strategy using AI analysis.
