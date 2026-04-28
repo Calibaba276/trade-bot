@@ -50,6 +50,7 @@ class LiquiditySweep(Strategy):
         self.mss_swing_low = None
         self.mss_swing_high = None
         self.risk_amount = self.parameters.get("risk_amount", 25)
+        self.limit_price = None
         self.stop_loss_distance = None
         self.asset = Asset(symbol=self.symbol, asset_type="forex")
         
@@ -68,6 +69,7 @@ class LiquiditySweep(Strategy):
         self.swept_low = False
         self.mss_swing_low = None
         self.mss_swing_high = None
+        self.limit_price = None
         self.stop_loss_distance = None
         self.entry_prices = {}
 
@@ -127,12 +129,14 @@ class LiquiditySweep(Strategy):
                 if self.mss_swing_low and last_price < self.mss_swing_low:
 
                     self.stop_loss_distance = self.mss_swing_low + self.buffer
+                    self.limit_price = self.low - self.buffer
                     quantity = calculate_quantity(self, self.asset, self.stop_loss_distance)
 
                     self.log_message(f"{current_time} -- SELL (Bearish MSS) -- Price {last_price} broke below swing low {self.mss_swing_low}")
                     order = self.create_order(
                         self.symbol, quantity, "sell",
-                        order_class = "stop_limit",
+                        order_class = "bracket",
+                        limit_price = self.limit_price,
                         secondary_limit_price = self.low,
                         secondary_stop_price = self.mss_swing_low + self.buffer
                     )
@@ -159,12 +163,14 @@ class LiquiditySweep(Strategy):
                 if self.mss_swing_high and last_price > self.mss_swing_high:
 
                     self.stop_loss_distance = self.mss_swing_high - self.buffer
+                    self.limit_price = self.high + self.buffer
                     quantity = calculate_quantity(self, self.asset, self.stop_loss_distance)
 
                     self.log_message(f"{current_time} -- BUY (Bullish MSS) -- Price {last_price} broke above swing high {self.mss_swing_high}")
                     order = self.create_order(
                         self.symbol, quantity, "buy",
                         order_class = "bracket",
+                        limit_price = self.limit_price,
                         secondary_limit_price = self.high,
                         secondary_stop_price = self.mss_swing_high - self.buffer
                     )
@@ -192,6 +198,7 @@ class ICTModel(Strategy):
         self.swept_low = None
         self.mss_swing_low = None
         self.mss_swing_high = None
+        self.limit_price = None
         self.fvg_top = None
         self.fvg_bottom = None
         self.bearish_fvg_confirmed = False
@@ -213,6 +220,7 @@ class ICTModel(Strategy):
         self.swept_low = None
         self.mss_swing_low = None
         self.mss_swing_high = None
+        self.limit_price = None
         self.fvg_top = None
         self.fvg_bottom = None
         self.bearish_fvg_confirmed = False
@@ -318,6 +326,7 @@ class ICTModel(Strategy):
                 # Trade Execution (BEARISH)
                 if self.bearish_fvg_confirmed and self.highest_sweep_point is not None:
                     entry_price = self.fvg_bottom
+                    self.limit_price = self.low - self.buffer
                     sl = self.highest_sweep_point + self.buffer
                     tp = self.london_low if self.london_low else self.pdl
 
@@ -331,6 +340,7 @@ class ICTModel(Strategy):
                         order = self.create_order(
                             self.asset, quantity, "sell",
                             order_class="bracket",
+                            limit_price = self.limit_price,
                             secondary_limit_price=tp,
                             secondary_stop_price=sl
                         )
@@ -394,6 +404,7 @@ class ICTModel(Strategy):
                 # Trade Execution (BULLISH)
                 elif self.bullish_fvg_confirmed and self.lowest_sweep_point is not None:
                     entry_price = self.fvg_top
+                    self.limit_price = self.high + self.buffer
                     sl = self.lowest_sweep_point - self.buffer
                     tp = self.london_high if self.london_high else self.pdh
 
@@ -407,6 +418,7 @@ class ICTModel(Strategy):
                         order = self.create_order(
                             self.asset, quantity, "buy",
                             order_class="bracket",
+                            limit_price = self.limit_price,
                             secondary_limit_price=tp,
                             secondary_stop_price=sl
                         )
