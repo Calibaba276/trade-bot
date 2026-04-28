@@ -50,7 +50,6 @@ class LiquiditySweep(Strategy):
         self.mss_swing_low = None
         self.mss_swing_high = None
         self.risk_amount = self.parameters.get("risk_amount", 25)
-        self.limit_price = None
         self.stop_loss_distance = None
         self.asset = Asset(symbol=self.symbol, asset_type="forex")
         
@@ -69,7 +68,6 @@ class LiquiditySweep(Strategy):
         self.swept_low = False
         self.mss_swing_low = None
         self.mss_swing_high = None
-        self.limit_price = None
         self.stop_loss_distance = None
         self.entry_prices = {}
 
