@@ -50,7 +50,6 @@ class LiquiditySweep(Strategy):
         self.mss_swing_low = None
         self.mss_swing_high = None
         self.risk_amount = self.parameters.get("risk_amount", 25)
-        self.limit_price = None
         self.stop_loss_distance = None
         self.asset = Asset(symbol=self.symbol, asset_type="forex")
         
@@ -69,7 +68,6 @@ class LiquiditySweep(Strategy):
         self.swept_low = False
         self.mss_swing_low = None
         self.mss_swing_high = None
-        self.limit_price = None
         self.stop_loss_distance = None
         self.entry_prices = {}
 
@@ -128,20 +126,36 @@ class LiquiditySweep(Strategy):
                 # Step 3: Price breaks below the swing low — MSS confirmed, SELL
                 if self.mss_swing_low and last_price < self.mss_swing_low:
 
-                    self.stop_loss_distance = self.mss_swing_low + self.buffer
-                    self.limit_price = self.low - self.buffer
-                    quantity = calculate_quantity(self, self.asset, self.stop_loss_distance)
+                    # ICT rule: SL goes above the HIGH that was swept (opposite end sweep)
+                    sl = self.high + self.buffer
+                    # ICT rule: TP targets the opposite end of the range (session low)
+                    tp = self.low
+                    entry = last_price
 
-                    self.log_message(f"{current_time} -- SELL (Bearish MSS) -- Price {last_price} broke below swing low {self.mss_swing_low}")
-                    order = self.create_order(
-                        self.symbol, quantity, "sell",
-                        order_class = "bracket",
-                        limit_price = self.limit_price,
-                        secondary_limit_price = self.low,
-                        secondary_stop_price = self.mss_swing_low + self.buffer
-                    )
-                    self.submit_order(order)
-                    self.traded_today = True
+                    risk   = sl - entry
+                    reward = entry - tp
+
+                    if risk <= 0 or reward / risk < 3.0:
+                        rr_display = f"{reward/risk:.2f}" if risk > 0 else "N/A"
+                        self.log_message(
+                            f"{current_time} -- [BEARISH SKIPPED] R:R {rr_display} < 3.0 "
+                            f"(risk={risk:.5f}, reward={reward:.5f})"
+                        )
+                    else:
+                        quantity = calculate_quantity(self, self.asset, sl)
+
+                        self.log_message(
+                            f"{current_time} -- SELL (Bearish MSS) -- Price {entry} broke below "
+                            f"swing low {self.mss_swing_low} | SL: {sl} | TP: {tp} | R:R {reward/risk:.2f}"
+                        )
+                        order = self.create_order(
+                            self.symbol, quantity, "sell",
+                            order_class="bracket",
+                            secondary_limit_price=tp,
+                            secondary_stop_price=sl,
+                        )
+                        self.submit_order(order)
+                        self.traded_today = True
 
                 # --- BULLISH MSS ---
                 # Step 1: Detect sweep below the low
@@ -162,20 +176,36 @@ class LiquiditySweep(Strategy):
                 # Step 3: Price breaks above the swing high — MSS confirmed, BUY
                 if self.mss_swing_high and last_price > self.mss_swing_high:
 
-                    self.stop_loss_distance = self.mss_swing_high - self.buffer
-                    self.limit_price = self.high + self.buffer
-                    quantity = calculate_quantity(self, self.asset, self.stop_loss_distance)
+                    # ICT rule: SL goes below the LOW that was swept (opposite end sweep)
+                    sl = self.low - self.buffer
+                    # ICT rule: TP targets the opposite end of the range (session high)
+                    tp = self.high
+                    entry = last_price
 
-                    self.log_message(f"{current_time} -- BUY (Bullish MSS) -- Price {last_price} broke above swing high {self.mss_swing_high}")
-                    order = self.create_order(
-                        self.symbol, quantity, "buy",
-                        order_class = "bracket",
-                        limit_price = self.limit_price,
-                        secondary_limit_price = self.high,
-                        secondary_stop_price = self.mss_swing_high - self.buffer
-                    )
-                    self.submit_order(order)
-                    self.traded_today = True
+                    risk   = entry - sl
+                    reward = tp - entry
+
+                    if risk <= 0 or reward / risk < 3.0:
+                        rr_display = f"{reward/risk:.2f}" if risk > 0 else "N/A"
+                        self.log_message(
+                            f"{current_time} -- [BULLISH SKIPPED] R:R {rr_display} < 3.0 "
+                            f"(risk={risk:.5f}, reward={reward:.5f})"
+                        )
+                    else:
+                        quantity = calculate_quantity(self, self.asset, sl)
+
+                        self.log_message(
+                            f"{current_time} -- BUY (Bullish MSS) -- Price {entry} broke above "
+                            f"swing high {self.mss_swing_high} | SL: {sl} | TP: {tp} | R:R {reward/risk:.2f}"
+                        )
+                        order = self.create_order(
+                            self.symbol, quantity, "buy",
+                            order_class="bracket",
+                            secondary_limit_price=tp,
+                            secondary_stop_price=sl,
+                        )
+                        self.submit_order(order)
+                        self.traded_today = True
 
 class ICTModel(Strategy):
     """
@@ -198,7 +228,6 @@ class ICTModel(Strategy):
         self.swept_low = None
         self.mss_swing_low = None
         self.mss_swing_high = None
-        self.limit_price = None
         self.fvg_top = None
         self.fvg_bottom = None
         self.bearish_fvg_confirmed = False
@@ -220,7 +249,6 @@ class ICTModel(Strategy):
         self.swept_low = None
         self.mss_swing_low = None
         self.mss_swing_high = None
-        self.limit_price = None
         self.fvg_top = None
         self.fvg_bottom = None
         self.bearish_fvg_confirmed = False
@@ -326,7 +354,6 @@ class ICTModel(Strategy):
                 # Trade Execution (BEARISH)
                 if self.bearish_fvg_confirmed and self.highest_sweep_point is not None:
                     entry_price = self.fvg_bottom
-                    self.limit_price = self.low - self.buffer
                     sl = self.highest_sweep_point + self.buffer
                     tp = self.london_low if self.london_low else self.pdl
 
@@ -340,7 +367,6 @@ class ICTModel(Strategy):
                         order = self.create_order(
                             self.asset, quantity, "sell",
                             order_class="bracket",
-                            limit_price = self.limit_price,
                             secondary_limit_price=tp,
                             secondary_stop_price=sl
                         )
@@ -404,7 +430,6 @@ class ICTModel(Strategy):
                 # Trade Execution (BULLISH)
                 elif self.bullish_fvg_confirmed and self.lowest_sweep_point is not None:
                     entry_price = self.fvg_top
-                    self.limit_price = self.high + self.buffer
                     sl = self.lowest_sweep_point - self.buffer
                     tp = self.london_high if self.london_high else self.pdh
 
@@ -418,7 +443,6 @@ class ICTModel(Strategy):
                         order = self.create_order(
                             self.asset, quantity, "buy",
                             order_class="bracket",
-                            limit_price = self.limit_price,
                             secondary_limit_price=tp,
                             secondary_stop_price=sl
                         )
