@@ -319,6 +319,12 @@ class ICTModel(Strategy):
                 # Step 2: Price reverses below high — scan for swing low
                 if self.swept_high and last_price < self.pdh and self.mss_swing_low is None:
                     df = self.get_historical_prices(self.asset, 20, "minute")
+                    if df is None or df.empty:
+                        self.log_message(f"{current_time} -- [ERROR] Bearish swing scan: DataFrame is None or empty")
+                        return
+                    if "low" not in df.columns:
+                        self.log_message(f"{current_time} -- [ERROR] Bearish swing scan: missing 'low' column")
+                        return
                     lows = df["low"].values
                     for i in range(len(lows) - 2, 0, -1):
                         if lows[i] < lows[i - 1] and lows[i] < lows[i + 1] and lows[i] > self.pdl:
@@ -333,6 +339,15 @@ class ICTModel(Strategy):
                 if self.mss_swing_low and last_price < self.mss_swing_low and not self.bearish_fvg_confirmed:
                     # Getting candles to check for a bearish FVG
                     df = self.get_historical_prices(self.asset, 5, "minute")
+                    if df is None or df.empty:
+                        self.log_message(f"{current_time} -- [ERROR] Bearish FVG check: DataFrame is None or empty")
+                        return
+                    if len(df) < 3:
+                        self.log_message(f"{current_time} -- [ERROR] Bearish FVG check: insufficient rows: got {len(df)}, need 3")
+                        return
+                    if "low" not in df.columns or "high" not in df.columns:
+                        self.log_message(f"{current_time} -- [ERROR] Bearish FVG check: missing required columns (low/high)")
+                        return
 
                     # The Low and High Candles
                     c1 = float(df.iloc[-3]["low"])
@@ -395,6 +410,12 @@ class ICTModel(Strategy):
                 # Step 2: Price reverses above low — scan for swing high
                 if self.swept_low and last_price > self.pdl and self.mss_swing_high is None:
                     df = self.get_historical_prices(self.asset, 20, "minute")
+                    if df is None or df.empty:
+                        self.log_message(f"{current_time} -- [ERROR] Bullish swing scan: DataFrame is None or empty")
+                        return
+                    if "high" not in df.columns:
+                        self.log_message(f"{current_time} -- [ERROR] Bullish swing scan: missing 'high' column")
+                        return
                     highs = df["high"].values
                     for i in range(len(highs) - 2, 0, -1):
                         if highs[i] > highs[i - 1] and highs[i] > highs[i + 1] and highs[i] < self.pdh:
@@ -409,6 +430,15 @@ class ICTModel(Strategy):
                 if self.mss_swing_high and last_price > self.mss_swing_high and not self.bullish_fvg_confirmed:
                     # Getting candles to check for a bullish FVG
                     df = self.get_historical_prices(self.asset, 5, "minute")
+                    if df is None or df.empty:
+                        self.log_message(f"{current_time} -- [ERROR] Bullish FVG check: DataFrame is None or empty")
+                        return
+                    if len(df) < 3:
+                        self.log_message(f"{current_time} -- [ERROR] Bullish FVG check: insufficient rows: got {len(df)}, need 3")
+                        return
+                    if "high" not in df.columns or "low" not in df.columns:
+                        self.log_message(f"{current_time} -- [ERROR] Bullish FVG check: missing required columns (high/low)")
+                        return
 
                     # The Low and High Candles
                     c1 = float(df.iloc[-3]["high"])
