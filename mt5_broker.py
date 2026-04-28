@@ -360,7 +360,11 @@ class MetaTrader5(Broker):
         if sl is None:
             sl = getattr(order, "secondary_stop_price", None) or getattr(order, "stop_price", None)
         if tp is None:
-            tp = getattr(order, "secondary_limit_price", None)
+            # For bracket orders limit_price is the take-profit level, not an entry
+            # price, so use it as a fallback when secondary_limit_price is absent.
+            tp = getattr(order, "secondary_limit_price", None) or (
+                getattr(order, "limit_price", None) if order_class == "bracket" else None
+            )
 
         tick = mt5.symbol_info_tick(symbol)
 
