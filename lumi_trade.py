@@ -133,8 +133,8 @@ class LiquiditySweep(Strategy):
                     order = self.create_order(
                         self.symbol, quantity, "sell",
                         order_class = "stop_limit",
-                        limit_price = self.low,
-                        stop_price = self.mss_swing_low + self.buffer
+                        secondary_limit_price = self.low,
+                        secondary_stop_price = self.mss_swing_low + self.buffer
                     )
                     self.submit_order(order)
                     self.traded_today = True
@@ -164,9 +164,9 @@ class LiquiditySweep(Strategy):
                     self.log_message(f"{current_time} -- BUY (Bullish MSS) -- Price {last_price} broke above swing high {self.mss_swing_high}")
                     order = self.create_order(
                         self.symbol, quantity, "buy",
-                        order_class = "stop_limit",
-                        limit_price = self.high,
-                        stop_price = self.mss_swing_high - self.buffer
+                        order_class = "bracket",
+                        secondary_limit_price = self.high,
+                        secondary_stop_price = self.mss_swing_high - self.buffer
                     )
                     self.submit_order(order)
                     self.traded_today = True
@@ -330,9 +330,9 @@ class ICTModel(Strategy):
 
                         order = self.create_order(
                             self.asset, quantity, "sell",
-                            order_class="stop_limit",
-                            limit_price=tp,
-                            stop_price=sl
+                            order_class="bracket",
+                            secondary_limit_price=tp,
+                            secondary_stop_price=sl
                         )
                         self.submit_order(order)
                         self.active_take_profit = tp
@@ -406,9 +406,9 @@ class ICTModel(Strategy):
 
                         order = self.create_order(
                             self.asset, quantity, "buy",
-                            order_class="stop_limit",
-                            limit_price=tp,
-                            stop_price=sl
+                            order_class="bracket",
+                            secondary_limit_price=tp,
+                            secondary_stop_price=sl
                         )
                         self.submit_order(order)
                         self.active_take_profit = tp
@@ -536,9 +536,9 @@ class TrendStrategy(Strategy):
                     
                     order = self.create_order(
                         asset, quantity, "buy",
-                        order_class="stop_limit",
-                        limit_price=take_profit_price,
-                        stop_price=stop_loss_price
+                        order_class="bracket",
+                        secondary_limit_price=take_profit_price,
+                        secondary_stop_price=stop_loss_price
                     )
                     self.submit_order(order)
                     self.entry_prices[ticker] = price
@@ -560,8 +560,8 @@ class TrendStrategy(Strategy):
                     order = self.create_order(
                         asset, pos.quantity, "sell",
                         order_class="stop_limit",
-                        limit_price=take_profit_price,
-                        stop_price=stop_loss_price
+                        secondary_limit_price=take_profit_price,
+                        secondary_stop_price=stop_loss_price
                     )
                     self.submit_order(order)
                     if ticker in self.entry_prices:
