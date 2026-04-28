@@ -353,11 +353,15 @@ class MetaTrader5(Broker):
         order_class = str(getattr(order, "order_class", "")).lower()
         sl = getattr(order, "stop_loss_price", None)
         tp = getattr(order, "take_profit_price", None)
-        if order_class == "bracket":
-            if sl is None:
-                sl = getattr(order, "stop_price", None)
-            if tp is None:
-                tp = getattr(order, "limit_price", None)
+
+        # Strategies pass SL/TP as secondary_stop_price / secondary_limit_price.
+        # Always prefer those over the legacy stop_price / limit_price attributes
+        # so the values are populated for every order class.
+        if sl is None:
+            sl = getattr(order, "secondary_stop_price", None) or getattr(order, "stop_price", None)
+        if tp is None:
+            tp = getattr(order, "secondary_limit_price", None)
+
         tick = mt5.symbol_info_tick(symbol)
 
         if tick is None:
@@ -366,7 +370,16 @@ class MetaTrader5(Broker):
             return order
 
         market_price = tick.ask if order.side == "buy" else tick.bid
-        order_kind = str(getattr(order, "order_type", getattr(order, "type", "market"))).lower()
+
+        # Bracket orders must always be sent as immediate market deals with
+        # attached SL/TP. If order_kind were left as "limit" (which Lumibot
+        # sets whenever limit_price is present), the broker would try to place
+        # a pending limit entry using the TP price as the entry level, which
+        # is invalid and causes MT5 error 10013 (INVALID REQUEST).
+        if order_class == "bracket":
+            order_kind = "market"
+        else:
+            order_kind = str(getattr(order, "order_type", getattr(order, "type", "market"))).lower()
 
         # Lumibot may provide order.strategy as either the strategy object or its name string.
         if isinstance(order.strategy, str):
