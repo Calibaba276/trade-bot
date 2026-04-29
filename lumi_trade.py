@@ -486,49 +486,6 @@ class ICTModel(Strategy):
                         self.log_message(f"{current_time} -- [BULLISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping")
                         return
 
-    def on_filled_order(self, position, order, price, quantity, multiplier):
-        """Log when take profit or stop loss is hit for ICTModel orders.
-
-        In a Lumibot bracket order the TP child is a limit order and the SL
-        child is a stop order.  Both have the opposite side to the entry, so
-        we use (order_type + opposite-side) to distinguish TP from SL without
-        relying on order IDs.
-        """
-        if self.active_take_profit is None and self.active_stop_loss is None:
-            return
-
-        # getattr guards handle any Lumibot version differences in attribute names
-        order_type = getattr(order, "order_type", None)
-        order_side = getattr(order, "side", None)
-
-        if order_type is None or order_side is None:
-            return
-
-        # Exit orders have the opposite side to the entry
-        is_exit = (
-            (self.order_side == "sell" and order_side == "buy") or
-            (self.order_side == "buy" and order_side == "sell")
-        )
-
-        if not is_exit:
-            return
-
-        # Bracket TP child → limit order; SL child → stop order
-        if order_type in ("limit", "stop_limit"):
-            self.log_message(
-                f"[TAKE PROFIT HIT] {self.symbol} closed at {price:.5f} "
-                f"| TP was: {self.active_take_profit:.5f} | SL was: {self.active_stop_loss:.5f}"
-            )
-        elif order_type in ("stop", "stop_market"):
-            self.log_message(
-                f"[STOP LOSS HIT] {self.symbol} closed at {price:.5f} "
-                f"| SL was: {self.active_stop_loss:.5f} | TP was: {self.active_take_profit:.5f}"
-            )
-
-        self.active_take_profit = None
-        self.active_stop_loss = None
-        self.order_side = None
-
 class TrendStrategy(Strategy):
     """
     Sentiment-based trading strategy using AI analysis.
