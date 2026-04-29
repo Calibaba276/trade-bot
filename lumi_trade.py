@@ -220,7 +220,8 @@ class ICTModel(Strategy):
         self.asset = Asset(symbol=self.symbol, asset_type="forex")
         self.buffer = 0.0002
 
-        self.traded_today = False
+        self.traded_london = False
+        self.traded_ny = False
         self.last_range_date = None
         self.pdh = None
         self.pdl = None
@@ -236,12 +237,14 @@ class ICTModel(Strategy):
         self.lowest_sweep_point = None
         self.london_low = None
         self.london_high = None
-        self.active_take_profit = None
-        self.active_stop_loss = None
-        self.order_side = None
+        self.pre_ny_low = None
+        self.pre_ny_high = None
+        self.ny_ote_hit_bullish = None
+        self.ny_ote_hit_bearish = False
 
     def before_market_opens(self):
-        self.traded_today = False
+        self.traded_london = False
+        self.traded_ny = False
         self.last_range_date = None
         self.pdh = None
         self.pdl = None
@@ -257,9 +260,10 @@ class ICTModel(Strategy):
         self.lowest_sweep_point = None
         self.london_low = None
         self.london_high = None
-        self.active_take_profit = None
-        self.active_stop_loss = None
-        self.order_side = None
+        self.pre_ny_low = None
+        self.pre_ny_high = None
+        self.ny_ote_hit_bullish = None
+        self.ny_ote_hit_bearish = False
 
     def on_trading_iteration(self):
         dt = self.get_datetime()
@@ -295,7 +299,7 @@ class ICTModel(Strategy):
             else:
                 self.log_message(f"Error fetching minute data for {self.symbol}")
 
-        if self.pdh and self.pdl and not self.traded_today:
+        if self.pdh and self.pdl and not self.traded_london:
             if time(9, 0) <= current_time < time(17, 0):
                 last_price = self.get_last_price(self.asset)
 
@@ -386,10 +390,8 @@ class ICTModel(Strategy):
                             secondary_stop_price=sl
                         )
                         self.submit_order(order)
-                        self.active_take_profit = tp
-                        self.active_stop_loss = sl
-                        self.order_side = "sell"
-                        self.traded_today = True
+
+                        self.traded_london = True
                         self.log_message(f"{current_time} -- [SELL ORDER PLACED] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity}")
                     else:
                         self.log_message(f"{current_time} -- [BEARISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping")
@@ -477,14 +479,148 @@ class ICTModel(Strategy):
                             secondary_stop_price=sl
                         )
                         self.submit_order(order)
-                        self.active_take_profit = tp
-                        self.active_stop_loss = sl
-                        self.order_side = "buy"
-                        self.traded_today = True
+                        self.traded_london = True
+
                         self.log_message(f"{current_time} -- [BUY ORDER PLACED] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity}")
                     else:
                         self.log_message(f"{current_time} -- [BULLISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping")
                         return
+                
+                # --- NEW YORK SESSION RESET ---
+                # At the start of NY session, clear the technical markers from London
+                if current_time == time(8, 30):
+                    self.mss_swing_low = None
+                    self.mss_swing_high = None
+                    self.fvg_confirmed = False
+                    self.fvg_top = None
+                    self.fvg_bottom = None
+                    self.log_message("--- NY Session Started: Technical Markers Reset ---")
+
+                # SCENARIO A: NEW YORK CONTINUATION (BEARISH)
+
+                # Step 1: Track the Pre-NY LOW
+                if time(3, 0) <= current_time <= time(8, 30):
+                    if last_price < self.pre_ny_low or self.pre_ny_low is None:
+                        self.pre_ny_low = last_price
+
+                # Step 2: Calculate OTE and Monitor for Retracement
+                if time(8, 30) <= current_time <= time(11,0) and self.swept_high:
+
+                    # Calculate the OTE Levels
+                    range_dist = self.highest_sweep_point - self.pre_ny_low
+                    ote_62 = self.pre_ny_high - (range_dist * 0.62)
+                    ote_79 = self.pre_ny_high - (range_dist * 0.79)
+
+                    if range_dist and ote_62 and ote_79 is None:
+                        self.log_message(f"NY Continuation Zone (Range Dist, ote_62, OTE_79): NOT FOUND")
+                        return
+
+                    self.log_message(f"NY Continuation Zone (OTE): {round(ote_79, 5)} - {round(ote_62, 5)}")
+                    
+                    # Wait for price to reach the OTE Zone
+                    if ote_79 <= last_price <= ote_62:
+                        self.ny_ote_hit_bearish = True
+                        self.log_message(f"{current_time} -- NY Scenario A Bearish: Price entered Premium OTE Zone ({round(ote_62, 5)} - {round(ote_79, 5)}) --")
+
+                    # Confirm MSS in Lower Timeframe (M1)
+                    if self.ny_ote_hit_bearish and self.mss_swing_low is None:
+                        df = self.get_historical_prices(self.asset, 20, "minute")
+                        lows = df['low'].values
+                        for i in range(len(lows) - 2, 0, -1):
+                            if lows[i] < lows[i-1] and lows[i] < lows[i+1]:
+                                self.mss_swing_low = float(lows[i])
+                                break
+
+                    # Entry on MSS confirmation
+                    if self.mss_swing_low and last_price < self.mss_swing_low and not self.traded_ny:
+                        entry_price = self.mss_swing_low
+                        sl = self.highest_sweep_point + self.buffer
+                        tp = self.pre_ny_low if self.pre_ny_low else self.pdl
+
+                        risk = sl - entry_price
+                        reward = entry_price - tp
+                        rr = reward / risk if risk > 0 else 0
+
+                        if risk > 0 and rr >= 3.0:
+                            quantity = round(self.risk_amount / (risk * 100000), 2)
+
+                            order = self.create_order(
+                                self.asset, quantity, "sell",
+                                order_class="bracket",
+                                secondary_limit_price=tp,
+                                secondary_stop_price=sl
+                            )
+                            self.submit_order(order)
+                            self.traded_ny = True
+
+                            self.log_message(f"{current_time} -- [SELL ORDER PLACED - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity}")
+                
+                # SCENARIO A: NEW YORK CONTINUATION (BULLISH)
+
+                # Step 1: Track the Pre-NY HIGH
+                if time(3, 0) <= current_time <= time(8, 30):
+                    if last_price > self.pre_ny_high or self.pre_ny_high is None:
+                        self.pre_ny_high = last_price
+
+                # Step 2: Calculate OTE and Monitor for Retracement
+                if time(8, 30) <= current_time <= time(11,0) and self.swept_low:
+
+                    # Calculate the OTE Levels
+                    range_dist = self.pre_ny_high - self.lowest_sweep_point
+                    ote_62 = self.pre_ny_low + (range_dist * 0.62)
+                    ote_79 = self.pre_ny_low + (range_dist * 0.79)
+
+                    if range_dist and ote_62 and ote_79 is None:
+                        self.log_message(f"NY Continuation Zone (Range Dist, ote_62, OTE_79): NOT FOUND")
+                        return
+
+                    self.log_message(f"NY Continuation Zone (OTE): {round(ote_62, 5)} - {round(ote_79, 5)}")
+                    
+                    # Wait for price to reach the OTE Zone
+                    if ote_62 <= last_price <= ote_79:
+                        self.ny_ote_hit_bullish = True
+                        self.log_message(f"{current_time} -- NY Scenario A Bullish: Price entered Premium OTE Zone ({round(ote_62, 5)} - {round(ote_79, 5)}) --")
+
+                    # Confirm MSS in Lower Timeframe (M1)
+                    if self.ny_ote_hit_bullish and self.mss_swing_high is None:
+                        df = self.get_historical_prices(self.asset, 20, "minute")
+                        highs = df['high'].values
+                        for i in range(len(highs) - 2, 0, -1):
+                            if highs[i] > highs[i-1] and highs[i] > highs[i+1]:
+                                self.mss_swing_high = float(highs[i])
+                                break
+                    if self.mss_swing_high is None:
+                        self.log_message(f"{current_time} -- [STEP 2 NOT COMPLETE - BULLISH NY] Price entered OTE but no valid swing high found, skipping")
+                        return
+
+                    # Entry on MSS confirmation
+                    if self.mss_swing_high and last_price > self.mss_swing_high and not self.traded_ny:
+                        entry_price = self.mss_swing_high
+                        sl = self.lowest_sweep_point - self.buffer
+                        tp = self.pre_ny_high if self.pre_ny_high else self.pdh
+
+                        risk = entry_price - sl
+                        reward = tp - entry_price
+                        rr = reward / risk if risk > 0 else 0
+
+                        if risk > 0 and rr >= 3.0:
+                            quantity = round(self.risk_amount / (risk * 100000), 2)
+
+                            order = self.create_order(
+                                self.asset, quantity, "buy",
+                                order_class="bracket",
+                                secondary_limit_price=tp,
+                                secondary_stop_price=sl
+                            )
+                            self.submit_order(order)
+                            self.traded_ny = True
+
+                            self.log_message(f"{current_time} -- [BUY ORDER PLACED - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity}")
+                        else:
+                            self.log_message(f"{current_time} -- [BULLISH NY CONTINUATION TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping")
+                            return
+
+
 
 class TrendStrategy(Strategy):
     """
