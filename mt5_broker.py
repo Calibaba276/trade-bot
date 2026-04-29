@@ -18,9 +18,6 @@ class MetaTrader5(Broker):
         self.SOURCE = "PANDAS"
         self.config = config
         self.timezone = self.config.get("timezone", "Africa/Lagos")
-        self._breakeven_entries = {}
-        self._breakeven_moved = {}
-        self._daily_drawdown = {}
         self._initialize_mt5()
 
     def _initialize_mt5(self):
@@ -43,171 +40,98 @@ class MetaTrader5(Broker):
         
         print(f"Successfully logged into {self.config['server']} as {self.config['login']}")
     
-    def _strategy_key(self, strategy):
-        if strategy is None:
-            return "default"
-        if isinstance(strategy, str):
-            return strategy
-        return getattr(strategy, "name", strategy.__class__.__name__)
+    def manage_breakeven_and_drawdown(self, strategy):
+        """
+        Iterate over all open positions and move the stop loss to breakeven
+        once the position has reached rr_ratio times the initial risk.
 
-    def _ensure_strategy_state(self, strategy):
-        key = self._strategy_key(strategy)
-        if key not in self._breakeven_entries:
-            self._breakeven_entries[key] = {}
-        if key not in self._breakeven_moved:
-            self._breakeven_moved[key] = set()
-        if key not in self._daily_drawdown:
-            self._daily_drawdown[key] = {
-                "date": None,
-                "equity_start": None,
-                "realized_pnl": 0.0,
-                "halted": False,
-            }
-        return key
+        Breakeven level includes a small commission buffer:
+          - long  -> entry_price * 1.0005
+          - short -> entry_price * 0.9995
+        """
+        open_positions = strategy.get_positions()
+        if not open_positions:
+            return
 
-    def register_entry_for_breakeven(self, strategy, asset, side, entry_price, risk_distance):
-        key = self._ensure_strategy_state(strategy)
-        symbol = self._symbol(asset)
-        self._breakeven_entries[key][symbol] = {
-            "entry_price": float(entry_price),
-            "risk_distance": float(risk_distance),
-            "side": side,
-        }
-        self._breakeven_moved[key].discard(symbol)
+        if not hasattr(strategy, "entry_prices") or strategy.entry_prices is None:
+            strategy.entry_prices = {}
 
-    def cleanup_breakeven_tracking(self, strategy, open_positions):
-        key = self._ensure_strategy_state(strategy)
-        open_symbols = {
-            self._symbol(position.asset)
-            for position in open_positions
-            if position.asset is not None
-        }
-        for symbol in list(self._breakeven_entries[key].keys()):
-            if symbol not in open_symbols:
-                self._breakeven_entries[key].pop(symbol, None)
-                self._breakeven_moved[key].discard(symbol)
-
-    def move_stop_to_price(self, asset, entry_side, stop_price):
-        symbol = self._symbol(asset)
-        positions = mt5.positions_get(symbol=symbol)
-        if not positions:
-            raise RuntimeError(f"No open positions found for {symbol} to move stop-loss.")
-
-        expected_type = mt5.POSITION_TYPE_BUY if entry_side == "buy" else mt5.POSITION_TYPE_SELL
-        for pos in positions:
-            if int(pos.type) != expected_type:
-                continue
-            request = {
-                "action": mt5.TRADE_ACTION_SLTP,
-                "symbol": symbol,
-                "position": int(pos.ticket),
-                "sl": float(stop_price),
-                "tp": float(pos.tp) if pos.tp else 0.0,
-                "magic": int(pos.magic),
-                "comment": "Lumibot MT5 Breakeven Move",
-            }
-            result = mt5.order_send(request)
-            if result.retcode != mt5.TRADE_RETCODE_DONE:
-                raise RuntimeError(
-                    f"Failed to move stop for {symbol} position {pos.ticket}: {result.comment} ({result.retcode})"
-                )
-
-    def manage_breakeven_positions(self, strategy, open_positions, get_last_price):
-        key = self._ensure_strategy_state(strategy)
         for position in open_positions:
-            if position.asset is None:
-                continue
-
-            symbol = self._symbol(position.asset)
-            trade_info = self._breakeven_entries[key].get(symbol)
-            if not trade_info or symbol in self._breakeven_moved[key]:
-                continue
-
-            current_price = get_last_price(position.asset)
+            symbol = position.symbol
+            current_price = strategy.get_last_price(symbol)
             if current_price is None:
                 continue
 
-            entry_price = trade_info["entry_price"]
-            risk_distance = trade_info["risk_distance"]
-            side = trade_info["side"]
+            # Seed entry price from the fill price when not yet recorded
+            if symbol not in strategy.entry_prices:
+                strategy.entry_prices[symbol] = position.avg_fill_price
 
-            trigger_hit = (
-                current_price >= (entry_price + risk_distance)
-                if side == "buy"
-                else current_price <= (entry_price - risk_distance)
+            entry_price = strategy.entry_prices[symbol]
+
+            if position.side == "long":
+                pnl = current_price - entry_price
+                max_risk = abs(entry_price - position.stop_price) if position.stop_price else 0
+                if max_risk > 0 and pnl >= (max_risk * strategy.rr_ratio):
+                    breakeven_sl = entry_price * 1.0005
+                    self.update_stop_loss(strategy, position, breakeven_sl)
+                    strategy.log_message(
+                        f"[BREAKEVEN] LONG {symbol}: Moved SL to breakeven {breakeven_sl:.5f}"
+                    )
+
+            elif position.side == "short":
+                pnl = entry_price - current_price
+                max_risk = abs(position.stop_price - entry_price) if position.stop_price else 0
+                if max_risk > 0 and pnl >= (max_risk * strategy.rr_ratio):
+                    breakeven_sl = entry_price * 0.9995
+                    self.update_stop_loss(strategy, position, breakeven_sl)
+                    strategy.log_message(
+                        f"[BREAKEVEN] SHORT {symbol}: Moved SL to breakeven {breakeven_sl:.5f}"
+                    )
+
+    def update_stop_loss(self, strategy, position, new_stop_price):
+        """Cancel the existing stop order for position and place a new one at new_stop_price."""
+        symbol = position.symbol
+        side = "sell" if position.side == "long" else "buy"
+        try:
+            for order in strategy.get_orders():
+                if order.asset.symbol == symbol and order.status == "open":
+                    if order.order_type == "stop" or (
+                        hasattr(order, "stop_price") and order.stop_price is not None
+                    ):
+                        strategy.cancel_order(order)
+
+            stop_order = strategy.create_order(
+                symbol,
+                position.quantity,
+                side,
+                order_type="stop",
+                stop_price=new_stop_price,
             )
-            if not trigger_hit:
-                continue
+            strategy.submit_order(stop_order)
+        except Exception as e:
+            strategy.log_message(f"[ERROR] Failed to update SL for {symbol}: {e}")
 
-            breakeven_stop = entry_price * 1.0005 if side == "buy" else entry_price * 0.9995
-            self.move_stop_to_price(position.asset, side, breakeven_stop)
-            self._breakeven_moved[key].add(symbol)
+    def is_daily_drawdown_halted(self, strategy, current_date):
+        """
+        Return True when the portfolio has lost more than max_daily_drawdown_pct
+        of its value since the start of current_date, halting further trading for that day.
+        """
+        if strategy.last_trade_date != current_date:
+            strategy.last_trade_date = current_date
+            strategy.daily_equity_start = strategy.get_portfolio_value()
+            return False
 
-    def reset_daily_drawdown(self, strategy, current_date, equity_start):
-        key = self._ensure_strategy_state(strategy)
-        self._daily_drawdown[key] = {
-            "date": current_date,
-            "equity_start": float(equity_start) if equity_start is not None else None,
-            "realized_pnl": 0.0,
-            "halted": False,
-        }
+        if strategy.daily_equity_start is None:
+            strategy.daily_equity_start = strategy.get_portfolio_value()
+            return False
 
-    def is_daily_drawdown_halted(self, strategy, current_date, equity_start, max_daily_drawdown_pct):
-        key = self._ensure_strategy_state(strategy)
-        state = self._daily_drawdown[key]
+        current_equity = strategy.get_portfolio_value()
+        max_loss = strategy.daily_equity_start * strategy.max_daily_drawdown_pct
 
-        if state["date"] != current_date:
-            self.reset_daily_drawdown(strategy, current_date, equity_start)
-            state = self._daily_drawdown[key]
+        if current_equity <= (strategy.daily_equity_start - max_loss):
+            return True
 
-        if state["equity_start"] is None and equity_start is not None:
-            state["equity_start"] = float(equity_start)
-
-        if state["equity_start"] is None or state["equity_start"] <= 0:
-            return False, state["realized_pnl"], 0.0
-
-        max_loss = state["equity_start"] * float(max_daily_drawdown_pct)
-        if state["realized_pnl"] <= -max_loss:
-            state["halted"] = True
-        return state["halted"], state["realized_pnl"], max_loss
-
-    def handle_filled_order_risk(
-        self, strategy, position, order, price, quantity, multiplier, open_positions,
-        current_date, equity_start, max_daily_drawdown_pct
-    ):
-        key = self._ensure_strategy_state(strategy)
-        state = self._daily_drawdown[key]
-
-        if state["date"] != current_date:
-            self.reset_daily_drawdown(strategy, current_date, equity_start)
-            state = self._daily_drawdown[key]
-
-        symbol = None
-        if order is not None and getattr(order, "asset", None) is not None:
-            symbol = self._symbol(order.asset)
-        elif position is not None and getattr(position, "asset", None) is not None:
-            symbol = self._symbol(position.asset)
-
-        if symbol is None:
-            return
-
-        tracked_trade = self._breakeven_entries[key].get(symbol)
-        order_side = str(getattr(order, "side", "")).lower()
-
-        if tracked_trade and tracked_trade.get("side") in {"buy", "sell"} and price is not None and quantity is not None:
-            entry_side = tracked_trade["side"]
-            closing_side = "sell" if entry_side == "buy" else "buy"
-            if order_side == closing_side:
-                closed_qty = abs(float(quantity))
-                fill_multiplier = float(multiplier) if multiplier is not None else 1.0
-                if entry_side == "buy":
-                    realized_pnl = (float(price) - tracked_trade["entry_price"]) * closed_qty * fill_multiplier
-                else:
-                    realized_pnl = (tracked_trade["entry_price"] - float(price)) * closed_qty * fill_multiplier
-                state["realized_pnl"] += realized_pnl
-                self.is_daily_drawdown_halted(strategy, current_date, equity_start, max_daily_drawdown_pct)
-
-        self.cleanup_breakeven_tracking(strategy, open_positions)
+        return False
 
     def _get_balances_at_broker(self, *args, **kwargs):
         """
