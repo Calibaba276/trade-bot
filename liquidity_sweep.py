@@ -1,3 +1,5 @@
+from lumibot.backtesting import PolygonDataBacktesting
+from datetime import datetime
 from lumi_trade import LiquiditySweep
 from mt5_broker import MetaTrader5
 from lumibot.traders import Trader
@@ -16,32 +18,51 @@ def get_azure_secret(name):
     except Exception as e:
         print(f"Error fetching {name}: {e}")
         return None
-    
+
+ISBACKTESTING = get_azure_secret("ISBACKTESTING")
+BACKTESTING_START = get_azure_secret("BACKTESTING-START")
+BACKTESTING_END = get_azure_secret("BACKTESTING-END")
+POLYGON_API_KEY = get_azure_secret("POLYGON-API-KEY")
+   
 ACCOUNT = get_azure_secret("ACCOUNT")
 PASSWORD = get_azure_secret("PASSWORD")
 SERVER = get_azure_secret("SERVER")
 
 if __name__ == "__main__":
-    liquidity_sweep = MetaTrader5({
-            "login": int(ACCOUNT),
-            "password": PASSWORD,
-            "server": SERVER,
-            "timezone": "Africa/Lagos",
-            "path": "C:\\\\Program Files\\\\Liquidity Sweep\\\\terminal64.exe"
+    if 5 > 3:
+        start = datetime.strptime(BACKTESTING_START, "%Y-%m-%d")
+        end = datetime.strptime(BACKTESTING_END, "%Y-%m-%d")
+
+        LiquiditySweep.run_backtest(
+            PolygonDataBacktesting,
+            start,
+            end,
+            parameters={"symbol": "C:EURUSD"},
+            benchmark_asset="C:EURUSD",
+            quiet_logs=False,
+            polygon_api_key=POLYGON_API_KEY
+        )
+    else:
+        broker = MetaTrader5({
+                "login": int(ACCOUNT),
+                "password": PASSWORD,
+                "server": SERVER,
+                "timezone": "Africa/Lagos",
+                "path": "C:\\\\Program Files\\\\Liquidity Sweep\\\\terminal64.exe"
         })
     
-    ls = LiquiditySweep(
-        name="Liquidity Sweep", 
-        broker=liquidity_sweep, 
-        parameters={
-            "symbol": "EURUSDm",
-            "risk_amount": 500,
-            "rr_ratio": 2,
-            "max_daily_drawdown_pct": 0.02
-        }
-    )
+        ls = LiquiditySweep(
+            name="Liquidity Sweep", 
+            broker=broker, 
+            parameters={
+                "symbol": "EURUSDm",
+                "risk_amount": 500,
+                "rr_ratio": 2,
+                "max_daily_drawdown_pct": 0.02
+            }
+        )
 
-    trader = Trader()
-    trader.add_strategy(ls)
+        trader = Trader()
+        trader.add_strategy(ls)
 
-    trader.run_all()
+        trader.run_all()
