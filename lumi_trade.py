@@ -80,55 +80,101 @@ class LiquiditySweep(Strategy):
         #     return
 
         if current_time >= time(7, 0) and self.last_range_date != dt.date():
-            bars = self.get_historical_prices(self.symbol, 420, "minute")
-            df = bars.pandas_df
+            
+            try:
+                bars = self.get_historical_prices(self.symbol, 420, "minute")
+                df = bars.pandas_df
+            except Exception:
+                print(f" --- {current_time} Failed to fetch Historical Prices", flush=True)
+                return
+            
             morning_data = df.between_time("00:00", "06:59")
+
 
             if not morning_data.empty:
                 self.high = morning_data["high"].max()
                 self.low = morning_data["low"].min()
                 self.last_range_date = dt.date()
-                print(f"--- {dt.date()} From 12:00 - 6:59am: High={self.high}, Low={self.low} ---", flush=True)
+                print(f"--- {current_date} - {current_time} From 12:00 - 6:59am: High={self.high}, Low={self.low} ---", flush=True)
             else:
-                print(f"--- {dt.date()} Market is Closed (No Data) ---", flush=True)
+                print(f"--- {current_date} Market is Closed (No Data) ---", flush=True)
+                return
 
         if self.high and self.low and not self.traded_today:
-            if current_time > time(7, 0) and current_time < time(17, 0):
+            if time(7, 0) <= current_time < time(17, 0):
                 last_price = self.get_last_price(self.symbol)
 
-                # SELL
-                #DETECT INITIAL SWEEP
+                # --- BEARISH MSS ---
+                # Step 1: Detect sweep above the high
                 if last_price > self.high:
                     self.swept_high = True
+                    print(f"{current_time} -- Current Price has surpassed the Highest Point --", flush=True)
                 
-                # PRICES REVERSES BACK ABOVE LOW
-                elif last_price < self.high and self.swept_high:
-                    print(f"{dt}-- SELL SIGNAL -- Price {last_price} reversed below High - {self.high}", flush = True)
-                    order = self.create_order(
-                        self.symbol, 10000, "sell",
-                        take_profit_price = self.low,
-                        stop_loss_price = self.high + self.buffer
-                    )
-                    self.submit_order(order)
+                    # Step 2: Price reverses below high — scan recent bars for a swing low (higher low)
+                    if self.swept_high and last_price < self.high and self.mss_swing_low is None:
 
-                    self.traded_today = True
+                        bars = self.get_historical_prices(self.asset, 20, "minute")
+                        df = bars.pandas_df
 
-                # BUY
-                #DETECT INITIAL SWEEP
+                        lows = df["low"].values
+                        for i in range(len(lows) - 2, 0, -1):
+                            if lows[i] < lows[i - 1] and lows[i] < lows[i + 1] and lows[i] > self.low:
+                                self.mss_swing_low = float(lows[i])
+                                print(f"{current_time} -- Bearish MSS: Swing Low identified at {self.mss_swing_low}", flush=True)
+                                break
+
+                    # Step 3: Price breaks below the swing low — MSS confirmed, SELL
+                    if self.mss_swing_low and last_price < self.mss_swing_low:
+                        sl = self.high + self.buffer
+                        tp = self.low
+
+                        quantity = calculate_quantity(self, self.asset, sl)
+
+                        order = self.create_order(
+                            self.asset, quantity, "sell",
+                            take_profit_price = tp,
+                            stop_loss_price = sl
+                        )
+                        self.submit_order(order)
+
+                        print(f"{dt}-- SELL SIGNAL -- Price {last_price} reversed below High - {self.high}", flush = True)
+                        self.traded_today = True
+
+                # --- BULLISH MSS ---
+                # Step 1: Detect sweep below the low
                 elif last_price < self.low:
                     self.swept_low = True
+                    print(f"{current_time} -- Current Price has surpassed the Lowest Point --", flush=True)
 
-                elif last_price > self.low and self.swept_low:
-                    print(f"{dt} -- BUY SIGNAL -- Price {last_price} passed Low - {self.low}", flush = True)
-                    print(f"{dt} -- BUY SIGNAL -- Price {last_price} reversed above Low - {self.low}", flush = True)
-                    order = self.create_order(
-                        self.symbol, 10000, "buy",
-                        take_profit_price = self.high,
-                        stop_loss_price = self.low - self.buffer
-                    )
-                    self.submit_order(order)
+                # Step 2: Price reverses above low — scan recent bars for a swing high (lower high)
+                if self.swept_low and last_price > self.low and self.mss_swing_high is None:
+                    
+                    bars = self.get_historical_prices(self.asset, 20, "minute")
+                    df = bars.pandas_df
+                    highs = df["high"].values
+                    for i in range(len(highs) - 2, 0, -1):
+                        if highs[i] > highs[i - 1] and highs[i] > highs[i + 1] and highs[i] < self.high:
+                            self.mss_swing_high = float(highs[i])
+                            self.log_message(f"{current_time} -- Bullish MSS: Swing High identified at {self.mss_swing_high}")
+                            break
 
-                    self.traded_today = True
+                    # Step 3: Price breaks above the swing high — MSS confirmed, BUY
+                    if self.mss_swing_high and last_price > self.mss_swing_high:
+                        sl = self.low - self.buffer
+                        tp = self.high
+
+                        quantity = calculate_quantity(self, self.asset, sl)
+
+                        order = self.create_order(
+                            self.asset, quantity, "buy",
+                            take_profit_price = tp,
+                            stop_loss_price = sl
+                        )
+                        self.submit_order(order)
+
+                        print(f"{dt}-- BUY SIGNAL -- Price {last_price} reversed above Low - {self.low}", flush = True)
+                        self.traded_today = True
+                        
 class ICTModel(Strategy):
     """
     ICT Model Coded as Observed... HOPE IT WORKS!!!
