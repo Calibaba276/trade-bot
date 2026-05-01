@@ -81,12 +81,10 @@ class LiquiditySweep(Strategy):
 
         if current_time >= time(7, 0) and self.last_range_date != dt.date():
             try:
-                df = self.get_historical_prices(self.asset, 420, "minute").df
+                df = _as_price_dataframe(self.get_historical_prices(self.asset, 420, "minute"))
             except Exception:
                 self.log_message(f" --- {current_time} Failed to fetch historical prices --- ")
                 return
-
-            df.index = pd.to_datetime(df.index)
 
             morning_data = df.between_time("00:00", "06:59")
 
@@ -147,8 +145,8 @@ class LiquiditySweep(Strategy):
                         order = self.create_order(
                             self.symbol, quantity, "sell",
                             order_class="bracket",
-                            secondary_limit_price=tp,
-                            secondary_stop_price=sl,
+                            take_profit_price=tp,
+                            stop_loss_price=sl,
                         )
                         self.submit_order(order)
                         self.traded_today = True
@@ -197,8 +195,8 @@ class LiquiditySweep(Strategy):
                         order = self.create_order(
                             self.symbol, quantity, "buy",
                             order_class="bracket",
-                            secondary_limit_price=tp,
-                            secondary_stop_price=sl,
+                            take_profit_price=tp,
+                            stop_loss_price=sl,
                         )
                         self.submit_order(order)
                         self.traded_today = True
