@@ -75,14 +75,8 @@ class LiquiditySweep(Strategy):
         dt = self.get_datetime()
         current_time = dt.time()
         current_date = dt.date()
-        
-        # ✅ BREAKEVEN & DRAWDOWN MANAGEMENT
-        self.broker.manage_breakeven_and_drawdown(self)
 
-        # Check if drawdown halted trading
-        if self.broker.is_daily_drawdown_halted(self, current_date):
-            if current_time.minute == 0:
-                self.log_message("[DRAWDOWN] Daily drawdown cap reached. Trading halted.")
+        if _manage_risk_controls(self, current_date, current_time):
             return
 
         if current_time >= time(7, 0) and self.last_range_date != dt.date():
@@ -253,6 +247,11 @@ class ICTModel(Strategy):
         self.sweep_peak = None
         self.sweep_trough = None
 
+        # Drawdown protection state (used by non-MT5 fallback risk controls)
+        self.max_daily_drawdown_pct = self.parameters.get("max_daily_drawdown_pct", 0.02)
+        self.daily_equity_start = None
+        self.last_trade_date = None
+
     def before_market_opens(self):
         self.traded_london = False
         self.traded_ny = False
@@ -290,13 +289,7 @@ class ICTModel(Strategy):
         current_time = dt.time()
         current_date = dt.date()
 
-        # ✅ BREAKEVEN & DRAWDOWN MANAGEMENT
-        self.broker.manage_breakeven_and_drawdown(self)
-
-        # Check if drawdown halted trading
-        if self.broker.is_daily_drawdown_halted(self, current_date):
-            if current_time.minute == 0:
-                self.log_message("[DRAWDOWN] Daily drawdown cap reached. Trading halted.")
+        if _manage_risk_controls(self, current_date, current_time):
             return
         
         # After 9 AM, capture the 6:00–9:00 AM session high/low as PDH/PDL
@@ -831,14 +824,8 @@ class TrendStrategy(Strategy):
     def on_trading_iteration(self):
         dt = self.get_datetime()
         current_date = dt.date()
-        
-        # ✅ BREAKEVEN & DRAWDOWN MANAGEMENT
-        self.broker.manage_breakeven_and_drawdown(self)
 
-        # Check if drawdown halted trading
-        if self.broker.is_daily_drawdown_halted(self, current_date):
-            if dt.minute == 0:
-                self.log_message("[DRAWDOWN] Daily drawdown cap reached. Trading halted.")
+        if _manage_risk_controls(self, current_date, dt.time()):
             return
         
         payload = json.loads(self.result.get_ai_response())
@@ -955,3 +942,34 @@ def calculate_quantity(self, asset, stop_loss=None):
     return final_qty
 
 
+def _is_daily_drawdown_halted(strategy, current_date):
+    """Use broker drawdown guard when available, otherwise apply strategy-local fallback."""
+    broker_drawdown_guard = getattr(strategy.broker, "is_daily_drawdown_halted", None)
+    if callable(broker_drawdown_guard):
+        return broker_drawdown_guard(strategy, current_date)
+
+    if strategy.last_trade_date != current_date:
+        strategy.last_trade_date = current_date
+        strategy.daily_equity_start = strategy.get_portfolio_value()
+        return False
+
+    if strategy.daily_equity_start is None:
+        strategy.daily_equity_start = strategy.get_portfolio_value()
+        return False
+
+    current_equity = strategy.get_portfolio_value()
+    max_loss = strategy.daily_equity_start * strategy.max_daily_drawdown_pct
+    return current_equity <= (strategy.daily_equity_start - max_loss)
+
+
+def _manage_risk_controls(strategy, current_date, current_time):
+    """Apply broker-specific breakeven logic when available and enforce daily drawdown cap."""
+    broker_breakeven_manager = getattr(strategy.broker, "manage_breakeven_and_drawdown", None)
+    if callable(broker_breakeven_manager):
+        broker_breakeven_manager(strategy)
+
+    if _is_daily_drawdown_halted(strategy, current_date):
+        if current_time.minute == 0:
+            strategy.log_message("[DRAWDOWN] Daily drawdown cap reached. Trading halted.")
+        return True
+    return False
