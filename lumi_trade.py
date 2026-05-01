@@ -151,11 +151,12 @@ class LiquiditySweep(Strategy):
                     
                     bars = self.get_historical_prices(self.asset, 20, "minute")
                     df = bars.pandas_df
+
                     highs = df["high"].values
                     for i in range(len(highs) - 2, 0, -1):
                         if highs[i] > highs[i - 1] and highs[i] > highs[i + 1] and highs[i] < self.high:
                             self.mss_swing_high = float(highs[i])
-                            self.log_message(f"{current_time} -- Bullish MSS: Swing High identified at {self.mss_swing_high}")
+                            print(f"{current_time} -- Bullish MSS: Swing High identified at {self.mss_swing_high}", flush=True)
                             break
 
                     # Step 3: Price breaks above the swing high — MSS confirmed, BUY
