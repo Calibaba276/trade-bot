@@ -81,7 +81,8 @@ class LiquiditySweep(Strategy):
 
         if current_time >= time(7, 0) and self.last_range_date != dt.date():
             try:
-                df = _as_price_dataframe(self.get_historical_prices(self.asset, 420, "minute"))
+                bars = self.get_historical_prices(self.asset, 420, "minute")
+                df = bars.pandas_df
             except Exception:
                 self.log_message(f" --- {current_time} Failed to fetch historical prices --- ")
                 return
@@ -109,7 +110,7 @@ class LiquiditySweep(Strategy):
 
                 # Step 2: Price reverses below high — scan recent bars for a swing low (higher low)
                 if self.swept_high and last_price < self.high and self.mss_swing_low is None:
-                    df = _as_price_dataframe(self.get_historical_prices(self.asset, 20, "minute"))
+                    df = self.get_historical_prices(self.asset, 20, "minute")
                     lows = df["low"].values
                     for i in range(len(lows) - 2, 0, -1):
                         if lows[i] < lows[i - 1] and lows[i] < lows[i + 1] and lows[i] > self.low:
@@ -120,36 +121,17 @@ class LiquiditySweep(Strategy):
                 # Step 3: Price breaks below the swing low — MSS confirmed, SELL
                 if self.mss_swing_low and last_price < self.mss_swing_low:
 
-                    # ICT rule: SL goes above the HIGH that was swept (opposite end sweep)
-                    sl = self.high + self.buffer
-                    # ICT rule: TP targets the opposite end of the range (session low)
-                    tp = self.low
-                    entry = last_price
+                    self.stop_loss_distance = (self.mss_swing_low + self.buffer) - last_price
+                    quantity = int(self.risk_amount / self.stop_loss_distance)
 
-                    risk   = sl - entry
-                    reward = entry - tp
-
-                    if risk <= 0 or reward / risk < 3.0:
-                        rr_display = f"{reward/risk:.2f}" if risk > 0 else "N/A"
-                        self.log_message(
-                            f"{current_time} -- [BEARISH SKIPPED] R:R {rr_display} < 3.0 "
-                            f"(risk={risk:.5f}, reward={reward:.5f})"
-                        )
-                    else:
-                        quantity = calculate_quantity(self, self.asset, sl)
-
-                        self.log_message(
-                            f"{current_time} -- SELL (Bearish MSS) -- Price {entry} broke below "
-                            f"swing low {self.mss_swing_low} | SL: {sl} | TP: {tp} | R:R {reward/risk:.2f}"
-                        )
-                        order = self.create_order(
-                            self.symbol, quantity, "sell",
-                            order_class="bracket",
-                            take_profit_price=tp,
-                            stop_loss_price=sl,
-                        )
-                        self.submit_order(order)
-                        self.traded_today = True
+                    self.log_message(f"{dt} -- SELL (Bearish MSS) -- Price {last_price} broke below swing low {self.mss_swing_low}")
+                    order = self.create_order(
+                        self.symbol, quantity, "sell",
+                        take_profit_price = self.low,
+                        stop_loss_price = self.mss_swing_low + self.buffer
+                    )
+                    self.submit_order(order)
+                    self.traded_today = True
 
                 # --- BULLISH MSS ---
                 # Step 1: Detect sweep below the low
@@ -159,7 +141,9 @@ class LiquiditySweep(Strategy):
 
                 # Step 2: Price reverses above low — scan recent bars for a swing high (lower high)
                 if self.swept_low and last_price > self.low and self.mss_swing_high is None:
-                    df = _as_price_dataframe(self.get_historical_prices(self.asset, 20, "minute"))
+                    bars = self.get_historical_prices(self.asset, 20, "minute")
+                    df = bars.pandas_df
+
                     highs = df["high"].values
                     for i in range(len(highs) - 2, 0, -1):
                         if highs[i] > highs[i - 1] and highs[i] > highs[i + 1] and highs[i] < self.high:
@@ -170,37 +154,17 @@ class LiquiditySweep(Strategy):
                 # Step 3: Price breaks above the swing high — MSS confirmed, BUY
                 if self.mss_swing_high and last_price > self.mss_swing_high:
 
-                    # ICT rule: SL goes below the LOW that was swept (opposite end sweep)
-                    sl = self.low - self.buffer
-                    # ICT rule: TP targets the opposite end of the range (session high)
-                    tp = self.high
-                    entry = last_price
+                    self.stop_loss_distance = last_price - (self.mss_swing_high - self.buffer)
+                    quantity = int(self.risk_amount / self.stop_loss_distance)
 
-                    risk   = entry - sl
-                    reward = tp - entry
-
-                    if risk <= 0 or reward / risk < 3.0:
-                        rr_display = f"{reward/risk:.2f}" if risk > 0 else "N/A"
-                        self.log_message(
-                            f"{current_time} -- [BULLISH SKIPPED] R:R {rr_display} < 3.0 "
-                            f"(risk={risk:.5f}, reward={reward:.5f})"
-                        )
-                    else:
-                        quantity = calculate_quantity(self, self.asset, sl)
-
-                        self.log_message(
-                            f"{current_time} -- BUY (Bullish MSS) -- Price {entry} broke above "
-                            f"swing high {self.mss_swing_high} | SL: {sl} | TP: {tp} | R:R {reward/risk:.2f}"
-                        )
-                        order = self.create_order(
-                            self.symbol, quantity, "buy",
-                            order_class="bracket",
-                            take_profit_price=tp,
-                            stop_loss_price=sl,
-                        )
-                        self.submit_order(order)
-                        self.traded_today = True
-
+                    self.log_message(f"{dt} -- BUY (Bullish MSS) -- Price {last_price} broke above swing high {self.mss_swing_high}")
+                    order = self.create_order(
+                        self.symbol, quantity, "buy",
+                        take_profit_price = self.high,
+                        stop_loss_price = self.mss_swing_high - self.buffer
+                    )
+                    self.submit_order(order)
+                    self.traded_today = True
 class ICTModel(Strategy):
     """
     ICT Model Coded as Observed... HOPE IT WORKS!!!
