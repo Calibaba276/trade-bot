@@ -92,17 +92,25 @@ class LiquiditySweep(Strategy):
 
 
             if not morning_data.empty:
-                self.high = morning_data["high"].max()
-                self.low = morning_data["low"].min()
+                morning_high = morning_data["high"].max()
+                morning_low = morning_data["low"].min()
+                if pd.isna(morning_high) or pd.isna(morning_low):
+                    print(f"--- {current_date} - {current_time} Morning data has invalid high/low ---", flush=True)
+                    return
+
+                self.high = float(morning_high)
+                self.low = float(morning_low)
                 self.last_range_date = dt.date()
                 print(f"--- {current_date} - {current_time} From 12:00 - 6:59am: High={self.high}, Low={self.low} ---", flush=True)
             else:
                 print(f"--- {current_date} Market is Closed (No Data) ---", flush=True)
                 return
 
-        if self.high and self.low and not self.traded_today:
+        if self.high is not None and self.low is not None and not self.traded_today:
             if time(7, 0) <= current_time < time(17, 0):
                 last_price = self.get_last_price(self.symbol)
+                if last_price is None:
+                    return
 
                 # --- BEARISH MSS ---
                 # Step 1: Detect sweep above the high
@@ -118,13 +126,19 @@ class LiquiditySweep(Strategy):
 
                         lows = df["low"].values
                         for i in range(len(lows) - 2, 0, -1):
-                            if lows[i] < lows[i - 1] and lows[i] < lows[i + 1] and lows[i] > self.low:
-                                self.mss_swing_low = float(lows[i])
+                            curr_low = lows[i]
+                            prev_low = lows[i - 1]
+                            next_low = lows[i + 1]
+                            if pd.isna(curr_low) or pd.isna(prev_low) or pd.isna(next_low):
+                                continue
+
+                            if curr_low < prev_low and curr_low < next_low and curr_low > self.low:
+                                self.mss_swing_low = float(curr_low)
                                 print(f"{current_time} -- Bearish MSS: Swing Low identified at {self.mss_swing_low}", flush=True)
                                 break
 
                     # Step 3: Price breaks below the swing low — MSS confirmed, SELL
-                    if self.mss_swing_low and last_price < self.mss_swing_low:
+                    if self.mss_swing_low is not None and last_price < self.mss_swing_low:
                         sl = self.high + self.buffer
                         tp = self.low
 
@@ -154,13 +168,19 @@ class LiquiditySweep(Strategy):
 
                     highs = df["high"].values
                     for i in range(len(highs) - 2, 0, -1):
-                        if highs[i] > highs[i - 1] and highs[i] > highs[i + 1] and highs[i] < self.high:
-                            self.mss_swing_high = float(highs[i])
+                        curr_high = highs[i]
+                        prev_high = highs[i - 1]
+                        next_high = highs[i + 1]
+                        if pd.isna(curr_high) or pd.isna(prev_high) or pd.isna(next_high):
+                            continue
+
+                        if curr_high > prev_high and curr_high > next_high and curr_high < self.high:
+                            self.mss_swing_high = float(curr_high)
                             print(f"{current_time} -- Bullish MSS: Swing High identified at {self.mss_swing_high}", flush=True)
                             break
 
                     # Step 3: Price breaks above the swing high — MSS confirmed, BUY
-                    if self.mss_swing_high and last_price > self.mss_swing_high:
+                    if self.mss_swing_high is not None and last_price > self.mss_swing_high:
                         sl = self.low - self.buffer
                         tp = self.high
 
