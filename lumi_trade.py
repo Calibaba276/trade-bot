@@ -81,13 +81,13 @@ class LiquiditySweep(Strategy):
 
         if current_time >= time(7, 0) and self.last_range_date != dt.date():
             try:
-                df = self.get_historical_prices(self.asset, 420, "minute")
+                df = self.get_historical_prices(self.asset, 420, "minute").df
             except Exception:
                 self.log_message(f" --- {current_time} Failed to fetch historical prices --- ")
                 return
 
             df.index = pd.to_datetime(df.index)
-            
+
             morning_data = df.between_time("00:00", "06:59")
 
             if not morning_data.empty:
