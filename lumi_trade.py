@@ -81,7 +81,7 @@ class LiquiditySweep(Strategy):
 
         if current_time >= time(7, 0) and self.last_range_date != dt.date():
             try:
-                df = self.get_historical_prices(self.asset, 420, "minute")
+                df = _as_price_dataframe(self.get_historical_prices(self.asset, 420, "minute"))
             except Exception:
                 self.log_message(f" --- {current_time} Failed to fetch historical prices --- ")
                 return
@@ -109,7 +109,7 @@ class LiquiditySweep(Strategy):
 
                 # Step 2: Price reverses below high — scan recent bars for a swing low (higher low)
                 if self.swept_high and last_price < self.high and self.mss_swing_low is None:
-                    df = self.get_historical_prices(self.asset, 20, "minute")
+                    df = _as_price_dataframe(self.get_historical_prices(self.asset, 20, "minute"))
                     lows = df["low"].values
                     for i in range(len(lows) - 2, 0, -1):
                         if lows[i] < lows[i - 1] and lows[i] < lows[i + 1] and lows[i] > self.low:
@@ -159,7 +159,7 @@ class LiquiditySweep(Strategy):
 
                 # Step 2: Price reverses above low — scan recent bars for a swing high (lower high)
                 if self.swept_low and last_price > self.low and self.mss_swing_high is None:
-                    df = self.get_historical_prices(self.asset, 20, "minute")
+                    df = _as_price_dataframe(self.get_historical_prices(self.asset, 20, "minute"))
                     highs = df["high"].values
                     for i in range(len(highs) - 2, 0, -1):
                         if highs[i] > highs[i - 1] and highs[i] > highs[i + 1] and highs[i] < self.high:
@@ -295,7 +295,7 @@ class ICTModel(Strategy):
         # After 9 AM, capture the 6:00–9:00 AM session high/low as PDH/PDL
         if current_time >= time(9, 0) and self.last_range_date != current_date:
             try:
-                df = self.get_historical_prices(self.asset, 200, "minute")
+                df = _as_price_dataframe(self.get_historical_prices(self.asset, 200, "minute"))
             except Exception:
                 self.log_message(f" --- {current_time} Failed to fetch Historical Prices ---")
                 return
@@ -336,7 +336,7 @@ class ICTModel(Strategy):
 
                 # Step 2: Price reverses below high — scan for swing low
                 if self.swept_high and last_price < self.pdh and self.mss_swing_low is None:
-                    df = self.get_historical_prices(self.asset, 20, "minute")
+                    df = _as_price_dataframe(self.get_historical_prices(self.asset, 20, "minute"))
                     if df is None or df.empty:
                         self.log_message(f"{current_time} -- [ERROR] Bearish swing scan: DataFrame is None or empty")
                         return
@@ -356,7 +356,7 @@ class ICTModel(Strategy):
                 # Step 3: Price breaks below the swing low — MSS Confirmed
                 if self.mss_swing_low and last_price < self.mss_swing_low and not self.bearish_fvg_confirmed:
                     # Getting candles to check for a bearish FVG
-                    df = self.get_historical_prices(self.asset, 5, "minute")
+                    df = _as_price_dataframe(self.get_historical_prices(self.asset, 5, "minute"))
                     if df is None or df.empty:
                         self.log_message(f"{current_time} -- [ERROR] Bearish FVG check: DataFrame is None or empty")
                         return
@@ -425,7 +425,7 @@ class ICTModel(Strategy):
 
                 # Step 2: Price reverses above low — scan for swing high
                 if self.swept_low and last_price > self.pdl and self.mss_swing_high is None:
-                    df = self.get_historical_prices(self.asset, 20, "minute")
+                    df = _as_price_dataframe(self.get_historical_prices(self.asset, 20, "minute"))
                     if df is None or df.empty:
                         self.log_message(f"{current_time} -- [ERROR] Bullish swing scan: DataFrame is None or empty")
                         return
@@ -445,7 +445,7 @@ class ICTModel(Strategy):
                 # Step 3: Price breaks above the swing high — MSS Confirmed
                 if self.mss_swing_high and last_price > self.mss_swing_high and not self.bullish_fvg_confirmed:
                     # Getting candles to check for a bullish FVG
-                    df = self.get_historical_prices(self.asset, 5, "minute")
+                    df = _as_price_dataframe(self.get_historical_prices(self.asset, 5, "minute"))
                     if df is None or df.empty:
                         self.log_message(f"{current_time} -- [ERROR] Bullish FVG check: DataFrame is None or empty")
                         return
@@ -562,7 +562,7 @@ class ICTModel(Strategy):
 
                         # Confirm MSS in Lower Timeframe (M1)
                         if self.ny_ote_hit_bearish and self.mss_swing_low is None:
-                            df = self.get_historical_prices(self.asset, 20, "minute")
+                            df = _as_price_dataframe(self.get_historical_prices(self.asset, 20, "minute"))
                             lows = df['low'].values
                             for i in range(len(lows) - 2, 0, -1):
                                 if lows[i] < lows[i-1] and lows[i] < lows[i+1]:
@@ -618,7 +618,7 @@ class ICTModel(Strategy):
 
                         # Confirm MSS in Lower Timeframe (M1)
                         if self.ny_ote_hit_bullish and self.mss_swing_high is None:
-                            df = self.get_historical_prices(self.asset, 20, "minute")
+                            df = _as_price_dataframe(self.get_historical_prices(self.asset, 20, "minute"))
                             highs = df['high'].values
                             for i in range(len(highs) - 2, 0, -1):
                                 if highs[i] > highs[i-1] and highs[i] > highs[i+1]:
@@ -671,7 +671,7 @@ class ICTModel(Strategy):
                     # BEARISH
                     # Observe MSS and Identify FVG (BULLISH)
                     if self.ny_sweep_high and last_price < self.ny_range_high and not self.traded_ny:
-                        df = self.get_historical_prices(self.asset, 20, "minute")
+                        df = _as_price_dataframe(self.get_historical_prices(self.asset, 20, "minute"))
                         if df is None or df.empty:
                             self.log_message(f"{current_time} -- [ERROR] Bearish swing scan: DataFrame is None or empty")
                             return
@@ -690,7 +690,7 @@ class ICTModel(Strategy):
 
                         if self.mss_swing_low and last_price < self.mss_swing_low and not self.bearish_fvg_confirmed:
                             # Getting candles to check for a bearish FVG
-                            df = self.get_historical_prices(self.asset, 5, "minute")
+                            df = _as_price_dataframe(self.get_historical_prices(self.asset, 5, "minute"))
                             if df is None or df.empty:
                                 self.log_message(f"{current_time} -- [ERROR] Bearish FVG check: DataFrame is None or empty")
                                 return
@@ -745,7 +745,7 @@ class ICTModel(Strategy):
                     # --- 2. OBSERVE MSS & 3. IDENTIFY PD ARRAY (BULLISH REVERSAL) ---
                     elif self.ny_sweep_low and last_price > self.ny_range_low and not self.traded_ny:
                         # Confirm market structure shifts (MSS) in lower timeframes
-                        df = self.get_historical_prices(self.asset, 20, "minute")
+                        df = _as_price_dataframe(self.get_historical_prices(self.asset, 20, "minute"))
                         if df is None or df.empty:
                             self.log_message(f"{current_time} -- [ERROR] Bullish swing scan: DataFrame is None or empty")
                             return
@@ -760,7 +760,7 @@ class ICTModel(Strategy):
 
                         # If MSS occurs, Locate PD Array (FVG)
                         if self.mss_swing_high and last_price > self.mss_swing_high:
-                            df = self.get_historical_prices(self.asset, 5, "minute")
+                            df = _as_price_dataframe(self.get_historical_prices(self.asset, 5, "minute"))
                             if df is not None and not df.empty and len(df) >= 3:
                                 c1 = float(df.iloc[-3]["high"])
                                 c2 = float(df.iloc[-1]["low"])
@@ -940,6 +940,23 @@ def calculate_quantity(self, asset, stop_loss=None):
         return 0
 
     return final_qty
+
+
+def _as_price_dataframe(price_data):
+    """Normalize historical price payloads (Bars/DataFrame) into a pandas DataFrame."""
+    if price_data is None:
+        return pd.DataFrame()
+    if isinstance(price_data, pd.DataFrame):
+        return price_data
+
+    bars_df = getattr(price_data, "df", None)
+    if isinstance(bars_df, pd.DataFrame):
+        return bars_df
+
+    try:
+        return pd.DataFrame(price_data)
+    except Exception:
+        return pd.DataFrame()
 
 
 def _is_daily_drawdown_halted(strategy, current_date):
