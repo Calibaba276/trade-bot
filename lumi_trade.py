@@ -394,9 +394,8 @@ class ICTModel(Strategy):
 
                         order = self.create_order(
                             self.asset, quantity, "sell",
-                            order_class="bracket",
-                            secondary_limit_price=tp,
-                            secondary_stop_price=sl
+                            take_profit_price=tp,
+                            stop_loss_price=sl
                         )
                         self.submit_order(order)
 
@@ -483,9 +482,8 @@ class ICTModel(Strategy):
 
                         order = self.create_order(
                             self.asset, quantity, "buy",
-                            order_class="bracket",
-                            secondary_limit_price=tp,
-                            secondary_stop_price=sl
+                            take_profit_price=tp,
+                            stop_loss_price=sl
                         )
                         self.submit_order(order)
                         self.traded_london = True
@@ -579,9 +577,8 @@ class ICTModel(Strategy):
 
                                 order = self.create_order(
                                     self.asset, quantity, "sell",
-                                    order_class="bracket",
-                                    secondary_limit_price=tp,
-                                    secondary_stop_price=sl
+                                    take_profit_price=tp,
+                                    stop_loss_price=sl
                                 )
                                 self.submit_order(order)
                                 self.traded_ny = True
@@ -638,9 +635,8 @@ class ICTModel(Strategy):
 
                                 order = self.create_order(
                                     self.asset, quantity, "buy",
-                                    order_class="bracket",
-                                    secondary_limit_price=tp,
-                                    secondary_stop_price=sl
+                                    take_profit_price=tp,
+                                    stop_loss_price=sl
                                 )
                                 self.submit_order(order)
                                 self.traded_ny = True
