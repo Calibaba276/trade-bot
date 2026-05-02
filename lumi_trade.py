@@ -97,7 +97,9 @@ class LiquiditySweep(Strategy):
                 print(f" --- {current_time} Failed to fetch Historical Prices", flush=True)
                 return
             
-            # 23:00–05:59 UTC (00:00–06:59 NGT) — crosses midnight, pandas handles the wrap
+            # 23:00–05:59 UTC (00:00–06:59 NGT) — spans midnight.
+            # pandas between_time() natively supports midnight-crossing ranges
+            # when start_time > end_time (see pandas docs for DatetimeIndex.indexer_between_time).
             morning_data = df.between_time("23:00", "05:59")
 
 
