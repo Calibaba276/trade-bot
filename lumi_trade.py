@@ -31,10 +31,12 @@ class LiquiditySweep(Strategy):
     """
     Liquidity Sweep Strategy - Market Structure Shift (MSS) Based
 
-    ⏰ TIME ZONE: ALL TIMES ARE IN NIGERIAN TIME (UTC+1)
-    - When you see timestamps in logs: they are in NGT, not UTC
-    - Asian Session: 01:00-09:00 NGT (00:00-08:00 UTC)
-    - All time checks use NGT
+    ⏰ TIME ZONE: ALL TIMES IN CODE ARE UTC. NGT (UTC+1) equivalents shown in comments.
+    - Asian Session:  00:00–08:00 UTC  (01:00–09:00 NGT)
+    - London Session: 07:00–16:00 UTC  (08:00–17:00 NGT)
+    - New York Session: 12:30–19:00 UTC (13:30–20:00 NGT)
+    - Morning range captured: 23:00–05:59 UTC (00:00–06:59 NGT)
+    - Trading window: 06:00–16:00 UTC (07:00–17:00 NGT)
     """
     def initialize(self):
         self.symbol = self.parameters.get("symbol")
@@ -73,13 +75,20 @@ class LiquiditySweep(Strategy):
 
     def on_trading_iteration(self):
         dt = self.get_datetime()
+        # Normalize to UTC so that time() comparisons align with the UTC-indexed
+        # Polygon DataFrames returned by get_historical_prices().
+        if dt.tzinfo is None:
+            dt = pytz.UTC.localize(dt)
+        else:
+            dt = dt.astimezone(pytz.UTC)
         current_time = dt.time()
         current_date = dt.date()
 
         # if _manage_risk_controls(self, current_date, current_time):
         #     return
 
-        if current_time >= time(7, 0) and self.last_range_date != dt.date():
+        # Trigger at 06:00 UTC (07:00 NGT) to capture the overnight range
+        if current_time >= time(6, 0) and self.last_range_date != dt.date():
             
             try:
                 bars = self.get_historical_prices(self.symbol, 420, "minute")
@@ -88,7 +97,8 @@ class LiquiditySweep(Strategy):
                 print(f" --- {current_time} Failed to fetch Historical Prices", flush=True)
                 return
             
-            morning_data = df.between_time("00:00", "06:59")
+            # 23:00–05:59 UTC (00:00–06:59 NGT) — crosses midnight, pandas handles the wrap
+            morning_data = df.between_time("23:00", "05:59")
 
 
             if not morning_data.empty:
@@ -101,13 +111,15 @@ class LiquiditySweep(Strategy):
                 self.high = float(morning_high)
                 self.low = float(morning_low)
                 self.last_range_date = dt.date()
-                print(f"--- {current_date} - {current_time} From 12:00 - 6:59am: High={self.high}, Low={self.low} ---", flush=True)
+                # 23:00–05:59 UTC  =  00:00–06:59 NGT
+                print(f"--- {current_date} - {current_time} Range 23:00-05:59 UTC (00:00-06:59 NGT): High={self.high}, Low={self.low} ---", flush=True)
             else:
                 print(f"--- {current_date} Market is Closed (No Data) ---", flush=True)
                 return
 
         if self.high is not None and self.low is not None and not self.traded_today:
-            if time(7, 0) <= current_time < time(17, 0):
+            # 06:00–16:00 UTC  =  07:00–17:00 NGT
+            if time(6, 0) <= current_time < time(16, 0):
                 last_price = self.get_last_price(self.symbol)
                 if last_price is None:
                     return
@@ -199,6 +211,13 @@ class LiquiditySweep(Strategy):
 class ICTModel(Strategy):
     """
     ICT Model Coded as Observed... HOPE IT WORKS!!!
+
+    ⏰ TIME ZONE: ALL TIMES IN CODE ARE UTC. NGT (UTC+1) equivalents shown in comments.
+    - PDH/PDL source window:  05:00–07:59 UTC  (06:00–08:59 NGT)
+    - London session:         08:00–16:00 UTC  (09:00–17:00 NGT)
+    - Pre-NY range:           02:00–07:30 UTC  (03:00–08:30 NGT)
+    - NY range (Scenario B):  04:00–12:00 UTC  (05:00–13:00 NGT)
+    - NY execution:           07:30–10:00 UTC  (08:30–11:00 NGT)
     """
 
     def initialize(self):
@@ -281,14 +300,20 @@ class ICTModel(Strategy):
 
     def on_trading_iteration(self):
         dt = self.get_datetime()
+        # Normalize to UTC so that time() comparisons align with the UTC-indexed
+        # Polygon DataFrames returned by get_historical_prices().
+        if dt.tzinfo is None:
+            dt = pytz.UTC.localize(dt)
+        else:
+            dt = dt.astimezone(pytz.UTC)
         current_time = dt.time()
         current_date = dt.date()
 
         if _manage_risk_controls(self, current_date, current_time):
             return
         
-        # After 9 AM, capture the 6:00–9:00 AM session high/low as PDH/PDL
-        if current_time >= time(9, 0) and self.last_range_date != current_date:
+        # After 08:00 UTC (09:00 NGT), capture the 05:00–07:59 UTC (06:00–08:59 NGT) session high/low as PDH/PDL
+        if current_time >= time(8, 0) and self.last_range_date != current_date:
             try:
                 df = _as_price_dataframe(self.get_historical_prices(self.asset, 200, "minute"))
             except Exception:
@@ -296,21 +321,23 @@ class ICTModel(Strategy):
                 return
 
             if df is not None and not df.empty:
-                session_data = df.between_time("06:00", "08:59")
+                # 05:00–07:59 UTC  =  06:00–08:59 NGT
+                session_data = df.between_time("05:00", "07:59")
                 if not session_data.empty:
                     self.pdh = float(session_data["high"].max())
                     self.pdl = float(session_data["low"].min())
                     self.last_range_date = current_date
-                    print(f"[{self.symbol}] 6AM-9AM Levels Set - PDH: {self.pdh} PDL: {self.pdl}", flush=True)
+                    print(f"[{self.symbol}] 05:00-07:59 UTC (06:00-08:59 NGT) Levels Set - PDH: {self.pdh} PDL: {self.pdl}", flush=True)
                 else:
-                    print(f"[{self.symbol}] No data in 6AM-9AM window", flush=True)
+                    print(f"[{self.symbol}] No data in 05:00-07:59 UTC (06:00-08:59 NGT) window", flush=True)
             else:
                 print(f"Error fetching minute data for {self.symbol}", flush=True)
 
         if self.pdh and self.pdl:
             last_price = self.get_last_price(self.asset)
 
-            if time(9, 0) <= current_time < time(17, 0) and not self.traded_london:
+            # London session: 08:00–16:00 UTC  (09:00–17:00 NGT)
+            if time(8, 0) <= current_time < time(16, 0) and not self.traded_london:
 
                 if self.london_low is None or last_price < self.london_low:
                     self.london_low = last_price
@@ -494,8 +521,8 @@ class ICTModel(Strategy):
                         return
                 
             # --- NEW YORK SESSION RESET ---
-            # At the start of NY session, clear the technical markers from London
-            if current_time == time(8, 30):
+            # At 07:30 UTC (08:30 NGT), clear the technical markers from London
+            if current_time == time(7, 30):
                 self.mss_swing_low = None
                 self.mss_swing_high = None
                 self.bearish_fvg_confirmed = False
@@ -505,22 +532,22 @@ class ICTModel(Strategy):
                 print("--- NY Session Started: Technical Markers Reset ---", flush=True)
 
             # SCENARIO A: NEW YORK CONTINUATION
-            # Track the Pre-NY range - SCENARIO A
-            if time(3, 0) <= current_time <= time(8, 30):
+            # Track the Pre-NY range: 02:00–07:30 UTC  (03:00–08:30 NGT) — SCENARIO A
+            if time(2, 0) <= current_time <= time(7, 30):
                 if self.pre_ny_low is None or last_price < self.pre_ny_low:
                     self.pre_ny_low = last_price
                 if self.pre_ny_high is None or last_price > self.pre_ny_high:
                     self.pre_ny_high = last_price
 
-            # Track the highest and lowest point between 12 to 8AM EST - SCENARIO B
-            if time(5, 0) <= current_time <= time(13,0):
+            # Track the highest and lowest point: 04:00–12:00 UTC  (05:00–13:00 NGT) — SCENARIO B
+            if time(4, 0) <= current_time <= time(12, 0):
                 if self.ny_range_high is None or last_price > self.ny_range_high:
                     self.ny_range_high = last_price
                 if self.ny_range_low is None or last_price < self.ny_range_low:
                     self.ny_range_low = last_price
 
-            # NY SESSION EXECUTION (8:30 - 11:00 AM)
-            if time(8, 30) <= current_time <= time(11, 0) and not self.traded_ny:
+            # NY SESSION EXECUTION: 07:30–10:00 UTC  (08:30–11:00 NGT)
+            if time(7, 30) <= current_time <= time(10, 0) and not self.traded_ny:
                 if self.pre_ny_low is None or self.pre_ny_high is None:
                     print("NY Continuation Zone (Range Dist, ote_62, OTE_79): NOT FOUND", flush=True)
                     return
