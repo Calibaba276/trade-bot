@@ -30,7 +30,7 @@ PASSWORD = get_azure_secret("PASSWORD")
 SERVER = get_azure_secret("SERVER")
 
 if __name__ == "__main__":
-    if 5 < 3:
+    if 5 > 3:
         start_date = datetime.strptime(BACKTESTING_START, "%Y-%m-%d")
         end_date = datetime.strptime(BACKTESTING_END, "%Y-%m-%d")
 
