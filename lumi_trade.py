@@ -82,8 +82,7 @@ class LiquiditySweep(Strategy):
         if current_time >= time(7, 0) and self.last_range_date != dt.date():
             
             try:
-                bars = self.get_historical_prices(self.symbol, 420, "minute")
-                df = bars.pandas_df
+                df = self.get_historical_prices(self.symbol, 420, "minute")
             except Exception:
                 print(f" --- {current_time} Failed to fetch Historical Prices", flush=True)
                 return
