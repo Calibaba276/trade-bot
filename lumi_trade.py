@@ -439,7 +439,7 @@ class ICTModel(Strategy):
                 # Step 3: Price breaks above the swing high — MSS Confirmed
                 if self.mss_swing_high and last_price > self.mss_swing_high and not self.bullish_fvg_confirmed:
                     # Getting candles to check for a bullish FVG
-                    df = _as_price_dataframe(self.get_historical_prices(self.asset, 5, "minute"))
+                    df = self.get_historical_prices(self.asset, 5, "minute")
                     if df is None or df.empty:
                         print(f" --- {current_time} [ERROR] Bullish FVG check: DataFrame is None or empty ---", flush=True)
                         return
