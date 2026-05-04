@@ -938,24 +938,6 @@ def calculate_quantity(self, asset, stop_loss=None):
 
     return final_qty
 
-
-def _as_price_dataframe(price_data):
-    """Normalize historical price payloads (Bars/DataFrame) into a pandas DataFrame."""
-    if price_data is None:
-        return pd.DataFrame()
-    if isinstance(price_data, pd.DataFrame):
-        return price_data
-
-    bars_df = getattr(price_data, "df", None)
-    if isinstance(bars_df, pd.DataFrame):
-        return bars_df
-
-    try:
-        return pd.DataFrame(price_data)
-    except Exception:
-        return pd.DataFrame()
-
-
 def _is_daily_drawdown_halted(strategy, current_date):
     """Use broker drawdown guard when available, otherwise apply strategy-local fallback."""
     broker_drawdown_guard = getattr(strategy.broker, "is_daily_drawdown_halted", None)
