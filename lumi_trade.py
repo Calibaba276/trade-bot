@@ -211,6 +211,7 @@ class ICTModel(Strategy):
         self.traded_london = False
         self.traded_ny = False
         self.last_range_date = None
+        self.ny_range_date = None
         self.pdh = None
         self.pdl = None
         self.swept_high = None
@@ -250,6 +251,7 @@ class ICTModel(Strategy):
         self.traded_london = False
         self.traded_ny = False
         self.last_range_date = None
+        self.ny_range_date = None
         self.pdh = None
         self.pdl = None
         self.swept_high = None
@@ -285,7 +287,7 @@ class ICTModel(Strategy):
 
         if _manage_risk_controls(self, current_date, current_time):
             return
-        
+
         # After 9 AM, capture the 6:00–9:00 AM session high/low as PDH/PDL
         if current_time >= time(9, 0) and self.last_range_date != current_date:
             try:
@@ -300,7 +302,7 @@ class ICTModel(Strategy):
                 self.pdh = float(morning_data["high"].max())
                 self.pdl = float(morning_data["low"].min())
                 self.last_range_date = current_date
-                print(f" --- {current_time} 6AM-9AM Levels Set - PDH: {self.pdh} PDL: {self.pdl} --- ", flush=True)
+                print(f"--- {current_date} - {current_time} From 6:00 - 8:59am: High={self.pdh}, Low={self.pdl} ---", flush=True)
             else:
                 print(f" --- {current_date} Market is Closed (No Data) --- ", flush=True)
                 return
@@ -308,7 +310,7 @@ class ICTModel(Strategy):
         if self.pdh and self.pdl:
             last_price = self.get_last_price(self.asset)
 
-            if time(9, 0) <= current_time < time(17, 0) and not self.traded_london:
+            if time(9, 0) <= current_time < time(11, 0) and not self.traded_london:
 
                 if self.london_low is None or last_price < self.london_low:
                     self.london_low = last_price
@@ -493,9 +495,26 @@ class ICTModel(Strategy):
                         print(f" --- {current_time} [BULLISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping ---", flush=True)
                         return
                 
+            # Keep tracking London sweep state until NY open so Scenario A/B uses complete data.
+            if time(11, 0) <= current_time < time(13, 30):
+                if self.london_low is None or last_price < self.london_low:
+                    self.london_low = last_price
+                if self.london_high is None or last_price > self.london_high:
+                    self.london_high = last_price
+
+                if last_price > self.pdh:
+                    self.swept_high = True
+                    if self.highest_sweep_point is None or last_price > self.highest_sweep_point:
+                        self.highest_sweep_point = last_price
+
+                if last_price < self.pdl:
+                    self.swept_low = True
+                    if self.lowest_sweep_point is None or last_price < self.lowest_sweep_point:
+                        self.lowest_sweep_point = last_price
+
             # --- NEW YORK SESSION RESET ---
             # At the start of NY session, clear the technical markers from London
-            if current_time == time(8, 30):
+            if current_time == time(13, 30):
                 self.mss_swing_low = None
                 self.mss_swing_high = None
                 self.bearish_fvg_confirmed = False
@@ -504,40 +523,44 @@ class ICTModel(Strategy):
                 self.fvg_bottom = None
                 print("--- NY Session Started: Technical Markers Reset ---", flush=True)
 
-            # SCENARIO A: NEW YORK CONTINUATION
-            # Track the Pre-NY range - SCENARIO A
-            if time(3, 0) <= current_time <= time(8, 30):
+            # Build the pre-NY range and keep it fixed once NY session starts.
+            if time(5, 0) <= current_time < time(13, 30):
                 if self.pre_ny_low is None or last_price < self.pre_ny_low:
                     self.pre_ny_low = last_price
                 if self.pre_ny_high is None or last_price > self.pre_ny_high:
                     self.pre_ny_high = last_price
 
-            # Track the highest and lowest point between 12 to 8AM EST - SCENARIO B
-            if time(5, 0) <= current_time <= time(13,0):
-                if self.ny_range_high is None or last_price > self.ny_range_high:
-                    self.ny_range_high = last_price
-                if self.ny_range_low is None or last_price < self.ny_range_low:
-                    self.ny_range_low = last_price
+            # SCENARIO A: NEW YORK CONTINUATION
+            # NY SESSION EXECUTION (13:30 - 16:00)
+            if time(13, 30) <= current_time <= time(16, 0) and not self.traded_ny:
+                last_price = self.get_last_price(self.asset)
 
-            # NY SESSION EXECUTION (8:30 - 11:00 AM)
-            if time(8, 30) <= current_time <= time(11, 0) and not self.traded_ny:
                 if self.pre_ny_low is None or self.pre_ny_high is None:
-                    print("NY Continuation Zone (Range Dist, ote_62, OTE_79): NOT FOUND", flush=True)
+                    print("PRE_NY_LOW or PRE_NY_HIGH: NOT FOUND", flush=True)
                     return
                 
-                # SCENARIO AI
+                london_remained_in_range = (
+                    self.pdh is not None and self.pdl is not None
+                    and self.london_high is not None and self.london_low is not None
+                    and self.london_high <= self.pdh
+                    and self.london_low >= self.pdl
+                    and not self.swept_high
+                    and not self.swept_low
+                )
+
+                # SCENARIO A
                 if self.swept_high or self.swept_low:
                     
                     # BEARISH CONTINUATION LOGIC
                     if self.swept_high:
                         if self.highest_sweep_point is None:
-                            print("NY Continuation Zone (Range Dist, ote_62, OTE_79): NOT FOUND", flush=True)
+                            print("HIGHEST SWEEP POINT: NOT FOUND", flush=True)
                             return
 
                         # Calculate the OTE Levels
                         range_dist = self.highest_sweep_point - self.pre_ny_low
                         if range_dist <= 0:
-                            print("NY Continuation Zone (Range Dist, ote_62, OTE_79): NOT FOUND", flush=True)
+                            print("RANGE DISTANCE - LOW RETURNING...", flush=True)
                             return
 
                         ote_62 = self.pre_ny_high - (range_dist * 0.62)
@@ -590,13 +613,13 @@ class ICTModel(Strategy):
                                 return
                     elif self.swept_low:
                         if self.lowest_sweep_point is None:
-                            print("NY Continuation Zone (Range Dist, ote_62, OTE_79): NOT FOUND", flush=True)
+                            print("LOWEST SWEEP POINT: NOT FOUND", flush=True)
                             return
 
                         # Calculate the OTE Levels
                         range_dist = self.pre_ny_high - self.lowest_sweep_point
                         if range_dist <= 0:
-                            print("NY Continuation Zone (Range Dist, ote_62, OTE_79): NOT FOUND", flush=True)
+                            print("RANGE DISTANCE - LOW RETURNING...", flush=True)
                             return
 
                         ote_62 = self.pre_ny_low + (range_dist * 0.62)
@@ -618,6 +641,7 @@ class ICTModel(Strategy):
                                 if highs[i] > highs[i-1] and highs[i] > highs[i+1]:
                                     self.mss_swing_high = float(highs[i])
                                     break
+                                
                         if self.mss_swing_high is None:
                             print(f"{current_time} -- [STEP 2 NOT COMPLETE - BULLISH NY] Price entered OTE but no valid swing high found, skipping", flush=True)
                             return
@@ -647,13 +671,28 @@ class ICTModel(Strategy):
                             else:
                                 print(f"{current_time} --- [BULLISH NY CONTINUATION TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping ---", flush=True)
                                 return
-                # SCENARIO B: LONDON REMAINED IN A RANGE      
-                else:
-                    if self.ny_range_high is None or self.ny_range_low is None:
-                        print("NY Scenario B Range: NOT FOUND", flush=True)
-                        return
+                # SCENARIO B: LONDON REMAINED IN A RANGE
+                elif london_remained_in_range:
+                    if current_time >= time(13, 30) and self.ny_range_date != current_date:
+                        try:
+                            df = self.get_historical_prices(self.asset, 600, "minute")
+                        except Exception as e:
+                            print(f"{current_time} -- [ERROR] Failed to fetch historical prices for NY Scenario B: {e}", flush=True)
+                            return
 
-                    # Wait for sweep of the 12-8 EST range high or low
+                        session_data = df.between_time("05:00", "12:59")
+
+                        if not session_data.empty:
+                            self.ny_range_high = float(session_data["high"].max())
+                            self.ny_range_low = float(session_data["low"].min())
+                            self.ny_range_date = current_date
+                            print(f"--- {current_date} - {current_time} From 5:00 - 12:59am: High={self.ny_range_high}, Low={self.ny_range_low} ---", flush=True)
+
+                        if self.ny_range_high is None or self.ny_range_low is None:
+                            print("NY Scenario B Range: NOT FOUND", flush=True)
+                            return
+
+                    # Wait for sweep of the absolute 06:00-14:00 range high or low
                     if last_price > self.ny_range_high:
                         self.ny_sweep_high = True
                         self.sweep_peak = max(self.sweep_peak if self.sweep_peak else 0, last_price)
