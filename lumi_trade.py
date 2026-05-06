@@ -843,6 +843,8 @@ class ICTModel(Strategy):
                                 else:
                                     print(f"{current_time} --- [BULLISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping --- ", flush=True)
                                     return
+        if current_time >= time(16, 0):
+            print(f" --- {current_date} - Market is closed for the day --- ", flush=True)
                         
 class TrendStrategy(Strategy):
     """
