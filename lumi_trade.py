@@ -499,18 +499,22 @@ class ICTModel(Strategy):
             if time(11, 0) <= current_time < time(13, 30):
                 if self.london_low is None or last_price < self.london_low:
                     self.london_low = last_price
+                    print(" {current_time} --- LONDON LOW: {self.london_low} [LONDON REMAINED IN RANGE] --- ", flush=True)
                 if self.london_high is None or last_price > self.london_high:
                     self.london_high = last_price
+                    print(" {current_time} --- LONDON HIGH: {self.london_high} [LONDON REMAINED IN RANGE] --- ", flush=True)
 
                 if last_price > self.pdh:
                     self.swept_high = True
                     if self.highest_sweep_point is None or last_price > self.highest_sweep_point:
                         self.highest_sweep_point = last_price
+                        print(" {current_time} --- HIGHEST SWEEP POINT: {self.highest_sweep_point} [LIQUIDITY SWEPT DURING LONDON] ", flush=True)
 
                 if last_price < self.pdl:
                     self.swept_low = True
                     if self.lowest_sweep_point is None or last_price < self.lowest_sweep_point:
                         self.lowest_sweep_point = last_price
+                        print(" {current_time} --- LOWEST SWEEP POINT: {self.lowest_sweep_point} [LIQUIDITY SWEPT DURING LONDON] ", flush=True)
 
             # --- NEW YORK SESSION RESET ---
             # At the start of NY session, clear the technical markers from London
@@ -527,8 +531,10 @@ class ICTModel(Strategy):
             if time(5, 0) <= current_time < time(13, 30):
                 if self.pre_ny_low is None or last_price < self.pre_ny_low:
                     self.pre_ny_low = last_price
+                    print(" {current_time} PRE NY LOW: {self.pre_ny_low} [LIQUIDITY SWEPT DURING LONDON]")
                 if self.pre_ny_high is None or last_price > self.pre_ny_high:
                     self.pre_ny_high = last_price
+                    print(" {current_time} PRE NY HIGH: {self.pre_ny_high} [LIQUIDITY SWEPT DURING LONDON] ")
 
             # SCENARIO A: NEW YORK CONTINUATION
             # NY SESSION EXECUTION (13:30 - 16:00)
