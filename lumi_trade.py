@@ -506,7 +506,8 @@ class ICTModel(Strategy):
                     self.swept_high = True
                     if self.highest_sweep_point is None or last_price > self.highest_sweep_point:
                         self.highest_sweep_point = last_price
-                elif last_price < self.pdl:
+
+                if last_price < self.pdl:
                     self.swept_low = True
                     if self.lowest_sweep_point is None or last_price < self.lowest_sweep_point:
                         self.lowest_sweep_point = last_price
