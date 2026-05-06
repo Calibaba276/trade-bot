@@ -499,18 +499,28 @@ class ICTModel(Strategy):
             if time(11, 0) <= current_time < time(13, 30):
                 if self.london_low is None or last_price < self.london_low:
                     self.london_low = last_price
+                    print(f"{current_time} -- [PRE-NY] London Low updated: {self.london_low}", flush=True)
                 if self.london_high is None or last_price > self.london_high:
                     self.london_high = last_price
+                    print(f"{current_time} -- [PRE-NY] London High updated: {self.london_high}", flush=True)
 
                 if last_price > self.pdh:
                     self.swept_high = True
                     if self.highest_sweep_point is None or last_price > self.highest_sweep_point:
                         self.highest_sweep_point = last_price
-
-                if last_price < self.pdl:
+                        print(f"{current_time} -- [PRE-NY] Swept High updated: {self.highest_sweep_point} (above PDH {self.pdh})", flush=True)
+                    else:
+                        print(f"{current_time} -- [PRE-NY] Swept High already active. Highest sweep point: {self.highest_sweep_point}", flush=True)
+                elif last_price < self.pdl:
                     self.swept_low = True
                     if self.lowest_sweep_point is None or last_price < self.lowest_sweep_point:
                         self.lowest_sweep_point = last_price
+                        print(f"{current_time} -- [PRE-NY] Swept Low updated: {self.lowest_sweep_point} (below PDL {self.pdl})", flush=True)
+                    else:
+                        print(f"{current_time} -- [PRE-NY] Swept Low already active. Lowest sweep point: {self.lowest_sweep_point}", flush=True)
+                else:
+                    sweep_status = f"SweptHigh={self.swept_high}, SweptLow={self.swept_low}"
+                    print(f"{current_time} -- [PRE-NY] Price {last_price} inside PDH/PDL range ({self.pdl} - {self.pdh}). {sweep_status}", flush=True)
 
             # --- NEW YORK SESSION RESET ---
             # At the start of NY session, clear the technical markers from London
