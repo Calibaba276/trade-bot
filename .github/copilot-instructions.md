@@ -35,9 +35,8 @@ python smt.py                          # SMT divergence strategy
 
 **Live trading:**
 ```bash
-python main.py                         # Runs LiquiditySweep or TrendStrategy
+python main.py                         # Runs LiquiditySweep
 python liquidity_sweep.py              # LiquiditySweep live (MT5)
-python trend_strategy.py               # TrendStrategy live (MT5)
 ```
 
 **Quick test:**
@@ -53,14 +52,14 @@ python tester.py                       # Test MT5 broker connection
 
 **1. Strategy Definition Layer** (`lumi_trade.py`)
 - All trading strategies as classes inheriting from `lumibot.strategies.strategy.Strategy`
-- Five implemented strategies: `LiquiditySweep`, `TrendStrategy`, `ACB`, `SMTDivergence`, `ICTModel`
+- Implemented strategies: `LiquiditySweep`, `ICTModel`
 - Each strategy implements: `initialize()`, `on_trading_iteration()`, helper methods
 - Shared helper: `calculate_quantity()` for position sizing based on risk
 
 **2. Execution Layer**
 - **Backtesting**: `ict.py`, `smt.py` use `PolygonDataBacktesting` (Polygon.io data)
-- **Live Trading**: `main.py`, `liquidity_sweep.py`, `trend_strategy.py` use custom `MetaTrader5` broker
-- **Support**: `fetch_trends.py` (NewsAPI + Gemini AI), `mt5_broker.py` (MT5 wrapper), `tester.py` (utilities)
+- **Live Trading**: `main.py`, `liquidity_sweep.py` use custom `MetaTrader5` broker
+- **Support**: `mt5_broker.py` (MT5 wrapper), `tester.py` (utilities)
 
 **3. Infrastructure Layer**
 - **Secrets**: Azure Key Vault (`get_azure_secret()` in every runner)
@@ -244,20 +243,9 @@ Used in SMTDivergence and ICTModel:
 4. Trade on expected reversal
 5. Use risk:reward ratio (typically 1:1.5 or 1:2)
 
-### Sentiment-Based Pattern
-Used in TrendStrategy:
-
-1. Fetch news via NewsAPI
-2. Analyze sentiment via Gemini AI
-3. Generate buy/sell signals (score thresholds)
-4. Scalable across multiple tickers
-5. Daily trade limits configurable
-
----
-
 ## Strategy Implementation Details
 
-### Five Implemented Strategies
+### Implemented Strategies
 
 **1. LiquiditySweep** (`lumi_trade.py:28`)
 - Watches Asian session high/low for sweeps
@@ -265,19 +253,13 @@ Used in TrendStrategy:
 - Best for forex (EURUSD, GBPUSD, etc.)
 - Risk: $25/trade, configurable
 
-**2. TrendStrategy** (`lumi_trade.py:144`)
-- AI-powered sentiment analysis
-- Requires NewsAPI + Gemini API keys
-- Scalable multi-ticker
-- Sentiment threshold: >0.7 buy, <-0.5 sell
-
-**3. ACB** (`lumi_trade.py:204`)
+**2. ACB** (`lumi_trade.py:204`)
 - Daily reversal detection ("green" vs "red" days)
 - Intraday range breakout
 - Coil identification in last 60 minutes
 - One trade/day, specific hours only (14:00-16:30 NGT)
 
-**4. SMTDivergence** (`lumi_trade.py:254`)
+**3. SMTDivergence** (`lumi_trade.py:254`)
 - Two-asset divergence detection (NQ vs YM)
 - Identifies institutional manipulation
 - Risk per trade: $500, configurable
@@ -376,8 +358,6 @@ POLYGON-API-KEY        # For backtesting data
 ACCOUNT                # MT5 login ID
 PASSWORD               # MT5 password
 SERVER                 # MT5 server name
-NEWS-API-KEY           # For TrendStrategy
-GEMINI-API-KEY         # For TrendStrategy
 ISBACKTESTING          # Boolean flag
 BACKTESTING-START      # Start date (YYYY-MM-DD)
 BACKTESTING-END        # End date (YYYY-MM-DD)
@@ -497,9 +477,7 @@ trade-bot/
 ├── smt.py                      # SMT backtest runner
 ├── main.py                     # Main entry point
 ├── mt5_broker.py               # MT5 broker adapter
-├── fetch_trends.py             # AI trend analysis
 ├── liquidity_sweep.py          # LiquiditySweep live
-├── trend_strategy.py           # TrendStrategy live
 ├── tester.py                   # Testing utility
 ├── requirements.txt            # Dependencies
 ├── TRADING_KNOWLEDGE_BASE.md   # Detailed patterns & conventions
