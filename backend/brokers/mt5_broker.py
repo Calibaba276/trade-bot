@@ -7,6 +7,11 @@ from datetime import datetime
 from decimal import Decimal
 import pytz
 import zlib
+import logging
+
+from backend.config.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 def generate_magic_number(strategy_name):
     return zlib.adler32(strategy_name.encode()) & 0xFFFFFFFF
@@ -38,7 +43,7 @@ class MetaTrader5(Broker):
             mt5.shutdown() # Close connection if login fails
             raise RuntimeError(f"MT5 Login failed for account {self.config['login']}: {error}")
         
-        print(f"Successfully logged into {self.config['server']} as {self.config['login']}")
+        logger.info(f"Successfully logged into {self.config['server']} as {self.config['login']}")
     
     def manage_breakeven_and_drawdown(self, strategy):
         """
@@ -170,7 +175,7 @@ class MetaTrader5(Broker):
                     quantity=pos.volume
                 ))
 
-                print(f"TRACKED POSITION: {pos.symbol} | Quantity: {pos.volume} | Entry: {pos.price_open}")
+                logger.info(f"TRACKED POSITION: {pos.symbol} | Quantity: {pos.volume} | Entry: {pos.price_open}")
         return lumibot_positions
 
     def get_last_price(self, asset, *args, **kwargs):
@@ -180,7 +185,7 @@ class MetaTrader5(Broker):
         tick = mt5.symbol_info_tick(symbol)
 
         if tick is None:
-            print(f"Could not get last price for {symbol}. Symbol might be wrong in MT5.")
+            logger.error(f"Could not get last price for {symbol}. Symbol might be wrong in MT5.")
             return None
         
         return tick.last if tick.last != 0 else (tick.bid + tick.ask) / 2
@@ -293,7 +298,7 @@ class MetaTrader5(Broker):
         tick = mt5.symbol_info_tick(symbol)
 
         if tick is None:
-            print(f"ERROR: Could not get tick for {symbol}. Order aborted, but bot is still running.")
+            logger.error(f"ERROR: Could not get tick for {symbol}. Order aborted, but bot is still running.")
             order.status = "error"
             return order
 
@@ -321,13 +326,13 @@ class MetaTrader5(Broker):
         if order_kind == "limit":
             limit_price = float(getattr(order, "limit_price", 0.0) or 0.0)
             if limit_price <= 0:
-                print(f"MT5 ERROR: Missing valid limit_price for {symbol} limit order.")
+                logger.error(f"MT5 ERROR: Missing valid limit_price for {symbol} limit order.")
                 order.status = "error"
                 return order
 
             requested_volume = self._normalize_volume(symbol, float(order.quantity))
             if requested_volume <= 0:
-                print(f"MT5 ERROR: Invalid lot size for {symbol}: {order.quantity}")
+                logger.error(f"MT5 ERROR: Invalid lot size for {symbol}: {order.quantity}")
                 order.status = "error"
                 return order
 
@@ -336,7 +341,7 @@ class MetaTrader5(Broker):
             else:
                 volume = self._cap_volume_to_margin(symbol, order.side, requested_volume, limit_price)
             if volume <= 0:
-                print(f"MT5 ERROR: Not enough free margin for minimum lot on {symbol}.")
+                logger.error(f"MT5 ERROR: Not enough free margin for minimum lot on {symbol}.")
                 order.status = "error"
                 return order
 
@@ -356,7 +361,7 @@ class MetaTrader5(Broker):
         else:
             requested_volume = self._normalize_volume(symbol, float(order.quantity))
             if requested_volume <= 0:
-                print(f"MT5 ERROR: Invalid lot size for {symbol}: {order.quantity}")
+                logger.error(f"MT5 ERROR: Invalid lot size for {symbol}: {order.quantity}")
                 order.status = "error"
                 return order
 
@@ -365,7 +370,7 @@ class MetaTrader5(Broker):
             else:
                 volume = self._cap_volume_to_margin(symbol, order.side, requested_volume, market_price)
             if volume <= 0:
-                print(f"MT5 ERROR: Not enough free margin for minimum lot on {symbol}.")
+                logger.error(f"MT5 ERROR: Not enough free margin for minimum lot on {symbol}.")
                 order.status = "error"
                 return order
 
@@ -394,7 +399,7 @@ class MetaTrader5(Broker):
             order.identifier = result.order if result.order else result.deal
             order.status = "submitted" if order_kind == "limit" else "filled"
         else:
-            print(f"MT5 ERROR: {result.comment.upper()} | Code: {result.retcode}")
+            logger.error(f"MT5 ERROR: {result.comment.upper()} | Code: {result.retcode}")
             order.status = "error"
         return order
 
@@ -441,7 +446,7 @@ class MetaTrader5(Broker):
                 raise RuntimeError(f"Failed to select {symbol}. MT5 error: {mt5.last_error()}")
             symbol_info = mt5.symbol_info(symbol)
 
-        print(f"Symbol Enabled: {symbol_info.name} | {symbol_info.description}")
+        logger.info(f"Symbol Enabled: {symbol_info.name} | {symbol_info.description}")
         return True
 
     def _get_stream_object(self): return None
@@ -471,5 +476,5 @@ class MetaTrader5(Broker):
         if result.retcode == mt5.TRADE_RETCODE_DONE:
             order.status = "canceled"
         else:
-            print(f"MT5 CANCEL ERROR: {result.comment.upper()} | Code: {result.retcode}")
+            logger.error(f"MT5 CANCEL ERROR: {result.comment.upper()} | Code: {result.retcode}")
         return order

@@ -1,9 +1,13 @@
 from functools import lru_cache
+import logging
 
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 
+from .logger import setup_logger
+
 VAULT_URL = "https://calibabasecret.vault.azure.net/"
+logger = setup_logger(__name__)
 
 
 @lru_cache(maxsize=1)
@@ -17,6 +21,6 @@ def get_azure_secret(name):
     try:
         return _get_secret_client().get_secret(name).value
     except Exception as e:
-        print(f"Error fetching {name}: {e}")
+        logger.error(f"Error fetching {name}: {e}")
         return None
 

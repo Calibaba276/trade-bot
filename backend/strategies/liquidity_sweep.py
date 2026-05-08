@@ -1,10 +1,14 @@
 from datetime import time
+import logging
 
 import pandas as pd
 from lumibot.entities import Asset
 from lumibot.strategies.strategy import Strategy
 
 from .common import calculate_quantity
+from ..config.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class LiquiditySweep(Strategy):
@@ -61,7 +65,7 @@ class LiquiditySweep(Strategy):
             try:
                 df = self.get_historical_prices(self.symbol, 420, "minute")
             except Exception:
-                print(f" --- {current_time} Failed to fetch Historical Prices", flush=True)
+                logger.warning(f" --- {current_time} Failed to fetch Historical Prices")
                 return
 
             morning_data = df.between_time("00:00", "06:59")
@@ -70,15 +74,15 @@ class LiquiditySweep(Strategy):
                 morning_high = morning_data["high"].max()
                 morning_low = morning_data["low"].min()
                 if pd.isna(morning_high) or pd.isna(morning_low):
-                    print(f"--- {current_date} - {current_time} Morning data has invalid high/low ---", flush=True)
+                    logger.warning(f"--- {current_date} - {current_time} Morning data has invalid high/low ---")
                     return
 
                 self.high = float(morning_high)
                 self.low = float(morning_low)
                 self.last_range_date = dt.date()
-                print(f"--- {current_date} - {current_time} From 12:00 - 6:59am: High={self.high}, Low={self.low} ---", flush=True)
+                logger.info(f"--- {current_date} - {current_time} From 12:00 - 6:59am: High={self.high}, Low={self.low} ---")
             else:
-                print(f"--- {current_date} Market is Closed (No Data) ---", flush=True)
+                logger.warning(f"--- {current_date} Market is Closed (No Data) ---")
                 return
 
         if self.high is not None and self.low is not None and not self.traded_today:
@@ -91,7 +95,7 @@ class LiquiditySweep(Strategy):
                 # Step 1: Detect sweep above the high
                 if last_price > self.high:
                     self.swept_high = True
-                    print(f"{current_time} -- Current Price has surpassed the Highest Point --", flush=True)
+                    logger.info(f"{current_time} -- Current Price has surpassed the Highest Point --")
 
                     # Step 2: Price reverses below high — scan recent bars for a swing low (higher low)
                     if self.swept_high and last_price < self.high and self.mss_swing_low is None:
@@ -108,7 +112,7 @@ class LiquiditySweep(Strategy):
 
                             if curr_low < prev_low and curr_low < next_low and curr_low > self.low:
                                 self.mss_swing_low = float(curr_low)
-                                print(f"{current_time} -- Bearish MSS: Swing Low identified at {self.mss_swing_low}", flush=True)
+                                logger.info(f"{current_time} -- Bearish MSS: Swing Low identified at {self.mss_swing_low}")
                                 break
 
                     # Step 3: Price breaks below the swing low — MSS confirmed, SELL
@@ -127,14 +131,14 @@ class LiquiditySweep(Strategy):
                         )
                         self.submit_order(order)
 
-                        print(f"{dt}-- SELL SIGNAL -- Price {last_price} reversed below High - {self.high}", flush=True)
+                        logger.info(f"{dt}-- SELL SIGNAL -- Price {last_price} reversed below High - {self.high}")
                         self.traded_today = True
 
                 # --- BULLISH MSS ---
                 # Step 1: Detect sweep below the low
                 elif last_price < self.low:
                     self.swept_low = True
-                    print(f"{current_time} -- Current Price has surpassed the Lowest Point --", flush=True)
+                    logger.info(f"{current_time} -- Current Price has surpassed the Lowest Point --")
 
                 # Step 2: Price reverses above low — scan recent bars for a swing high (lower high)
                 if self.swept_low and last_price > self.low and self.mss_swing_high is None:
@@ -151,7 +155,7 @@ class LiquiditySweep(Strategy):
 
                         if curr_high > prev_high and curr_high > next_high and curr_high < self.high:
                             self.mss_swing_high = float(curr_high)
-                            print(f"{current_time} -- Bullish MSS: Swing High identified at {self.mss_swing_high}", flush=True)
+                            logger.info(f"{current_time} -- Bullish MSS: Swing High identified at {self.mss_swing_high}")
                             break
 
                     # Step 3: Price breaks above the swing high — MSS confirmed, BUY
@@ -170,6 +174,6 @@ class LiquiditySweep(Strategy):
                         )
                         self.submit_order(order)
 
-                        print(f"{dt}-- BUY SIGNAL -- Price {last_price} reversed above Low - {self.low}", flush=True)
+                        logger.info(f"{dt}-- BUY SIGNAL -- Price {last_price} reversed above Low - {self.low}")
                         self.traded_today = True
 
