@@ -1,9 +1,14 @@
 from datetime import time
+import logging
 
 from lumibot.entities import Asset
 from lumibot.strategies.strategy import Strategy
 
 from .common import _manage_risk_controls
+from backend.services.verdict import build_verdict, save_verdict
+from ..config.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class ICTModel(Strategy):
@@ -104,7 +109,7 @@ class ICTModel(Strategy):
             try:
                 df = self.get_historical_prices(self.asset, 200, "minute")
             except Exception:
-                print(f" --- {current_time} Failed to fetch Historical Prices ---", flush=True)
+                logger.warning(f" --- {current_time} Failed to fetch Historical Prices ---")
                 return
 
             morning_data = df.between_time("06:00", "08:59")
@@ -113,9 +118,9 @@ class ICTModel(Strategy):
                 self.pdh = float(morning_data["high"].max())
                 self.pdl = float(morning_data["low"].min())
                 self.last_range_date = current_date
-                print(f"--- {current_date} - {current_time} From 6:00 - 8:59am: High={self.pdh}, Low={self.pdl} ---", flush=True)
+                logger.info(f"--- {current_date} - {current_time} From 6:00 - 8:59am: High={self.pdh}, Low={self.pdl} ---")
             else:
-                print(f" --- {current_date} Market is Closed (No Data) --- ", flush=True)
+                logger.warning(f" --- {current_date} Market is Closed (No Data) --- ")
                 return
 
         if self.pdh and self.pdl:
@@ -137,26 +142,26 @@ class ICTModel(Strategy):
                     if self.highest_sweep_point is None or last_price > self.highest_sweep_point:
                         self.highest_sweep_point = last_price
 
-                    print(f" --- {current_time} - [BEARISH BIAS] -- Current Price has Surpassed the Highest Point ---", flush=True)
+                    logger.info(f" --- {current_time} - [BEARISH BIAS] -- Current Price has Surpassed the Highest Point ---")
 
                 # Step 2: Price reverses below high — scan for swing low
                 if self.swept_high and last_price < self.pdh and self.mss_swing_low is None:
                     df = self.get_historical_prices(self.asset, 20, "minute")
                     if df is None or df.empty:
-                        print(f"{current_time} -- [ERROR] Bearish swing scan: DataFrame is None or empty", flush=True)
+                        logger.error(f"{current_time} -- [ERROR] Bearish swing scan: DataFrame is None or empty")
                         return
                     if "low" not in df.columns:
-                        print(f"{current_time} -- [ERROR] Bearish swing scan: missing 'low' column", flush=True)
+                        logger.error(f"{current_time} -- [ERROR] Bearish swing scan: missing 'low' column")
                         return
                     lows = df["low"].values
 
                     for i in range(len(lows) - 2, 0, -1):
                         if lows[i] < lows[i - 1] and lows[i] < lows[i + 1] and lows[i] > self.pdl:
                             self.mss_swing_low = float(lows[i])
-                            print(f" --- {current_time} -- Bearish MSS: Swing Low identified at {self.mss_swing_low} ---", flush=True)
+                            logger.info(f" --- {current_time} -- Bearish MSS: Swing Low identified at {self.mss_swing_low} ---")
                             break
                     if self.mss_swing_low is None:
-                        print(f"{current_time} -- [STEP 2 NOT COMPLETE - BEARISH] Price reversed below PDH but no valid swing low found, skipping", flush=True)
+                        logger.warning(f"{current_time} -- [STEP 2 NOT COMPLETE - BEARISH] Price reversed below PDH but no valid swing low found, skipping")
                         return
 
                 # Step 3: Price breaks below the swing low — MSS Confirmed
@@ -164,13 +169,13 @@ class ICTModel(Strategy):
                     # Getting candles to check for a bearish FVG
                     df = self.get_historical_prices(self.asset, 5, "minute")
                     if df is None or df.empty:
-                        print(f"{current_time} -- [ERROR] Bearish FVG check: DataFrame is None or empty", flush=True)
+                        logger.error(f"{current_time} -- [ERROR] Bearish FVG check: DataFrame is None or empty")
                         return
                     if len(df) < 3:
-                        print(f"{current_time} -- [ERROR] Bearish FVG check: insufficient rows: got {len(df)}, need 3", flush=True)
+                        logger.error(f"{current_time} -- [ERROR] Bearish FVG check: insufficient rows: got {len(df)}, need 3")
                         return
                     if "low" not in df.columns or "high" not in df.columns:
-                        print(f"{current_time} -- [ERROR] Bearish FVG check: missing required columns (low/high)", flush=True)
+                        logger.error(f"{current_time} -- [ERROR] Bearish FVG check: missing required columns (low/high)")
                         return
 
                     # The Low and High Candles
@@ -183,11 +188,11 @@ class ICTModel(Strategy):
 
                         self.bearish_fvg_confirmed = True
                         self.bullish_fvg_confirmed = False
-                        print(f"--- MSS & FVG CONFIRMED ---", flush=True)
-                        print(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}", flush=True)
+                        logger.info(f"--- MSS & FVG CONFIRMED ---")
+                        logger.info(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}")
                     else:
                         # If no FVG is formed, ICT traders usually wait for a secondary break
-                        print("Price broke swing low but no displacement (FVG) found. Skipping entry.", flush=True)
+                        logger.warning("Price broke swing low but no displacement (FVG) found. Skipping entry.")
                         return
 
                 # Trade Execution (BEARISH)
@@ -203,19 +208,15 @@ class ICTModel(Strategy):
                     if risk > 0 and rr >= 3.0:
                         quantity = round(self.risk_amount / (risk * 100000), 2)
 
-                        order = self.create_order(
-                            self.asset,
-                            quantity,
-                            "sell",
-                            take_profit_price=tp,
-                            stop_loss_price=sl,
+                        verdict = build_verdict(
+                            symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="london_bearish"
                         )
-                        self.submit_order(order)
+                        save_verdict(verdict)
 
                         self.traded_london = True
-                        print(f" --- {current_time} [SELL ORDER PLACED] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---", flush=True)
+                        logger.info(f" --- {current_time} [SELL ORDER PLACED] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
                     else:
-                        print(f" --- {current_time} [BEARISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping ---", flush=True)
+                        logger.warning(f" --- {current_time} [BEARISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping ---")
                         return
 
                 # -- BULLISH --
@@ -228,26 +229,26 @@ class ICTModel(Strategy):
                     if self.lowest_sweep_point is None or last_price < self.lowest_sweep_point:
                         self.lowest_sweep_point = last_price
 
-                    print(f" --- {current_time} [BULLISH BIAS] Current Price has Surpassed the Lowest Point ---", flush=True)
+                    logger.info(f" --- {current_time} [BULLISH BIAS] Current Price has Surpassed the Lowest Point ---")
 
                 # Step 2: Price reverses above low — scan for swing high
                 if self.swept_low and last_price > self.pdl and self.mss_swing_high is None:
                     df = self.get_historical_prices(self.asset, 20, "minute")
                     if df is None or df.empty:
-                        print(f"{current_time} -- [ERROR] Bullish swing scan: DataFrame is None or empty", flush=True)
+                        logger.error(f"{current_time} -- [ERROR] Bullish swing scan: DataFrame is None or empty")
                         return
                     if "high" not in df.columns:
-                        print(f"{current_time} -- [ERROR] Bullish swing scan: missing 'high' column", flush=True)
+                        logger.error(f"{current_time} -- [ERROR] Bullish swing scan: missing 'high' column")
                         return
 
                     highs = df["high"].values
                     for i in range(len(highs) - 2, 0, -1):
                         if highs[i] > highs[i - 1] and highs[i] > highs[i + 1] and highs[i] < self.pdh:
                             self.mss_swing_high = float(highs[i])
-                            print(f" --- {current_time} [BULLISH MSS] Swing High identified at {self.mss_swing_high} ---", flush=True)
+                            logger.info(f" --- {current_time} [BULLISH MSS] Swing High identified at {self.mss_swing_high} ---")
                             break
                     if self.mss_swing_high is None:
-                        print(f" --- {current_time} [STEP 2 NOT COMPLETE - BULLISH] Price reversed above PDL but no valid swing high found, skipping ---", flush=True)
+                        logger.warning(f" --- {current_time} [STEP 2 NOT COMPLETE - BULLISH] Price reversed above PDL but no valid swing high found, skipping ---")
                         return
 
                 # Step 3: Price breaks above the swing high — MSS Confirmed
@@ -255,13 +256,13 @@ class ICTModel(Strategy):
                     # Getting candles to check for a bullish FVG
                     df = self.get_historical_prices(self.asset, 5, "minute")
                     if df is None or df.empty:
-                        print(f" --- {current_time} [ERROR] Bullish FVG check: DataFrame is None or empty ---", flush=True)
+                        logger.error(f" --- {current_time} [ERROR] Bullish FVG check: DataFrame is None or empty ---")
                         return
                     if len(df) < 3:
-                        print(f" --- {current_time} [ERROR] Bullish FVG check: insufficient rows: got {len(df)}, need 3 ---", flush=True)
+                        logger.error(f" --- {current_time} [ERROR] Bullish FVG check: insufficient rows: got {len(df)}, need 3 ---")
                         return
                     if "high" not in df.columns or "low" not in df.columns:
-                        print(f" --- {current_time} [ERROR] Bullish FVG check: missing required columns (high/low) ---", flush=True)
+                        logger.error(f" --- {current_time} [ERROR] Bullish FVG check: missing required columns (high/low) ---")
                         return
 
                     # The Low and High Candles
@@ -274,11 +275,11 @@ class ICTModel(Strategy):
 
                         self.bullish_fvg_confirmed = True
                         self.bearish_fvg_confirmed = False
-                        print(f" --- {current_time} [MSS & FVG CONFIRMED] ---", flush=True)
-                        print(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}", flush=True)
+                        logger.info(f" --- {current_time} [MSS & FVG CONFIRMED] ---")
+                        logger.info(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}")
                     else:
                         # If no FVG is formed, ICT traders usually wait for a secondary break
-                        print(f" --- {current_time} [FVG NOT FOUND] Price broke swing high but no displacement (FVG) found. Skipping entry. ---", flush=True)
+                        logger.warning(f" --- {current_time} [FVG NOT FOUND] Price broke swing high but no displacement (FVG) found. Skipping entry. ---")
                         return
 
                 # Trade Execution (BULLISH)
@@ -294,41 +295,39 @@ class ICTModel(Strategy):
                     if risk > 0 and rr >= 3.0:
                         quantity = round(self.risk_amount / (risk * 100000), 2)
 
-                        order = self.create_order(
-                            self.asset,
-                            quantity,
-                            "buy",
-                            take_profit_price=tp,
-                            stop_loss_price=sl,
+
+                        verdict = build_verdict(
+                            symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="london_bullish"
                         )
-                        self.submit_order(order)
+                        save_verdict(verdict)
+
                         self.traded_london = True
 
-                        print(f" --- {current_time} [BUY ORDER PLACED] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---", flush=True)
+                        logger.info(f" --- {current_time} [BUY ORDER PLACED] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
                     else:
-                        print(f" --- {current_time} [BULLISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping ---", flush=True)
+                        logger.warning(f" --- {current_time} [BULLISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping ---")
                         return
 
             # Keep tracking London sweep state until NY open so Scenario A/B uses complete data.
             if time(11, 0) <= current_time < time(13, 30):
                 if self.london_low is None or last_price < self.london_low:
                     self.london_low = last_price
-                    print(" {current_time} --- LONDON LOW: {self.london_low} [LONDON REMAINED IN RANGE] --- ", flush=True)
+                    logger.info(f" --- LONDON LOW: {self.london_low} [LONDON REMAINED IN RANGE] --- ")
                 if self.london_high is None or last_price > self.london_high:
                     self.london_high = last_price
-                    print(" {current_time} --- LONDON HIGH: {self.london_high} [LONDON REMAINED IN RANGE] --- ", flush=True)
+                    logger.info(f" --- LONDON HIGH: {self.london_high} [LONDON REMAINED IN RANGE] --- ")
 
                 if last_price > self.pdh:
                     self.swept_high = True
                     if self.highest_sweep_point is None or last_price > self.highest_sweep_point:
                         self.highest_sweep_point = last_price
-                        print(" {current_time} --- HIGHEST SWEEP POINT: {self.highest_sweep_point} [LIQUIDITY SWEPT DURING LONDON] ", flush=True)
+                        logger.info(f" --- HIGHEST SWEEP POINT: {self.highest_sweep_point} [LIQUIDITY SWEPT DURING LONDON] ")
 
                 if last_price < self.pdl:
                     self.swept_low = True
                     if self.lowest_sweep_point is None or last_price < self.lowest_sweep_point:
                         self.lowest_sweep_point = last_price
-                        print(" {current_time} --- LOWEST SWEEP POINT: {self.lowest_sweep_point} [LIQUIDITY SWEPT DURING LONDON] ", flush=True)
+                        logger.info(f" --- LOWEST SWEEP POINT: {self.lowest_sweep_point} [LIQUIDITY SWEPT DURING LONDON] ")
 
             # --- NEW YORK SESSION RESET ---
             # At the start of NY session, clear the technical markers from London
@@ -339,16 +338,16 @@ class ICTModel(Strategy):
                 self.bullish_fvg_confirmed = False
                 self.fvg_top = None
                 self.fvg_bottom = None
-                print("--- NY Session Started: Technical Markers Reset ---", flush=True)
+                logger.info("--- NY Session Started: Technical Markers Reset ---")
 
             # Build the pre-NY range and keep it fixed once NY session starts.
             if time(5, 0) <= current_time < time(13, 30):
                 if self.pre_ny_low is None or last_price < self.pre_ny_low:
                     self.pre_ny_low = last_price
-                    print(" {current_time} PRE NY LOW: {self.pre_ny_low} [LIQUIDITY SWEPT DURING LONDON]")
+                    logger.info(f" --- PRE NY LOW: {self.pre_ny_low} [LIQUIDITY SWEPT DURING LONDON]")
                 if self.pre_ny_high is None or last_price > self.pre_ny_high:
                     self.pre_ny_high = last_price
-                    print(" {current_time} PRE NY HIGH: {self.pre_ny_high} [LIQUIDITY SWEPT DURING LONDON] ")
+                    logger.info(f" --- PRE NY HIGH: {self.pre_ny_high} [LIQUIDITY SWEPT DURING LONDON] ")
 
             # SCENARIO A: NEW YORK CONTINUATION
             # NY SESSION EXECUTION (13:30 - 16:00)
@@ -356,7 +355,7 @@ class ICTModel(Strategy):
                 last_price = self.get_last_price(self.asset)
 
                 if self.pre_ny_low is None or self.pre_ny_high is None:
-                    print("PRE_NY_LOW or PRE_NY_HIGH: NOT FOUND", flush=True)
+                    logger.warning("PRE_NY_LOW or PRE_NY_HIGH: NOT FOUND")
                     return
 
                 london_remained_in_range = (
@@ -375,26 +374,26 @@ class ICTModel(Strategy):
                     # BEARISH CONTINUATION LOGIC
                     if self.swept_high:
                         if self.highest_sweep_point is None:
-                            print("HIGHEST SWEEP POINT: NOT FOUND", flush=True)
+                            logger.warning("HIGHEST SWEEP POINT: NOT FOUND")
                             return
 
                         # Calculate the OTE Levels
                         range_dist = self.highest_sweep_point - self.pre_ny_low
                         if range_dist <= 0:
-                            print("RANGE DISTANCE - LOW RETURNING...", flush=True)
+                            logger.warning("RANGE DISTANCE - LOW RETURNING...")
                             return
 
                         ote_62 = self.pre_ny_high - (range_dist * 0.62)
                         ote_79 = self.pre_ny_high - (range_dist * 0.79)
 
-                        print(f"NY Continuation Zone (OTE): {round(ote_79, 5)} - {round(ote_62, 5)}", flush=True)
+                        logger.info(f"NY Continuation Zone (OTE): {round(ote_79, 5)} - {round(ote_62, 5)}")
 
                         # Wait for price to reach the OTE Zone
                         if ote_79 <= last_price <= ote_62:
                             self.ny_ote_hit_bearish = True
-                            print(f"{current_time} -- NY Scenario A Bearish: Price entered Premium OTE Zone ({round(ote_62, 5)} - {round(ote_79, 5)}) --", flush=True)
+                            logger.info(f"{current_time} -- NY Scenario A Bearish: Price entered Premium OTE Zone ({round(ote_62, 5)} - {round(ote_79, 5)}) --")
                         else:
-                            print(f"{current_time} -- NY Scenario A Bearish: Price never enter Premium OTE Zone ({round(ote_62, 5)} - {round(ote_79, 5)}) --", flush=True)
+                            logger.warning(f"{current_time} -- NY Scenario A Bearish: Price never enter Premium OTE Zone ({round(ote_62, 5)} - {round(ote_79, 5)}) --")
                             return
 
                         # Confirm MSS in Lower Timeframe (M1)
@@ -420,40 +419,37 @@ class ICTModel(Strategy):
                             if risk > 0 and rr >= 3.0:
                                 quantity = round(self.risk_amount / (risk * 100000), 2)
 
-                                order = self.create_order(
-                                    self.asset,
-                                    quantity,
-                                    "sell",
-                                    take_profit_price=tp,
-                                    stop_loss_price=sl,
+                                verdict = build_verdict(
+                                    symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="ny_continuation_bearish"
                                 )
-                                self.submit_order(order)
+                                save_verdict(verdict)
+
                                 self.traded_ny = True
 
-                                print(f"{current_time} --- [SELL ORDER PLACED - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} --- ", flush=True)
+                                logger.info(f"{current_time} --- [SELL ORDER PLACED - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} --- ")
                             else:
-                                print(f"{current_time} --- [BEARISH NY CONTINUATION TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping --- ", flush=True)
+                                logger.warning(f"{current_time} --- [BEARISH NY CONTINUATION TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping --- ")
                                 return
                     elif self.swept_low:
                         if self.lowest_sweep_point is None:
-                            print("LOWEST SWEEP POINT: NOT FOUND", flush=True)
+                            logger.warning("LOWEST SWEEP POINT: NOT FOUND")
                             return
 
                         # Calculate the OTE Levels
                         range_dist = self.pre_ny_high - self.lowest_sweep_point
                         if range_dist <= 0:
-                            print("RANGE DISTANCE - LOW RETURNING...", flush=True)
+                            logger.warning("RANGE DISTANCE - LOW RETURNING...")
                             return
 
                         ote_62 = self.pre_ny_low + (range_dist * 0.62)
                         ote_79 = self.pre_ny_low + (range_dist * 0.79)
 
-                        print(f"NY Continuation Zone (OTE): {round(ote_62, 5)} - {round(ote_79, 5)}", flush=True)
+                        logger.info(f"NY Continuation Zone (OTE): {round(ote_62, 5)} - {round(ote_79, 5)}")
 
                         # Wait for price to reach the OTE Zone
                         if ote_62 <= last_price <= ote_79:
                             self.ny_ote_hit_bullish = True
-                            print(f"{current_time} -- NY Scenario A Bullish: Price entered Premium OTE Zone ({round(ote_62, 5)} - {round(ote_79, 5)}) --", flush=True)
+                            logger.info(f"{current_time} -- NY Scenario A Bullish: Price entered Premium OTE Zone ({round(ote_62, 5)} - {round(ote_79, 5)}) --")
 
                         # Confirm MSS in Lower Timeframe (M1)
                         if self.ny_ote_hit_bullish and self.mss_swing_high is None:
@@ -466,7 +462,7 @@ class ICTModel(Strategy):
                                     break
 
                         if self.mss_swing_high is None:
-                            print(f"{current_time} -- [STEP 2 NOT COMPLETE - BULLISH NY] Price entered OTE but no valid swing high found, skipping", flush=True)
+                            logger.warning(f"{current_time} -- [STEP 2 NOT COMPLETE - BULLISH NY] Price entered OTE but no valid swing high found, skipping")
                             return
 
                         # Entry on MSS confirmation
@@ -490,11 +486,16 @@ class ICTModel(Strategy):
                                     stop_loss_price=sl,
                                 )
                                 self.submit_order(order)
+
+                                verdict = build_verdict(
+                                    symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="ny_continuation_bullish"
+                                )
+                                save_verdict(verdict)
                                 self.traded_ny = True
 
-                                print(f"{current_time} --- [BUY ORDER PLACED - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---", flush=True)
+                                logger.info(f"{current_time} --- [BUY ORDER PLACED - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
                             else:
-                                print(f"{current_time} --- [BULLISH NY CONTINUATION TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping ---", flush=True)
+                                logger.warning(f"{current_time} --- [BULLISH NY CONTINUATION TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping ---")
                                 return
                 # SCENARIO B: LONDON REMAINED IN A RANGE
                 elif london_remained_in_range:
@@ -502,7 +503,7 @@ class ICTModel(Strategy):
                         try:
                             df = self.get_historical_prices(self.asset, 600, "minute")
                         except Exception as e:
-                            print(f"{current_time} -- [ERROR] Failed to fetch historical prices for NY Scenario B: {e}", flush=True)
+                            logger.error(f"{current_time} -- [ERROR] Failed to fetch historical prices for NY Scenario B: {e}")
                             return
 
                         session_data = df.between_time("05:00", "12:59")
@@ -511,10 +512,10 @@ class ICTModel(Strategy):
                             self.ny_range_high = float(session_data["high"].max())
                             self.ny_range_low = float(session_data["low"].min())
                             self.ny_range_date = current_date
-                            print(f"--- {current_date} - {current_time} From 5:00 - 12:59am: High={self.ny_range_high}, Low={self.ny_range_low} ---", flush=True)
+                            logger.info(f"--- {current_date} - {current_time} From 5:00 - 12:59am: High={self.ny_range_high}, Low={self.ny_range_low} ---")
 
                         if self.ny_range_high is None or self.ny_range_low is None:
-                            print("NY Scenario B Range: NOT FOUND", flush=True)
+                            logger.warning("NY Scenario B Range: NOT FOUND")
                             return
 
                     # Wait for sweep of the absolute 06:00-14:00 range high or low
@@ -531,20 +532,20 @@ class ICTModel(Strategy):
                         df = self.get_historical_prices(self.asset, 20, "minute")
 
                         if df is None or df.empty:
-                            print(f"{current_time} -- [ERROR] Bearish swing scan: DataFrame is None or empty", flush=True)
+                            logger.error(f"{current_time} -- [ERROR] Bearish swing scan: DataFrame is None or empty")
                             return
                         if "low" not in df.columns:
-                            print(f"{current_time} -- [ERROR] Bearish swing scan: missing 'low' column", flush=True)
+                            logger.error(f"{current_time} -- [ERROR] Bearish swing scan: missing 'low' column")
                             return
                         lows = df["low"].values
 
                         for i in range(len(lows) - 2, 0, -1):
                             if lows[i] < lows[i - 1] and lows[i] < lows[i + 1]:
                                 self.mss_swing_low = float(lows[i])
-                                print(f"{current_time} -- Bearish MSS: Swing Low identified at {self.mss_swing_low}", flush=True)
+                                logger.info(f"{current_time} -- Bearish MSS: Swing Low identified at {self.mss_swing_low}")
                                 break
                         if self.mss_swing_low is None:
-                            print(f"{current_time} -- [STEP 2 NOT COMPLETE - BEARISH] Price reversed below PDH but no valid swing low found, skipping", flush=True)
+                            logger.warning(f"{current_time} -- [STEP 2 NOT COMPLETE - BEARISH] Price reversed below PDH but no valid swing low found, skipping")
                             return
 
                         if self.mss_swing_low and last_price < self.mss_swing_low and not self.bearish_fvg_confirmed:
@@ -552,13 +553,13 @@ class ICTModel(Strategy):
                             df = self.get_historical_prices(self.asset, 5, "minute")
 
                             if df is None or df.empty:
-                                print(f"{current_time} -- [ERROR] Bearish FVG check: DataFrame is None or empty", flush=True)
+                                logger.error(f"{current_time} -- [ERROR] Bearish FVG check: DataFrame is None or empty")
                                 return
                             if len(df) < 3:
-                                print(f"{current_time} -- [ERROR] Bearish FVG check: insufficient rows: got {len(df)}, need 3", flush=True)
+                                logger.error(f"{current_time} -- [ERROR] Bearish FVG check: insufficient rows: got {len(df)}, need 3")
                                 return
                             if "low" not in df.columns or "high" not in df.columns:
-                                print(f"{current_time} -- [ERROR] Bearish FVG check: missing required columns (low/high)", flush=True)
+                                logger.error(f"{current_time} -- [ERROR] Bearish FVG check: missing required columns (low/high)")
                                 return
 
                             # The Low and High Candles
@@ -571,11 +572,11 @@ class ICTModel(Strategy):
 
                                 self.bearish_fvg_confirmed = True
                                 self.bullish_fvg_confirmed = False
-                                print(f"--- MSS & FVG CONFIRMED ---", flush=True)
-                                print(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}", flush=True)
+                                logger.info(f"--- MSS & FVG CONFIRMED ---")
+                                logger.info(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}")
                             else:
                                 # If no FVG is formed, ICT traders usually wait for a secondary break
-                                print("Price broke swing low but no displacement (FVG) found. Skipping entry.", flush=True)
+                                logger.warning("Price broke swing low but no displacement (FVG) found. Skipping entry.")
                                 return
 
                         if self.bearish_fvg_confirmed:
@@ -598,10 +599,16 @@ class ICTModel(Strategy):
                                     stop_loss_price=sl,
                                 )
                                 self.submit_order(order)
+
+                                verdict = build_verdict(
+                                    symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="ny_continuation_bullish"
+                                )
+                                save_verdict(verdict)
+
                                 self.traded_ny = True
-                                print(f"{current_time} -- [SELL ORDER PLACED - SCENARIO B] Price: {entry_price} | RR: {rr:.2f}", flush=True)
+                                logger.info(f"{current_time} -- [SELL ORDER PLACED - SCENARIO B] Price: {entry_price} | RR: {rr:.2f}")
                             else:
-                                print(f"{current_time} -- [BEARISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping", flush=True)
+                                logger.warning(f"{current_time} -- [BEARISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping")
                                 return
 
                     # --- 2. OBSERVE MSS & 3. IDENTIFY PD ARRAY (BULLISH REVERSAL) ---
@@ -610,10 +617,10 @@ class ICTModel(Strategy):
                         df = self.get_historical_prices(self.asset, 20, "minute")
 
                         if df is None or df.empty:
-                            print(f"{current_time} -- [ERROR] Bullish swing scan: DataFrame is None or empty", flush=True)
+                            logger.error(f"{current_time} -- [ERROR] Bullish swing scan: DataFrame is None or empty")
                             return
                         if "high" not in df.columns:
-                            print(f"{current_time} -- [ERROR] Bullish swing scan: missing 'high' column", flush=True)
+                            logger.error(f"{current_time} -- [ERROR] Bullish swing scan: missing 'high' column")
                             return
                         highs = df["high"].values
 
@@ -635,11 +642,11 @@ class ICTModel(Strategy):
 
                                     self.bearish_fvg_confirmed = False
                                     self.bullish_fvg_confirmed = True
-                                    print(f"--- MSS & FVG CONFIRMED ---", flush=True)
-                                    print(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}", flush=True)
+                                    logger.info(f"--- MSS & FVG CONFIRMED ---")
+                                    logger.info(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}")
                                 else:
                                     # If no FVG is formed, ICT traders usually wait for a secondary break
-                                    print("Price broke swing low but no displacement (FVG) found. Skipping entry.", flush=True)
+                                    logger.warning("Price broke swing low but no displacement (FVG) found. Skipping entry.")
                                     return
                             if self.bullish_fvg_confirmed:
                                 entry_price = self.mss_swing_high
@@ -662,10 +669,10 @@ class ICTModel(Strategy):
                                     )
                                     self.submit_order(order)
                                     self.traded_ny = True
-                                    print(f"{current_time} --- [BUY ORDER PLACED - SCENARIO B] Price: {entry_price} | RR: {rr:.2f} --- ", flush=True)
+                                    logger.info(f"{current_time} --- [BUY ORDER PLACED - SCENARIO B] Price: {entry_price} | RR: {rr:.2f} --- ")
                                 else:
-                                    print(f"{current_time} --- [BULLISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping --- ", flush=True)
+                                    logger.warning(f"{current_time} --- [BULLISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping --- ")
                                     return
         if current_time >= time(16, 0):
-            print(f" --- {current_date} - Market is closed for the day --- ", flush=True)
+            logger.info(f" --- {current_date} - Market is closed for the day --- ")
 
