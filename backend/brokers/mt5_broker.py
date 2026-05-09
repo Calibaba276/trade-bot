@@ -43,7 +43,7 @@ class MetaTrader5(Broker):
             mt5.shutdown() # Close connection if login fails
             raise RuntimeError(f"MT5 Login failed for account {self.config['login']}: {error}")
         
-        logger.info(f"Successfully logged into {self.config['server']} as {self.config['login']}")
+        logger.info("Successfully logged into MT5 terminal")
     
     def manage_breakeven_and_drawdown(self, strategy):
         """
