@@ -273,6 +273,10 @@ class MetaTrader5(Broker):
 
         scaled_volume = normalized_volume * (free_margin / required_margin)
         return self._normalize_volume(symbol, scaled_volume)
+
+    def _submit_mt5_request(self, request):
+        """Submit a prepared MT5 trade request."""
+        return mt5.order_send(request)
     
     def _submit_order(self, order: Order):
         """Sends orders to MT5 and updates order status"""
@@ -388,7 +392,7 @@ class MetaTrader5(Broker):
                 "type_filling": mt5.ORDER_FILLING_IOC,
             }
 
-        result = mt5.order_send(request)
+        result = self._submit_mt5_request(request)
 
         placed_retcode = getattr(mt5, "TRADE_RETCODE_PLACED", None)
         successful_retcodes = {mt5.TRADE_RETCODE_DONE}
@@ -472,7 +476,7 @@ class MetaTrader5(Broker):
             "order": int(order_id),
             "comment": "Lumibot MT5 Cancel Pending",
         }
-        result = mt5.order_send(request)
+        result = self._submit_mt5_request(request)
         if result.retcode == mt5.TRADE_RETCODE_DONE:
             order.status = "canceled"
         else:
