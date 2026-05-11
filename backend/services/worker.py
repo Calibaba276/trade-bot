@@ -54,8 +54,8 @@ def _resolve_account_config(account_id: str) -> Dict[str, Any]:
     
     cfg = row.data[0]
 
-    login = _pick(cfg, "login", "account_login") 
-    password = _pick(cfg, "password", "account_password")
+    login = _pick(cfg, "login", "account_login", "account_number")
+    password = _pick(cfg, "password", "account_password", "encrypted_password")
     server = _pick(cfg, "server", "account_server")
     path = _pick(cfg, "path", "terminal_path")
     timezone_name = _pick(cfg, "timezone", default="Africa/Lagos")
