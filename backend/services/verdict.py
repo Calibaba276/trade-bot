@@ -1,6 +1,6 @@
 import uuid
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone, timedelta
 from typing import Literal
 
@@ -18,7 +18,7 @@ Scenario = Literal[
 
 @dataclass
 class Verdict:
-    signal_id: str = str(uuid.uuid4())
+    signal_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     symbol: str
     direction: Literal["buy", "sell"]
     entry_price: float
