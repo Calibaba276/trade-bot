@@ -74,9 +74,10 @@ def _resolve_account_config(account_id: str) -> Dict[str, Any]:
     return cfg
 
 def _resolve_redis_url(cfg: Dict[str, Any]) -> str:
-    return (
-        _pick(cfg, "redis_url")
-    )
+    redis_url = get_azure_secret("REDIS-URL")
+    if not redis_url:
+        raise RuntimeError("Missing REDIS-URL secret in Azure Key Vault")
+    return redis_url
 
 def _set_account_status(account_id: str, status: str, detail: str = "") -> None:
     """
