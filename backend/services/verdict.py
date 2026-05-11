@@ -4,8 +4,10 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, timezone, timedelta
 from typing import Literal
 
-from backend.config import logger
+from backend.config.logger import setup_logger
 from backend.config.supaclient import supabase
+
+logger = setup_logger(__name__)
 
 Scenario = Literal[
     "london_bearish",
