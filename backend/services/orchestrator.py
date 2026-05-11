@@ -12,8 +12,8 @@ Responsibilities:
 
 This process is the single entry point for running the full engine.
 Usage:
-    python -m backend.runners.orchestrator
-    python -m backend.runners.orchestrator --channel signals --restart-limit 5
+    python -m backend.services.orchestrator
+    python -m backend.services.orchestrator --channel signals --restart-limit 5
 """
 
 import argparse
@@ -35,7 +35,7 @@ logger = setup_logger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-WORKER_MODULE        = "backend.runners.worker"   # run as `python -m <module>`
+WORKER_MODULE        = "backend.services.worker"   # run as `python -m <module>`
 RUNNABLE_STATUSES    = {"provisioned", "authenticated", "ready"}
 POLL_INTERVAL        = 5      # seconds between process health checks
 BACKOFF_BASE         = 5      # initial restart delay in seconds
@@ -150,7 +150,7 @@ def _check_stale_heartbeats(workers: Dict[str, WorkerProcess]) -> None:
 def _spawn(wp: WorkerProcess) -> None:
     """
     Launch a new worker subprocess for this account.
-    Uses `python -m backend.runners.worker` so the module path resolves
+    Uses `python -m backend.services.worker` so the module path resolves
     correctly regardless of where the orchestrator is invoked from.
     """
     cmd = [
