@@ -18,7 +18,6 @@ Scenario = Literal[
 
 @dataclass
 class Verdict:
-    signal_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     symbol: str
     direction: Literal["buy", "sell"]
     entry_price: float
@@ -30,6 +29,7 @@ class Verdict:
     created_at: str
     execute_at: str
     scenario: Scenario
+    signal_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
 def build_verdict(
         symbol, direction, entry, sl, tp, risk, rr, scenario
