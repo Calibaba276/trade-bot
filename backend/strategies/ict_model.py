@@ -1,11 +1,12 @@
 from datetime import time
-import logging
 
 from lumibot.entities import Asset
 from lumibot.strategies.strategy import Strategy
 
 from .common import _manage_risk_controls
 from backend.services.verdict import build_verdict, save_verdict
+from backend.services.publisher import publish_verdict
+
 from ..config.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -211,7 +212,12 @@ class ICTModel(Strategy):
                         verdict = build_verdict(
                             symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="london_bearish"
                         )
-                        save_verdict(verdict)
+                        try:
+                            save_verdict(verdict)
+                            publish_verdict(verdict)
+                        except Exception as e:
+                            logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
+                            return
 
                         self.traded_london = True
                         logger.info(f" --- {current_time} [SELL ORDER PLACED] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
@@ -299,7 +305,12 @@ class ICTModel(Strategy):
                         verdict = build_verdict(
                             symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="london_bullish"
                         )
-                        save_verdict(verdict)
+                        try:
+                            save_verdict(verdict)
+                            publish_verdict(verdict)
+                        except Exception as e:
+                            logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
+                            return
 
                         self.traded_london = True
 
@@ -422,7 +433,12 @@ class ICTModel(Strategy):
                                 verdict = build_verdict(
                                     symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="ny_continuation_bearish"
                                 )
-                                save_verdict(verdict)
+                                try:
+                                    save_verdict(verdict)
+                                    publish_verdict(verdict)
+                                except Exception as e:
+                                    logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
+                                    return
 
                                 self.traded_ny = True
 
@@ -490,7 +506,13 @@ class ICTModel(Strategy):
                                 verdict = build_verdict(
                                     symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="ny_continuation_bullish"
                                 )
-                                save_verdict(verdict)
+                                try:
+                                    save_verdict(verdict)
+                                    publish_verdict(verdict)
+                                except Exception as e:
+                                    logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
+                                    return
+                                
                                 self.traded_ny = True
 
                                 logger.info(f"{current_time} --- [BUY ORDER PLACED - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
@@ -601,9 +623,14 @@ class ICTModel(Strategy):
                                 self.submit_order(order)
 
                                 verdict = build_verdict(
-                                    symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="ny_continuation_bullish"
+                                    symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="ny_continuation_bearish"
                                 )
-                                save_verdict(verdict)
+                                try:
+                                    save_verdict(verdict)
+                                    publish_verdict(verdict)
+                                except Exception as e:
+                                    logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
+                                    return
 
                                 self.traded_ny = True
                                 logger.info(f"{current_time} -- [SELL ORDER PLACED - SCENARIO B] Price: {entry_price} | RR: {rr:.2f}")
@@ -668,7 +695,19 @@ class ICTModel(Strategy):
                                         stop_loss_price=sl,
                                     )
                                     self.submit_order(order)
+
+                                    verdict = build_verdict(
+                                    symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="ny_continuation_bullish"
+                                    )
+                                    try:
+                                        save_verdict(verdict)
+                                        publish_verdict(verdict)
+                                    except Exception as e:
+                                        logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
+                                        return
+
                                     self.traded_ny = True
+
                                     logger.info(f"{current_time} --- [BUY ORDER PLACED - SCENARIO B] Price: {entry_price} | RR: {rr:.2f} --- ")
                                 else:
                                     logger.warning(f"{current_time} --- [BULLISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping --- ")

@@ -1,7 +1,12 @@
 from datetime import datetime
+from pathlib import Path
+import sys
 
 from lumibot.backtesting import PolygonDataBacktesting
 from lumibot.traders import Trader
+
+if __package__ in (None, ""):
+    sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from backend.brokers.mt5_broker import MetaTrader5
 from backend.config.secrets import get_azure_secret
