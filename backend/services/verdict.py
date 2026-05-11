@@ -36,7 +36,8 @@ def build_verdict(
 ) -> Verdict:
     """ Returns a clean verdict object"""
 
-    now = datetime.now(timezone.utc)
+    nigeria_tz = timezone(timedelta(hours=1))
+    now = datetime.now(nigeria_tz)
 
     execute_time = (now + timedelta(seconds=1)).isoformat()
 
