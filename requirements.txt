@@ -123,6 +123,7 @@ python-dotenv==1.2.2
 pytz==2026.1.post1
 Quandl==3.7.0
 quantstats-lumi==1.1.0
+redis==5.2.1
 requests==2.32.5
 requests-oauthlib==2.0.0
 rsa==4.9.1

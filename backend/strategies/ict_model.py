@@ -220,7 +220,7 @@ class ICTModel(Strategy):
                             return
 
                         self.traded_london = True
-                        logger.info(f" --- {current_time} [SELL ORDER PLACED] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
+                        logger.info(f" --- {current_time} [SELL ORDER] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
                     else:
                         logger.warning(f" --- {current_time} [BEARISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping ---")
                         return
@@ -314,7 +314,7 @@ class ICTModel(Strategy):
 
                         self.traded_london = True
 
-                        logger.info(f" --- {current_time} [BUY ORDER PLACED] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
+                        logger.info(f" --- {current_time} [BUY ORDER] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
                     else:
                         logger.warning(f" --- {current_time} [BULLISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping ---")
                         return
@@ -442,7 +442,7 @@ class ICTModel(Strategy):
 
                                 self.traded_ny = True
 
-                                logger.info(f"{current_time} --- [SELL ORDER PLACED - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} --- ")
+                                logger.info(f"{current_time} --- [SELL ORDER - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} --- ")
                             else:
                                 logger.warning(f"{current_time} --- [BEARISH NY CONTINUATION TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping --- ")
                                 return
@@ -515,7 +515,7 @@ class ICTModel(Strategy):
                                 
                                 self.traded_ny = True
 
-                                logger.info(f"{current_time} --- [BUY ORDER PLACED - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
+                                logger.info(f"{current_time} --- [BUY ORDER - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
                             else:
                                 logger.warning(f"{current_time} --- [BULLISH NY CONTINUATION TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping ---")
                                 return
@@ -612,16 +612,6 @@ class ICTModel(Strategy):
 
                             # Manage Trade: Ensure minimum R:R of 1:3
                             if risk > 0 and rr >= 3.0:
-                                quantity = round(self.risk_amount / (risk * 100000), 2)
-                                order = self.create_order(
-                                    self.asset,
-                                    quantity,
-                                    "sell",
-                                    take_profit_price=tp,
-                                    stop_loss_price=sl,
-                                )
-                                self.submit_order(order)
-
                                 verdict = build_verdict(
                                     symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="ny_continuation_bearish"
                                 )
@@ -633,7 +623,7 @@ class ICTModel(Strategy):
                                     return
 
                                 self.traded_ny = True
-                                logger.info(f"{current_time} -- [SELL ORDER PLACED - SCENARIO B] Price: {entry_price} | RR: {rr:.2f}")
+                                logger.info(f"{current_time} -- [SELL ORDER - SCENARIO B] Price: {entry_price} | RR: {rr:.2f}")
                             else:
                                 logger.warning(f"{current_time} -- [BEARISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping")
                                 return
@@ -686,16 +676,6 @@ class ICTModel(Strategy):
 
                                 # Manage Trade: Ensure minimum R:R of 1:3
                                 if risk > 0 and rr >= 3.0:
-                                    quantity = round(self.risk_amount / (risk * 100000), 2)
-                                    order = self.create_order(
-                                        self.asset,
-                                        quantity,
-                                        "buy",
-                                        take_profit_price=tp,
-                                        stop_loss_price=sl,
-                                    )
-                                    self.submit_order(order)
-
                                     verdict = build_verdict(
                                     symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="ny_continuation_bullish"
                                     )
@@ -708,10 +688,9 @@ class ICTModel(Strategy):
 
                                     self.traded_ny = True
 
-                                    logger.info(f"{current_time} --- [BUY ORDER PLACED - SCENARIO B] Price: {entry_price} | RR: {rr:.2f} --- ")
+                                    logger.info(f"{current_time} --- [BUY ORDER - SCENARIO B] Price: {entry_price} | RR: {rr:.2f} --- ")
                                 else:
                                     logger.warning(f"{current_time} --- [BULLISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping --- ")
                                     return
         if current_time >= time(16, 0):
             logger.info(f" --- {current_date} - Market is closed for the day --- ")
-
