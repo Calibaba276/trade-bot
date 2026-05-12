@@ -233,9 +233,9 @@ def _log_process_table(workers: Dict[str, WorkerProcess]) -> None:
     Printed at startup and after every restart event.
     """
     now = datetime.now(WAT).strftime("%Y-%m-%d %H:%M:%S WAT")
-    lines = [f"\n{'─' * 60}", f"  Worker Process Table  —  {now}", f"{'─' * 60}"]
+    lines = [f"\n{'-' * 60}", f"  Worker Process Table  -  {now}", f"{'-' * 60}"]
     for wp in workers.values():
-        pid    = wp.process.pid if wp.process else "—"
+        pid    = wp.process.pid if wp.process else "-"
         status = "DISABLED" if wp.disabled else (
             "RUNNING" if wp.process and wp.process.poll() is None else "DEAD"
         )
@@ -243,7 +243,7 @@ def _log_process_table(workers: Dict[str, WorkerProcess]) -> None:
             f"  {wp.account_num:<20} pid={str(pid):<8} "
             f"restarts={wp.restart_count:<4} status={status}"
         )
-    lines.append(f"{'─' * 60}")
+    lines.append(f"{'-' * 60}")
     logger.info("\n".join(lines))
 
 
