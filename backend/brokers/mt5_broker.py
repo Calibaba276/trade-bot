@@ -28,20 +28,23 @@ class MetaTrader5(Broker):
     def _initialize_mt5(self):
 
         path = self.config.get("path")
-        
-        if not mt5.initialize(path=path):
-            raise RuntimeError(f"MT5 Initialize Failed: {mt5.last_error()}")
-
-        authorized = mt5.login(
         login=self.config.get('login'),
         password=self.config.get('password'),
         server=self.config.get('server')
-        )
+        
+        if not mt5.initialize(
+            path=path,
+            login=int(login),
+            password=str(password),
+            server=str(server),
+            timeout=30000
+        ):
+            raise RuntimeError(f"MT5 Initialize Failed: {mt5.last_error()}")
 
-        if not authorized:
-            error = mt5.last_error()
-            mt5.shutdown() # Close connection if login fails
-            raise RuntimeError(f"MT5 Login failed for account {self.config['login']}: {error}")
+        info = mt5.account_info()
+        if info is None:
+            mt5.shutdown()
+            raise RuntimeError(f"MT5 initialized but account_info() returned None")
         
         logger.info(f"Successfully logged into {self.config['server']} as {self.config['login']}")
     
