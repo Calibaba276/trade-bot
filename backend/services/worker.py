@@ -22,7 +22,7 @@ def _parse_iso(ts: str) -> datetime:
 
 def _sleep_until(execute_at: Optional[str]) -> None:
     if not execute_at:
-        logger.warning("Signal has no execute_at — executing immediately")
+        logger.warning("Signal has no execute_at - executing immediately")
         return
     target = _parse_iso(execute_at)
     delay = (target - datetime.now(timezone.utc)).total_seconds()
@@ -30,7 +30,7 @@ def _sleep_until(execute_at: Optional[str]) -> None:
         logger.info(f"Holding {delay:.3f}s until execute_at={execute_at}")
         time.sleep(delay)
     else:
-        logger.warning(f"execute_at already passed by {abs(delay):.3f}s — executing immediately")
+        logger.warning(f"execute_at already passed by {abs(delay):.3f}s - executing immediately")
 
 def _pick(cfg: Dict[str, Any], *keys: str, default=None):
     for k in keys:
@@ -77,6 +77,10 @@ def _resolve_redis_url(cfg: Dict[str, Any]) -> str:
     redis_url = get_azure_secret("REDIS-URL")
     if not redis_url:
         raise RuntimeError("Missing REDIS-URL secret in Azure Key Vault")
+    if str(redis_url).startswith(("http://", "https://")):
+        raise RuntimeError(
+            "REDIS-URL must be a Redis URI (redis:// or rediss://), not an HTTP URL"
+        )
     return redis_url
 
 def _set_account_status(account_id: str, status: str, detail: str = "") -> None:
@@ -93,7 +97,7 @@ def _set_account_status(account_id: str, status: str, detail: str = "") -> None:
                 "last_heartbeat": _now(),
             }
         ).eq("id", account_id).execute()
-        logger.info(f"[STATUS] account_id={account_id} → {status} ({detail})")
+        logger.info(f"[STATUS] account_id={account_id} -> {status} ({detail})")
     except Exception as e:
         logger.error(f"Failed to update account status: {e}")
 
@@ -233,7 +237,7 @@ def _execute_signal(
     """
     signal_id = str(signal.get("signal_id") or "")
     if not signal_id:
-        logger.warning("Signal missing signal_id — skipping")
+        logger.warning("Signal missing signal_id - skipping")
         return
  
     # --- Optional account targeting ---

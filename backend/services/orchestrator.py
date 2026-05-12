@@ -136,7 +136,7 @@ def _check_stale_heartbeats(workers: Dict[str, WorkerProcess]) -> None:
                 acct = workers.get(row["id"])
                 label = acct.account_num if acct else row["id"]
                 logger.warning(
-                    f"[STALE HEARTBEAT] account={label} last_heartbeat={age:.0f}s ago — "
+                    f"[STALE HEARTBEAT] account={label} last_heartbeat={age:.0f}s ago - "
                     f"worker may be hung"
                 )
     except Exception as e:
@@ -175,7 +175,7 @@ def _restart(wp: WorkerProcess, restart_limit: int) -> None:
     if restart_limit > 0 and wp.restart_count >= restart_limit:
         logger.error(
             f"[DISABLED] account={wp.account_num} hit restart limit "
-            f"({restart_limit}) — giving up"
+            f"({restart_limit}) - giving up"
         )
         wp.disabled = True
         _mark_account_error(
@@ -204,7 +204,7 @@ def _shutdown_all(workers: Dict[str, WorkerProcess], timeout: int = 10) -> None:
 
     for wp in workers.values():
         if wp.process and wp.process.poll() is None:
-            logger.info(f"  SIGTERM → account={wp.account_num} pid={wp.process.pid}")
+            logger.info(f"  SIGTERM -> account={wp.account_num} pid={wp.process.pid}")
             wp.process.terminate()
 
     deadline = time.monotonic() + timeout
@@ -215,7 +215,7 @@ def _shutdown_all(workers: Dict[str, WorkerProcess], timeout: int = 10) -> None:
                 wp.process.wait(timeout=remaining)
             except subprocess.TimeoutExpired:
                 logger.warning(
-                    f"  SIGKILL → account={wp.account_num} pid={wp.process.pid} "
+                    f"  SIGKILL -> account={wp.account_num} pid={wp.process.pid} "
                     f"(did not exit within {timeout}s)"
                 )
                 wp.process.kill()
@@ -257,7 +257,7 @@ def run(channel: str, restart_limit: int) -> None:
     # --- Load accounts ---
     accounts = _load_runnable_accounts()
     if not accounts:
-        logger.error("No runnable accounts found in broker_accounts — exiting")
+        logger.error("No runnable accounts found in broker_accounts - exiting")
         sys.exit(1)
 
     logger.info(f"Found {len(accounts)} runnable account(s)")
@@ -278,12 +278,12 @@ def run(channel: str, restart_limit: int) -> None:
 
     _log_process_table(workers)
 
-    # --- Signal handling — clean shutdown on SIGINT / SIGTERM ---
+    # --- Signal handling - clean shutdown on SIGINT / SIGTERM ---
     shutdown_requested = False
 
     def _handle_signal(signum, frame):
         nonlocal shutdown_requested
-        logger.info(f"Signal {signum} received — initiating shutdown")
+        logger.info(f"Signal {signum} received - initiating shutdown")
         shutdown_requested = True
 
     signal.signal(signal.SIGINT,  _handle_signal)

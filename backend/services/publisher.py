@@ -19,6 +19,12 @@ def _get_redis() -> redis.Redis:
     global _redis
     if _redis is None:
         url = get_azure_secret("REDIS-URL")
+        if not url:
+            raise RuntimeError("Missing REDIS-URL secret in Azure Key Vault")
+        if str(url).startswith(("http://", "https://")):
+            raise RuntimeError(
+                "REDIS-URL must be a Redis URI (redis:// or rediss://), not an HTTP URL"
+            )
         _redis = redis.from_url(
             url,
             decode_responses=True,
