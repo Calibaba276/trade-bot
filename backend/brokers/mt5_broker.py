@@ -28,9 +28,9 @@ class MetaTrader5(Broker):
     def _initialize_mt5(self):
 
         path = self.config.get("path")
-        login=self.config.get('login'),
-        password=self.config.get('password'),
-        server=self.config.get('server')
+        login = self.config.get("login")
+        password = self.config.get("password")
+        server = self.config.get("server")
         
         if not mt5.initialize(
             path=path,
