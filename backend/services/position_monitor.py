@@ -210,6 +210,8 @@ class PositionMonitor(threading.Thread):
     def track(self, position: TrackedPosition) -> None:
         """Register a newly filled position for monitoring."""
         with self._positions_lock:
+            if position.ticket in self._positions:
+                return
             self._positions[position.ticket] = position
         logger.info(
             f"[MONITOR] Tracking ticket={position.ticket} "
@@ -236,6 +238,7 @@ class PositionMonitor(threading.Thread):
         logger.info(f"[MONITOR] Started for account {self.config.account_number}")
         while not self._stop_event.is_set():
             try:
+                self._discover_open_positions()
                 self._check_drawdown()
                 self._check_breakeven()
                 self._prune_closed_positions()
@@ -243,6 +246,46 @@ class PositionMonitor(threading.Thread):
                 logger.exception(f"[MONITOR] Unhandled error in monitor loop: {exc}")
             time.sleep(self.config.poll_interval_seconds)
         logger.info(f"[MONITOR] Stopped for account {self.config.account_number}")
+
+    def _discover_open_positions(self) -> None:
+        mt5_positions = mt5.positions_get()
+        if not mt5_positions:
+            return
+
+        buy_type = getattr(mt5, "POSITION_TYPE_BUY", 0)
+        sell_type = getattr(mt5, "POSITION_TYPE_SELL", 1)
+
+        for mt5_pos in mt5_positions:
+            ticket = int(getattr(mt5_pos, "ticket", 0) or 0)
+            if ticket <= 0:
+                continue
+
+            with self._positions_lock:
+                if ticket in self._positions:
+                    continue
+
+            entry_price = float(getattr(mt5_pos, "price_open", 0.0) or 0.0)
+            sl_price = float(getattr(mt5_pos, "sl", 0.0) or 0.0)
+            if entry_price <= 0 or sl_price <= 0:
+                continue
+
+            raw_type = int(getattr(mt5_pos, "type", -1))
+            if raw_type == buy_type:
+                side = "long"
+            elif raw_type == sell_type:
+                side = "short"
+            else:
+                continue
+
+            self.track(
+                TrackedPosition(
+                    ticket=ticket,
+                    symbol=str(getattr(mt5_pos, "symbol", "")),
+                    side=side,
+                    entry_price=entry_price,
+                    sl_distance=abs(entry_price - sl_price),
+                )
+            )
 
     # ------------------------------------------------------------------
     # Drawdown check
@@ -308,31 +351,29 @@ class PositionMonitor(threading.Thread):
         if not tickets:
             return
 
-        symbol_info = mt5.symbol_info(self.config.symbol)
-        if symbol_info is None:
-            logger.warning(f"[MONITOR] symbol_info returned None for {self.config.symbol}")
-            return
-
-        tick_size = symbol_info.point
-        buffer = tick_size * self.config.breakeven_buffer_ticks
-
         for ticket in tickets:
             with self._positions_lock:
                 pos = self._positions.get(ticket)
             if pos is None:
                 continue
 
-            self._evaluate_breakeven(pos, buffer)
+            self._evaluate_breakeven(pos)
 
-    def _evaluate_breakeven(self, pos: TrackedPosition, buffer: float) -> None:
+    def _evaluate_breakeven(self, pos: TrackedPosition) -> None:
         # Fetch live MT5 position to get current unrealised PnL in price terms
         mt5_positions = mt5.positions_get(ticket=pos.ticket)
         if not mt5_positions:
-            return  # position closed already — will be pruned next cycle
+            return  # position closed already - will be pruned next cycle
 
         mt5_pos = mt5_positions[0]
 
-        # Current price (bid for longs, ask for shorts — conservative)
+        symbol_info = mt5.symbol_info(pos.symbol)
+        if symbol_info is None:
+            logger.warning(f"[MONITOR] symbol_info returned None for {pos.symbol}")
+            return
+        buffer = symbol_info.point * self.config.breakeven_buffer_ticks
+
+        # Current price (bid for longs, ask for shorts - conservative)
         tick = mt5.symbol_info_tick(pos.symbol)
         if tick is None:
             return

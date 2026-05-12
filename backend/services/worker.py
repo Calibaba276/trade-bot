@@ -237,8 +237,6 @@ def _start_monitor(account: Dict[str, Any], halt_flag: HaltFlag) -> PositionMoni
     account_number_raw = _pick(account, "account_number", "login", "account_login", default=0)
     account_number = int(account_number_raw) if account_number_raw else 0
     symbol = str(_pick(account, "symbol", default=""))
-    if not symbol:
-        raise RuntimeError("Cannot start monitor - broker account symbol is missing")
 
     monitor_config = MonitorConfig(
         account_id=str(account["id"]),
@@ -297,6 +295,7 @@ def _execute_signal(
     signal:       Dict[str, Any],
     account_id:   str,
     default_risk: float,
+    halt_flag:    Optional[HaltFlag] = None,
     monitor:      Optional[PositionMonitor] = None,
 ) -> None:
     """
@@ -336,6 +335,16 @@ def _execute_signal(
  
     # --- Timing gate ---
     _sleep_until(signal.get("execute_at"))
+    if halt_flag is not None and halt_flag.is_halted():
+        logger.warning(
+            f"[WORKER] account={account_id} HALTED after delay - skipping signal {signal_id}"
+        )
+        _upsert_execution(signal_id, account_id, {
+            "status": "skipped",
+            "error": "account halted by drawdown guard",
+        })
+        _log_event(signal_id, account_id, "error", {"error": "account halted by drawdown guard"})
+        return
  
     # --- Validate direction ---
     direction = str(signal.get("direction", "")).lower()
@@ -449,7 +458,7 @@ def _execute_signal(
             f"symbol={symbol} lots={lot_size} latency={latency_ms}ms"
         )
         ticket = int(result.order or 0)
-        if ticket > 0:
+        if status == "filled" and ticket > 0:
             side = "long" if direction == "buy" else "short"
             tracked_entry = float(result.price or 0) if status == "filled" else entry_price
             if tracked_entry <= 0:
@@ -504,6 +513,7 @@ def _on_signal_received(
         signal=raw_message,
         account_id=account_id,
         default_risk=default_risk,
+        halt_flag=halt_flag,
         monitor=monitor,
     )
 
