@@ -12,6 +12,12 @@ from backend.brokers.mt5_broker import MetaTrader5
 from backend.config.logger import setup_logger
 from backend.config.secrets import get_azure_secret
 from backend.config.supaclient import supabase
+from backend.services.position_monitor import (
+    HaltFlag,
+    MonitorConfig,
+    PositionMonitor,
+    TrackedPosition,
+)
 
 logger = setup_logger(__name__)
 
@@ -219,11 +225,79 @@ def _compute_lot_size(
     steps    = int((raw_lots - min_v) / step)
     return round(min_v + (steps * step), 2)
 
+
+def _start_monitor(account: Dict[str, Any], halt_flag: HaltFlag) -> PositionMonitor:
+    """
+    Start per-account position monitor after MT5 initializes successfully.
+    """
+    info = mt5.account_info()
+    if info is None:
+        raise RuntimeError("Cannot start monitor - mt5.account_info() is None")
+
+    account_number_raw = _pick(account, "account_number", "login", "account_login", default=0)
+    account_number = int(account_number_raw) if account_number_raw else 0
+    symbol = str(_pick(account, "symbol", default=""))
+    if not symbol:
+        raise RuntimeError("Cannot start monitor - broker account symbol is missing")
+
+    monitor_config = MonitorConfig(
+        account_id=str(account["id"]),
+        account_number=account_number,
+        symbol=symbol,
+        rr_ratio=float(_pick(account, "rr_ratio", default=2.0)),
+        breakeven_buffer_ticks=int(_pick(account, "breakeven_buffer_ticks", default=10)),
+        max_daily_drawdown_pct=float(_pick(account, "max_daily_drawdown_pct", default=0.02)),
+        poll_interval_seconds=5.0,
+    )
+
+    monitor = PositionMonitor(
+        config=monitor_config,
+        halt_flag=halt_flag,
+        supabase=supabase,
+    )
+    monitor.seed_day_start_balance(float(info.balance))
+    monitor.daemon = True
+    monitor.start()
+    logger.info(f"[WORKER] Position monitor started for account {account_number}")
+    return monitor
+
+
+def _register_fill_with_monitor(
+    monitor: Optional[PositionMonitor],
+    ticket: int,
+    symbol: str,
+    side: str,           # 'long' | 'short'
+    entry_price: float,
+    sl_price: float,
+) -> None:
+    """
+    Register an order/position with monitor so breakeven logic can track it.
+    """
+    if monitor is None:
+        logger.warning("[WORKER] Monitor not running - skipping position registration")
+        return
+
+    sl_distance = abs(entry_price - sl_price)
+    if sl_distance <= 0:
+        logger.warning(f"[WORKER] Invalid SL distance for ticket={ticket}; skipping monitor tracking")
+        return
+
+    tracked = TrackedPosition(
+        ticket=ticket,
+        symbol=symbol,
+        side=side,
+        entry_price=entry_price,
+        sl_distance=sl_distance,
+    )
+    monitor.track(tracked)
+
+
 def _execute_signal(
     broker:       MetaTrader5,
     signal:       Dict[str, Any],
     account_id:   str,
     default_risk: float,
+    monitor:      Optional[PositionMonitor] = None,
 ) -> None:
     """
     Full lifecycle for one signal on one account.
@@ -374,7 +448,21 @@ def _execute_signal(
             f"[EXECUTED] signal_id={signal_id} status={status} "
             f"symbol={symbol} lots={lot_size} latency={latency_ms}ms"
         )
- 
+        ticket = int(result.order or 0)
+        if ticket > 0:
+            side = "long" if direction == "buy" else "short"
+            tracked_entry = float(result.price or 0) if status == "filled" else entry_price
+            if tracked_entry <= 0:
+                tracked_entry = entry_price
+            _register_fill_with_monitor(
+                monitor=monitor,
+                ticket=ticket,
+                symbol=symbol,
+                side=side,
+                entry_price=float(tracked_entry),
+                sl_price=float(stop_loss),
+            )
+  
     else:
         err  = getattr(result, "comment", "order_send failed")
         code = int(getattr(result, "retcode", -1)) if result else -1
@@ -393,6 +481,33 @@ def _execute_signal(
         })
         logger.error(f"[REJECTED] signal_id={signal_id} retcode={code} error={err}")
 
+
+def _on_signal_received(
+    raw_message: Dict[str, Any],
+    broker: MetaTrader5,
+    account_id: str,
+    account_label: str,
+    default_risk: float,
+    halt_flag: HaltFlag,
+    monitor: Optional[PositionMonitor],
+) -> None:
+    # --- HALT GATE ---
+    if halt_flag.is_halted():
+        logger.warning(
+            f"[WORKER] account={account_label} HALTED - discarding signal "
+            f"{raw_message.get('signal_id', '?')}"
+        )
+        return
+
+    _execute_signal(
+        broker=broker,
+        signal=raw_message,
+        account_id=account_id,
+        default_risk=default_risk,
+        monitor=monitor,
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(description="Per-account Redis worker for MT5 execution")
     parser.add_argument("--account-id", required=True, help="broker_accounts.id (UUID)")
@@ -404,6 +519,7 @@ def main():
     # --- Load account config from Supabase ---
     cfg      = _resolve_account_config(account_id)
     resolved = cfg["_resolved"]
+    account_label = str(_pick(cfg, "account_number", "login", default=account_id))
  
     # --- Connect MT5 terminal once at startup — never at signal time ---
     broker = MetaTrader5(
@@ -415,7 +531,10 @@ def main():
             "timezone": resolved["timezone"],
         }
     )
- 
+
+    halt_flag = HaltFlag()
+    monitor = _start_monitor(cfg, halt_flag)
+  
     # --- Mark account as ready in Supabase ---
     _set_account_status(account_id, "ready", "Worker online")
  
@@ -451,11 +570,14 @@ def main():
                 continue
             try:
                 signal = json.loads(raw)
-                _execute_signal(
+                _on_signal_received(
+                    raw_message=signal,
                     broker=broker,
-                    signal=signal,
                     account_id=account_id,
+                    account_label=account_label,
                     default_risk=resolved["risk_amount"],
+                    halt_flag=halt_flag,
+                    monitor=monitor,
                 )
             except Exception as e:
                 logger.exception(f"[WORKER ERROR] {e}")
@@ -467,6 +589,9 @@ def main():
         # --- Clean shutdown ---
         stop_event.set()
         heartbeat_thread.join(timeout=5)
+        if monitor is not None:
+            monitor.stop()
+            monitor.join(timeout=5)
         _set_account_status(account_id, "provisioned", "Worker offline")
         mt5.shutdown()
         logger.info("MT5 shutdown. Worker exited cleanly.")
