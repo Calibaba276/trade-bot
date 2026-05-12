@@ -18,6 +18,7 @@ from backend.services.position_monitor import (
     PositionMonitor,
     TrackedPosition,
 )
+from backend.services.vault import vault
 
 logger = setup_logger(__name__)
 
@@ -530,16 +531,26 @@ def main():
     cfg      = _resolve_account_config(account_id)
     resolved = cfg["_resolved"]
     account_label = str(_pick(cfg, "account_number", "login", default=account_id))
+
+    password_secret_name = str(resolved["password"])
+    try:
+        password = vault.get_secret(password_secret_name)
+    except RuntimeError as exc:
+        logger.error(f"[WORKER] Failed to fetch MT5 password from vault: {exc}")
+        raise
  
     # --- Connect MT5 terminal once at startup — never at signal time ---
     broker = MetaTrader5(
         {
             "login":    resolved["login"],
-            "password": resolved["password"],
+            "password": password,
             "server":   resolved["server"],
             "path":     resolved["path"],
             "timezone": resolved["timezone"],
         }
+    )
+    logger.info(
+        f"[WORKER] MT5 initialised — account={resolved['login']} server={resolved['server']}"
     )
 
     halt_flag = HaltFlag()
