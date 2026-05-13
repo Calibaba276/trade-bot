@@ -26,13 +26,13 @@ Usage in worker.py:
 
 from __future__ import annotations
 
+import os
 import threading
 from typing import Optional
 
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 from azure.core.exceptions import (
-    AzureError,
     ResourceNotFoundError,
     HttpResponseError,
     ClientAuthenticationError,
@@ -56,12 +56,12 @@ class VaultClient:
         """
         Args:
             vault_url: Full vault URI, e.g. https://glass-box-vault.vault.azure.net/
-                       Defaults to backend.config.secrets.VAULT_URL if not passed.
+                       Defaults to the Glass Box vault URL if not passed.
         """
-        self._vault_url = vault_url or VAULT_URL
+        self._vault_url = vault_url or GLASS_BOX_VAULT_URL
         if not self._vault_url:
             raise RuntimeError(
-                "Vault URL not provided. Pass vault_url= or configure backend.config.secrets.VAULT_URL."
+                "Vault URL not provided. Pass vault_url= or use GLASS_BOX_VAULT_URL."
             )
 
         # DefaultAzureCredential tries credential sources in order:
@@ -188,10 +188,6 @@ class VaultClient:
             raise RuntimeError(
                 f"[VAULT] HTTP error fetching secret '{secret_name}': {exc}"
             ) from exc
-        except AzureError as exc:
-            raise RuntimeError(
-                f"[VAULT] Azure error fetching secret '{secret_name}': {exc}"
-            ) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -213,10 +209,7 @@ def _get_singleton() -> VaultClient:
     global _singleton
     with _singleton_lock:
         if _singleton is None:
-            try:
-                _singleton = VaultClient()
-            except Exception as exc:
-                raise RuntimeError(f"[VAULT] Failed to initialize client: {exc}") from exc
+            _singleton = VaultClient()
     return _singleton
 
 
