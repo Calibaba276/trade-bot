@@ -38,10 +38,10 @@ from azure.core.exceptions import (
     ClientAuthenticationError,
 )
 
+from ..config.secrets import VAULT_URL
 from ..config.logger import setup_logger
 
 logger = setup_logger(__name__)
-GLASS_BOX_VAULT_URL = "https://glass-box-vault.vault.azure.net/"
 
 
 class VaultClient:
@@ -56,12 +56,12 @@ class VaultClient:
         """
         Args:
             vault_url: Full vault URI, e.g. https://glass-box-vault.vault.azure.net/
-                       Defaults to the Glass Box vault URL if not passed.
+                       Defaults to backend.config.secrets.VAULT_URL if not passed.
         """
-        self._vault_url = vault_url or GLASS_BOX_VAULT_URL
+        self._vault_url = vault_url or VAULT_URL
         if not self._vault_url:
             raise RuntimeError(
-                "Vault URL not provided. Pass vault_url= or use GLASS_BOX_VAULT_URL."
+                "Vault URL not provided. Pass vault_url= or configure backend.config.secrets.VAULT_URL."
             )
 
         # DefaultAzureCredential tries credential sources in order:
