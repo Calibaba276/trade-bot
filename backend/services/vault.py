@@ -26,7 +26,6 @@ Usage in worker.py:
 
 from __future__ import annotations
 
-import os
 import threading
 from typing import Optional
 
@@ -38,10 +37,10 @@ from azure.core.exceptions import (
     ClientAuthenticationError,
 )
 
-from ..config.secrets import VAULT_URL
 from ..config.logger import setup_logger
 
 logger = setup_logger(__name__)
+GLASS_BOX_VAULT_URL = "https://glass-box.vault.azure.net/"
 
 
 class VaultClient:
@@ -55,13 +54,13 @@ class VaultClient:
     def __init__(self, vault_url: Optional[str] = None) -> None:
         """
         Args:
-            vault_url: Full vault URI, e.g. https://glass-box-vault.vault.azure.net/
-                       Falls back to AZURE_VAULT_URL environment variable if not passed.
+            vault_url: Full vault URI, e.g. https://glass-box.vault.azure.net/
+                       Defaults to https://glass-box.vault.azure.net/ if not passed.
         """
-        self._vault_url = vault_url or os.environ.get("AZURE_VAULT_URL")
+        self._vault_url = vault_url or GLASS_BOX_VAULT_URL
         if not self._vault_url:
-            raise ValueError(
-                "Vault URL not provided. Pass vault_url= or set AZURE_VAULT_URL env var."
+            raise RuntimeError(
+                "Vault URL not provided. Pass vault_url= or configure GLASS_BOX_VAULT_URL."
             )
 
         # DefaultAzureCredential tries credential sources in order:
