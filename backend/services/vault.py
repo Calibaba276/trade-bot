@@ -56,12 +56,12 @@ class VaultClient:
         """
         Args:
             vault_url: Full vault URI, e.g. https://glass-box-vault.vault.azure.net/
-                       Defaults to the Glass Box vault URL if not passed.
+                       Falls back to AZURE_VAULT_URL environment variable if not passed.
         """
-        self._vault_url = vault_url or GLASS_BOX_VAULT_URL
+        self._vault_url = vault_url or os.environ.get("AZURE_VAULT_URL")
         if not self._vault_url:
-            raise RuntimeError(
-                "Vault URL not provided. Pass vault_url= or use GLASS_BOX_VAULT_URL."
+            raise ValueError(
+                "Vault URL not provided. Pass vault_url= or set AZURE_VAULT_URL env var."
             )
 
         # DefaultAzureCredential tries credential sources in order:
