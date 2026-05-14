@@ -12,7 +12,8 @@ import statistics
 from typing import List, Optional
 
 from backend.config.logger import setup_logger
-from backend.config.secrets import get_azure_secret, VAULT_URL
+from backend.config.secrets import get_azure_secret
+from backend.services.vault import GLASS_BOX_VAULT_URL
 
 logger = setup_logger(__name__)
 
@@ -415,10 +416,10 @@ def main() -> None:
 
     logger.info("[LATENCY] Starting latency validation")
 
-    # Primary source: Azure Key Vault.  Fall back to env vars so the script
-    # can also be run locally before Key Vault access is configured.
+    # Primary source: Azure Key Vault secrets. Key Vault endpoint is fixed to
+    # the shared GLASS_BOX_VAULT_URL constant.
     redis_url = get_azure_secret("REDIS-URL") or os.getenv("REDIS_URL")
-    vault_url = VAULT_URL or os.getenv("AZURE_VAULT_URL")
+    vault_url = GLASS_BOX_VAULT_URL
     supabase_url = get_azure_secret("SUPABASE-URL") or os.getenv("SUPABASE_URL")
     supabase_key = get_azure_secret("SUPABASE-KEY") or os.getenv("SUPABASE_SERVICE_KEY")
 
@@ -427,8 +428,8 @@ def main() -> None:
         logger.error("[LATENCY] REDIS_URL not configured")
         sys.exit(1)
     if not vault_url:
-        print("❌ Vault URL not found. Set AZURE_VAULT_URL env var.")
-        logger.error("[LATENCY] AZURE_VAULT_URL not configured")
+        print("❌ Vault URL not found. Check GLASS_BOX_VAULT_URL configuration.")
+        logger.error("[LATENCY] GLASS_BOX_VAULT_URL not configured")
         sys.exit(1)
 
     print("Configuration detected:")
