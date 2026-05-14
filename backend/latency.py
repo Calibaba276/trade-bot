@@ -307,7 +307,7 @@ def test_supabase_latency(
         logger.error("[SUPABASE] All requests failed")
         return None
 
-    avg    = statistics.mean(latencies)
+    avg = statistics.mean(latencies)
     median = statistics.median(latencies)
 
     print("\n" + "-" * 70)
@@ -358,8 +358,8 @@ def calculate_end_to_end(
         print("❌ Cannot calculate without Redis and Key Vault stats")
         return
 
-    redis_avg    = redis_stats["average"]
-    vault_avg    = vault_stats["average"]
+    redis_avg = redis_stats["average"]
+    vault_avg = vault_stats["average"]
     supabase_avg = supabase_stats["average"] if supabase_stats else 30  # estimate
 
     print("\nSignal Flow (Your Responsibility):")
