@@ -6,7 +6,7 @@ from azure.keyvault.secrets import SecretClient
 
 from .logger import setup_logger
 
-VAULT_URL = "https://glass-box.vault.azure.net/"
+VAULT_URL = "https://calibabasecret.vault.azure.net/"
 logger = setup_logger(__name__)
 
 
