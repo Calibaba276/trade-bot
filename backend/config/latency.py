@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Glass Box Trading Engine — Latency Validation Script
 Tests Azure → Upstash Redis → Key Vault latency.
