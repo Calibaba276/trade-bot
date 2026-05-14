@@ -6,7 +6,7 @@ from azure.keyvault.secrets import SecretClient
 
 from .logger import setup_logger
 
-VAULT_URL = "https://calibabasecret.vault.azure.net/"
+VAULT_URL = "https://glass-box.vault.azure.net/"
 logger = setup_logger(__name__)
 
 
@@ -23,4 +23,3 @@ def get_azure_secret(name):
     except Exception as e:
         logger.error(f"Error fetching {name}: {e}")
         return None
-
