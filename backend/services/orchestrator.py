@@ -42,6 +42,7 @@ BACKOFF_BASE         = 5      # initial restart delay in seconds
 BACKOFF_MAX          = 300    # cap restart delay at 5 minutes
 DEFAULT_RESTART_LIMIT = 10    # max restarts per worker before giving up (0 = unlimited)
 STALE_HEARTBEAT_SEC  = 90     # seconds before a worker heartbeat is considered stale
+NON_RETRYABLE_EXIT_CODES = {78}  # Worker startup/config errors (EX_CONFIG)
 
 WAT = timezone(timedelta(hours=1), name="WAT")
 
@@ -97,10 +98,26 @@ def _mark_account_error(account_id: str, detail: str) -> None:
     The orchestrator will not attempt to spawn it again this session.
     """
     try:
+        # Preserve existing cause detail from worker.py and append orchestrator state.
+        existing_detail = ""
+        current = (
+            supabase.table("broker_accounts")
+            .select("status_detail")
+            .eq("id", account_id)
+            .limit(1)
+            .execute()
+        )
+        if getattr(current, "data", None):
+            existing_detail = str(current.data[0].get("status_detail") or "").strip()
+
+        final_detail = detail
+        if existing_detail and detail not in existing_detail:
+            final_detail = f"{existing_detail} | {detail}"
+
         supabase.table("broker_accounts").update(
             {
                 "status":        "error",
-                "status_detail": detail,
+                "status_detail": final_detail[:500],
             }
         ).eq("id", account_id).execute()
     except Exception as e:
@@ -309,6 +326,20 @@ def run(channel: str, restart_limit: int) -> None:
                     f"[DEAD] account={wp.account_num} pid={wp.process.pid} "
                     f"exit_code={exit_code}"
                 )
+
+                if exit_code in NON_RETRYABLE_EXIT_CODES:
+                    wp.disabled = True
+                    logger.error(
+                        f"[DISABLED] account={wp.account_num} non-retryable exit "
+                        f"code={exit_code} - restart skipped"
+                    )
+                    _mark_account_error(
+                        wp.account_id,
+                        f"Worker disabled due non-retryable startup failure (exit {exit_code})",
+                    )
+                    restarted = True
+                    continue
+
                 _restart(wp, restart_limit)
                 restarted = True
 

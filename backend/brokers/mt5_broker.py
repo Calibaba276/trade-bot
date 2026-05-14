@@ -52,10 +52,6 @@ class MetaTrader5(Broker):
         """
         Iterate over all open positions and move the stop loss to breakeven
         once the position has reached rr_ratio times the initial risk.
-
-        Breakeven level includes a small commission buffer:
-          - long  -> entry_price * 1.0005
-          - short -> entry_price * 0.9995
         """
         open_positions = strategy.get_positions()
         if not open_positions:
@@ -63,6 +59,8 @@ class MetaTrader5(Broker):
 
         if not hasattr(strategy, "entry_prices") or strategy.entry_prices is None:
             strategy.entry_prices = {}
+
+        buffer_ticks = int(getattr(strategy, "breakeven_buffer_ticks", 10) or 10)
 
         for position in open_positions:
             symbol = position.symbol
@@ -80,7 +78,12 @@ class MetaTrader5(Broker):
                 pnl = current_price - entry_price
                 max_risk = abs(entry_price - position.stop_price) if position.stop_price else 0
                 if max_risk > 0 and pnl >= (max_risk * strategy.rr_ratio):
-                    breakeven_sl = entry_price * 1.0005
+                    symbol_info = mt5.symbol_info(symbol)
+                    point = getattr(symbol_info, "point", None) if symbol_info else None
+                    if point and point > 0:
+                        breakeven_sl = entry_price + (point * buffer_ticks)
+                    else:
+                        breakeven_sl = entry_price * 1.0005
                     self.update_stop_loss(strategy, position, breakeven_sl)
                     strategy.log_message(
                         f"[BREAKEVEN] LONG {symbol}: Moved SL to breakeven {breakeven_sl:.5f}"
@@ -90,7 +93,12 @@ class MetaTrader5(Broker):
                 pnl = entry_price - current_price
                 max_risk = abs(position.stop_price - entry_price) if position.stop_price else 0
                 if max_risk > 0 and pnl >= (max_risk * strategy.rr_ratio):
-                    breakeven_sl = entry_price * 0.9995
+                    symbol_info = mt5.symbol_info(symbol)
+                    point = getattr(symbol_info, "point", None) if symbol_info else None
+                    if point and point > 0:
+                        breakeven_sl = entry_price - (point * buffer_ticks)
+                    else:
+                        breakeven_sl = entry_price * 0.9995
                     self.update_stop_loss(strategy, position, breakeven_sl)
                     strategy.log_message(
                         f"[BREAKEVEN] SHORT {symbol}: Moved SL to breakeven {breakeven_sl:.5f}"

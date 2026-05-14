@@ -22,6 +22,8 @@ class ICTModel(Strategy):
         self.sleeptime = "1M"
         self.set_market("24/5")
         self.risk_amount = self.parameters.get("risk_amount")
+        self.rr_ratio = float(self.parameters.get("rr_ratio", 3.0) or 3.0)
+        self.breakeven_buffer_ticks = int(self.parameters.get("breakeven_buffer_ticks", 10) or 10)
         self.asset = Asset(symbol=self.symbol, asset_type="forex")
         self.buffer = 0.0002
 
@@ -60,7 +62,7 @@ class ICTModel(Strategy):
         self.sweep_trough = None
 
         # Drawdown protection state (used by non-MT5 fallback risk controls)
-        self.max_daily_drawdown_pct = self.parameters.get("max_daily_drawdown_pct", 0.02)
+        self.max_daily_drawdown_pct = float(self.parameters.get("max_daily_drawdown_pct", 0.02) or 0.02)
         self.daily_equity_start = None
         self.last_trade_date = None
 
@@ -206,7 +208,7 @@ class ICTModel(Strategy):
                     reward = entry_price - tp
                     rr = reward / risk if risk > 0 else 0
 
-                    if risk > 0 and rr >= 3.0:
+                    if risk > 0 and rr >= self.rr_ratio:
                         quantity = round(self.risk_amount / (risk * 100000), 2)
 
                         verdict = build_verdict(
@@ -222,7 +224,10 @@ class ICTModel(Strategy):
                         self.traded_london = True
                         logger.info(f" --- {current_time} [SELL ORDER] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
                     else:
-                        logger.warning(f" --- {current_time} [BEARISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping ---")
+                        logger.warning(
+                            f" --- {current_time} [BEARISH TRADE SKIPPED] Risk: {risk:.5f}, "
+                            f"R:R: {rr:.2f} (min {self.rr_ratio:.2f}), skipping ---"
+                        )
                         return
 
                 # -- BULLISH --
@@ -298,7 +303,7 @@ class ICTModel(Strategy):
                     reward = tp - entry_price
                     rr = reward / risk if risk > 0 else 0
 
-                    if risk > 0 and rr >= 3.0:
+                    if risk > 0 and rr >= self.rr_ratio:
                         quantity = round(self.risk_amount / (risk * 100000), 2)
 
 
@@ -316,7 +321,10 @@ class ICTModel(Strategy):
 
                         logger.info(f" --- {current_time} [BUY ORDER] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
                     else:
-                        logger.warning(f" --- {current_time} [BULLISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping ---")
+                        logger.warning(
+                            f" --- {current_time} [BULLISH TRADE SKIPPED] Risk: {risk:.5f}, "
+                            f"R:R: {rr:.2f} (min {self.rr_ratio:.2f}), skipping ---"
+                        )
                         return
 
             # Keep tracking London sweep state until NY open so Scenario A/B uses complete data.
@@ -427,7 +435,7 @@ class ICTModel(Strategy):
                             reward = entry_price - tp
                             rr = reward / risk if risk > 0 else 0
 
-                            if risk > 0 and rr >= 3.0:
+                            if risk > 0 and rr >= self.rr_ratio:
                                 quantity = round(self.risk_amount / (risk * 100000), 2)
 
                                 verdict = build_verdict(
@@ -444,7 +452,10 @@ class ICTModel(Strategy):
 
                                 logger.info(f"{current_time} --- [SELL ORDER - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} --- ")
                             else:
-                                logger.warning(f"{current_time} --- [BEARISH NY CONTINUATION TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping --- ")
+                                logger.warning(
+                                    f"{current_time} --- [BEARISH NY CONTINUATION TRADE SKIPPED] "
+                                    f"Risk: {risk:.5f}, R:R: {rr:.2f} (min {self.rr_ratio:.2f}), skipping --- "
+                                )
                                 return
                     elif self.swept_low:
                         if self.lowest_sweep_point is None:
@@ -491,7 +502,7 @@ class ICTModel(Strategy):
                             reward = tp - entry_price
                             rr = reward / risk if risk > 0 else 0
 
-                            if risk > 0 and rr >= 3.0:
+                            if risk > 0 and rr >= self.rr_ratio:
                                 quantity = round(self.risk_amount / (risk * 100000), 2)
 
                                 order = self.create_order(
@@ -517,7 +528,10 @@ class ICTModel(Strategy):
 
                                 logger.info(f"{current_time} --- [BUY ORDER - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
                             else:
-                                logger.warning(f"{current_time} --- [BULLISH NY CONTINUATION TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping ---")
+                                logger.warning(
+                                    f"{current_time} --- [BULLISH NY CONTINUATION TRADE SKIPPED] "
+                                    f"Risk: {risk:.5f}, R:R: {rr:.2f} (min {self.rr_ratio:.2f}), skipping ---"
+                                )
                                 return
                 # SCENARIO B: LONDON REMAINED IN A RANGE
                 elif london_remained_in_range:
@@ -611,7 +625,7 @@ class ICTModel(Strategy):
                             rr = reward / risk if risk > 0 else 0
 
                             # Manage Trade: Ensure minimum R:R of 1:3
-                            if risk > 0 and rr >= 3.0:
+                            if risk > 0 and rr >= self.rr_ratio:
                                 verdict = build_verdict(
                                     symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="ny_continuation_bearish"
                                 )
@@ -625,7 +639,10 @@ class ICTModel(Strategy):
                                 self.traded_ny = True
                                 logger.info(f"{current_time} -- [SELL ORDER - SCENARIO B] Price: {entry_price} | RR: {rr:.2f}")
                             else:
-                                logger.warning(f"{current_time} -- [BEARISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping")
+                                logger.warning(
+                                    f"{current_time} -- [BEARISH TRADE SKIPPED] Risk: {risk:.5f}, "
+                                    f"R:R: {rr:.2f} (min {self.rr_ratio:.2f}), skipping"
+                                )
                                 return
 
                     # --- 2. OBSERVE MSS & 3. IDENTIFY PD ARRAY (BULLISH REVERSAL) ---
@@ -675,7 +692,7 @@ class ICTModel(Strategy):
                                 rr = reward / risk if risk > 0 else 0
 
                                 # Manage Trade: Ensure minimum R:R of 1:3
-                                if risk > 0 and rr >= 3.0:
+                                if risk > 0 and rr >= self.rr_ratio:
                                     verdict = build_verdict(
                                     symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="ny_continuation_bullish"
                                     )
@@ -690,7 +707,10 @@ class ICTModel(Strategy):
 
                                     logger.info(f"{current_time} --- [BUY ORDER - SCENARIO B] Price: {entry_price} | RR: {rr:.2f} --- ")
                                 else:
-                                    logger.warning(f"{current_time} --- [BULLISH TRADE SKIPPED] Risk: {risk:.5f}, R:R: {rr:.2f} (min 3.0), skipping --- ")
+                                    logger.warning(
+                                        f"{current_time} --- [BULLISH TRADE SKIPPED] Risk: {risk:.5f}, "
+                                        f"R:R: {rr:.2f} (min {self.rr_ratio:.2f}), skipping --- "
+                                    )
                                     return
         if current_time >= time(16, 0):
             logger.info(f" --- {current_date} - Market is closed for the day --- ")

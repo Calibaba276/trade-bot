@@ -21,6 +21,8 @@ from backend.services.position_monitor import (
 from backend.services.vault import vault
 
 logger = setup_logger(__name__)
+EXIT_CONFIG_ERROR = 78
+EXIT_RUNTIME_ERROR = 1
 
 def _parse_iso(ts: str) -> datetime:
     ts = ts.replace("Z", "+00:00")
@@ -524,65 +526,73 @@ def main():
     parser.add_argument("--account-id", required=True, help="broker_accounts.id (UUID)")
     parser.add_argument("--channel", default="signals", help="Redis pub/sub channel")
     args = parser.parse_args()
- 
+
     account_id = str(args.account_id)
- 
-    # --- Load account config from Supabase ---
-    cfg      = _resolve_account_config(account_id)
-    resolved = cfg["_resolved"]
-    account_label = str(_pick(cfg, "account_number", "login", default=account_id))
+    account_label = account_id
+    stop_event: Optional[threading.Event] = None
+    heartbeat_thread: Optional[threading.Thread] = None
+    monitor: Optional[PositionMonitor] = None
+    worker_online = False
+    exit_code = 0
 
-    password_secret_name = str(resolved["password"])
     try:
-        password = vault.get_secret(password_secret_name)
-    except RuntimeError as exc:
-        logger.error(f"[WORKER] Failed to fetch MT5 password from vault: {exc}")
-        raise
- 
-    # --- Connect MT5 terminal once at startup — never at signal time ---
-    broker = MetaTrader5(
-        {
-            "login":    resolved["login"],
-            "password": password,
-            "server":   resolved["server"],
-            "path":     resolved["path"],
-            "timezone": resolved["timezone"],
-        }
-    )
-    logger.info(
-        f"[WORKER] MT5 initialised — account={resolved['login']} server={resolved['server']}"
-    )
+        # --- Load account config from Supabase ---
+        cfg = _resolve_account_config(account_id)
+        resolved = cfg["_resolved"]
+        account_label = str(_pick(cfg, "account_number", "login", default=account_id))
 
-    halt_flag = HaltFlag()
-    monitor = _start_monitor(cfg, halt_flag)
-  
-    # --- Mark account as ready in Supabase ---
-    _set_account_status(account_id, "ready", "Worker online")
- 
-    # --- Start heartbeat background thread ---
-    stop_event       = threading.Event()
-    heartbeat_thread = threading.Thread(
-        target=_heartbeat_loop,
-        args=(account_id, stop_event),
-        daemon=True,
-        name=f"heartbeat-{account_id[:8]}",
-    )
-    heartbeat_thread.start()
-    logger.info(f"Heartbeat thread started (interval=30s)")
- 
-    # --- Connect Redis ---
-    redis_url    = _resolve_redis_url(cfg)
-    redis_client = redis.Redis.from_url(redis_url, decode_responses=True)
-    pubsub       = redis_client.pubsub(ignore_subscribe_messages=True)
-    pubsub.subscribe(args.channel)
- 
-    logger.info(
-        f"[WORKER READY] account_id={account_id} login={resolved['login']} "
-        f"server={resolved['server']} channel={args.channel}"
-    )
- 
-    # --- Main listen loop ---
-    try:
+        password_secret_name = str(resolved["password"])
+        try:
+            password = vault.get_secret(password_secret_name)
+        except RuntimeError as exc:
+            raise RuntimeError(
+                f"Vault lookup failed for password secret '{password_secret_name}': {exc}"
+            ) from exc
+
+        # --- Connect MT5 terminal once at startup — never at signal time ---
+        broker = MetaTrader5(
+            {
+                "login":    resolved["login"],
+                "password": password,
+                "server":   resolved["server"],
+                "path":     resolved["path"],
+                "timezone": resolved["timezone"],
+            }
+        )
+        logger.info(
+            f"[WORKER] MT5 initialised — account={resolved['login']} server={resolved['server']}"
+        )
+
+        halt_flag = HaltFlag()
+        monitor = _start_monitor(cfg, halt_flag)
+
+        # --- Mark account as ready in Supabase ---
+        _set_account_status(account_id, "ready", "Worker online")
+        worker_online = True
+
+        # --- Start heartbeat background thread ---
+        stop_event = threading.Event()
+        heartbeat_thread = threading.Thread(
+            target=_heartbeat_loop,
+            args=(account_id, stop_event),
+            daemon=True,
+            name=f"heartbeat-{account_id[:8]}",
+        )
+        heartbeat_thread.start()
+        logger.info(f"Heartbeat thread started (interval=30s)")
+
+        # --- Connect Redis ---
+        redis_url = _resolve_redis_url(cfg)
+        redis_client = redis.Redis.from_url(redis_url, decode_responses=True)
+        pubsub = redis_client.pubsub(ignore_subscribe_messages=True)
+        pubsub.subscribe(args.channel)
+
+        logger.info(
+            f"[WORKER READY] account_id={account_id} login={resolved['login']} "
+            f"server={resolved['server']} channel={args.channel}"
+        )
+
+        # --- Main listen loop ---
         for message in pubsub.listen():
             if message.get("type") != "message":
                 continue
@@ -602,21 +612,38 @@ def main():
                 )
             except Exception as e:
                 logger.exception(f"[WORKER ERROR] {e}")
- 
+
     except KeyboardInterrupt:
         logger.info("Shutdown signal received")
- 
+
+    except RuntimeError as exc:
+        exit_code = EXIT_CONFIG_ERROR
+        detail = f"Startup configuration error: {exc}"
+        _set_account_status(account_id, "error", detail[:500])
+        logger.exception(f"[WORKER FATAL] account={account_label} {detail}")
+
+    except Exception as exc:
+        exit_code = EXIT_RUNTIME_ERROR
+        detail = f"Worker crashed: {type(exc).__name__}: {exc}"
+        _set_account_status(account_id, "error", detail[:500])
+        logger.exception(f"[WORKER FATAL] account={account_label} {detail}")
+
     finally:
         # --- Clean shutdown ---
-        stop_event.set()
-        heartbeat_thread.join(timeout=5)
+        if stop_event is not None:
+            stop_event.set()
+        if heartbeat_thread is not None:
+            heartbeat_thread.join(timeout=5)
         if monitor is not None:
             monitor.stop()
             monitor.join(timeout=5)
-        _set_account_status(account_id, "provisioned", "Worker offline")
+        if worker_online and exit_code == 0:
+            _set_account_status(account_id, "provisioned", "Worker offline")
         mt5.shutdown()
-        logger.info("MT5 shutdown. Worker exited cleanly.")
+        logger.info("MT5 shutdown. Worker exited.")
+
+    return exit_code
  
  
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
