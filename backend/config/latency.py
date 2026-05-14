@@ -9,6 +9,12 @@ import sys
 import time
 import statistics
 from typing import List, Optional
+from pathlib import Path
+
+# Ensure project root is in Python path
+project_root = Path(__file__).resolve().parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 from backend.config.logger import setup_logger
 from backend.config.secrets import get_azure_secret
