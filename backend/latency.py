@@ -10,11 +10,23 @@ import sys
 import time
 import statistics
 from typing import List, Optional
+from urllib.parse import urlparse, urlunparse
 
 from backend.config.logger import setup_logger
 from backend.config.secrets import get_azure_secret, VAULT_URL
 
 logger = setup_logger(__name__)
+
+
+def _mask_url(url: str) -> str:
+    """Return a URL safe for logging — credentials stripped, path omitted."""
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname or ""
+        port = f":{parsed.port}" if parsed.port else ""
+        return f"{parsed.scheme}://{host}{port}"
+    except Exception:
+        return "<url>"
 
 
 # ---------------------------------------------------------------------------
@@ -41,7 +53,7 @@ def test_redis_latency(redis_url: str, num_pings: int = 20) -> Optional[dict]:
         logger.info("[REDIS] Connected successfully")
     except Exception as e:
         print(f"❌ Failed to connect to Redis: {e}")
-        print(f"   Check REDIS_URL format: {redis_url[:50]}...")
+        print(f"   Check REDIS_URL host: {_mask_url(redis_url)}")
         logger.error(f"[REDIS] Connection failed: {e}")
         return None
 
@@ -104,7 +116,12 @@ def test_redis_latency(redis_url: str, num_pings: int = 20) -> Optional[dict]:
     else:
         print("   ❌ POOR (> 50ms) — Check region match!")
         print(f"\n   DIAGNOSTIC:")
-        print(f"   • Is Upstash Redis in {redis_url.split('.')[0].split('-')[-1]} region?")
+        try:
+            parsed = urlparse(redis_url)
+            host_region = (parsed.hostname or "").split(".")[0].split("-")[-1]
+        except Exception:
+            host_region = "<unknown>"
+        print(f"   • Is Upstash Redis in {host_region} region?")
         print(f"   • Is Azure VM in same region?")
         print(f"   • Check Upstash console for actual Redis region")
 
@@ -147,7 +164,7 @@ def test_key_vault_latency(
         credential = DefaultAzureCredential()
         client = SecretClient(vault_url=vault_url, credential=credential)
         print(f"✅ Connected to Key Vault: {vault_url}")
-        logger.info(f"[VAULT] Connected to {vault_url}")
+        logger.info("[VAULT] Connected to Key Vault")
     except Exception as e:
         print(f"❌ Failed to connect to Key Vault: {e}")
         print(f"   • Check AZURE_VAULT_URL: {vault_url}")
@@ -161,7 +178,7 @@ def test_key_vault_latency(
             secret_list = [s.name for s in client.list_properties_of_secrets()]
             if secret_list:
                 test_secret = secret_list[0]
-                print(f"\nUsing secret: {test_secret}")
+                print("\nUsing first available secret for timing")
             else:
                 print("⚠️  No secrets in vault. Add a test secret to measure latency.")
                 return None
@@ -173,7 +190,7 @@ def test_key_vault_latency(
     latencies: List[float] = []
     errors = 0
 
-    print(f"\nFetching secret '{test_secret}' {num_fetches} times...\n")
+    print(f"\nFetching vault secret {num_fetches} times...\n")
 
     for i in range(num_fetches):
         try:
@@ -265,8 +282,8 @@ def test_supabase_latency(
 
     try:
         supabase = create_client(supabase_url, supabase_key)
-        print(f"✅ Connected to Supabase: {supabase_url[:50]}...")
-        logger.info(f"[SUPABASE] Connected to {supabase_url[:50]}")
+        print(f"✅ Connected to Supabase: {_mask_url(supabase_url)}")
+        logger.info(f"[SUPABASE] Connected to {_mask_url(supabase_url)}")
     except Exception as e:
         print(f"❌ Failed to connect to Supabase: {e}")
         logger.error(f"[SUPABASE] Connection failed: {e}")
@@ -293,8 +310,15 @@ def test_supabase_latency(
 
             time.sleep(0.2)
         except Exception as e:
-            print(f"  [{i+1:2d}/{num_requests}] ERROR: {str(e)[:40]}")
-            logger.warning(f"[SUPABASE] Request {i+1} failed: {e}")
+            err_msg = str(e)[:40]
+            # Table may not exist in all environments — still counts the round-trip
+            if "does not exist" in str(e).lower() or "42p01" in str(e).lower():
+                latency_ms = (time.perf_counter() - start) * 1000  # type: ignore[possibly-undefined]
+                latencies.append(latency_ms)
+                print(f"  [{i+1:2d}/{num_requests}] {latency_ms:6.2f}ms ⚠️  (table missing — timing still valid)")
+            else:
+                print(f"  [{i+1:2d}/{num_requests}] ERROR: {err_msg}")
+                logger.warning(f"[SUPABASE] Request {i+1} failed: {e}")
 
     if not latencies:
         print("❌ All Supabase requests failed")
@@ -412,7 +436,7 @@ def main() -> None:
     # Primary source: Azure Key Vault.  Fall back to env vars so the script
     # can also be run locally before Key Vault access is configured.
     redis_url    = get_azure_secret("REDIS-URL")    or os.getenv("REDIS_URL")
-    vault_url    = os.getenv("AZURE_VAULT_URL")     or VAULT_URL
+    vault_url    = VAULT_URL                         or os.getenv("AZURE_VAULT_URL")
     supabase_url = get_azure_secret("SUPABASE-URL") or os.getenv("SUPABASE_URL")
     supabase_key = get_azure_secret("SUPABASE-KEY") or os.getenv("SUPABASE_SERVICE_KEY")
 
@@ -426,9 +450,9 @@ def main() -> None:
         sys.exit(1)
 
     print("Configuration detected:")
-    print(f"  Redis:     {redis_url[:50]}...")
+    print(f"  Redis:     {_mask_url(redis_url)}")
     print(f"  Key Vault: {vault_url}")
-    print(f"  Supabase:  {supabase_url[:50] + '...' if supabase_url else 'Not configured'}")
+    print(f"  Supabase:  {_mask_url(supabase_url) if supabase_url else 'Not configured'}")
 
     redis_stats = test_redis_latency(redis_url, num_pings=20)
     vault_stats = test_key_vault_latency(vault_url, num_fetches=10)
