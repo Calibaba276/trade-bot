@@ -31,7 +31,7 @@ def _get_account_strategy_config(account_login: str, server: str) -> dict:
     try:
         row = (
             supabase.table("broker_accounts")
-            .select("rr_ratio,max_daily_drawdown,breakeven_buffer_ticks")
+            .select("*")
             .eq("account_number", str(account_login))
             .eq("server", server)
             .limit(1)
@@ -39,12 +39,15 @@ def _get_account_strategy_config(account_login: str, server: str) -> dict:
         )
         if getattr(row, "data", None):
             data = row.data[0]
+            drawdown_value = data.get("max_daily_drawdown_pct")
+            if drawdown_value is None:
+                drawdown_value = data.get("max_daily_drawdown")
+            if drawdown_value is None:
+                drawdown_value = defaults["max_daily_drawdown_pct"]
+
             return {
                 "rr_ratio": float(data.get("rr_ratio", defaults["rr_ratio"]) or defaults["rr_ratio"]),
-                "max_daily_drawdown_pct": float(
-                    data.get("max_daily_drawdown", defaults["max_daily_drawdown_pct"])
-                    or defaults["max_daily_drawdown_pct"]
-                ),
+                "max_daily_drawdown_pct": float(drawdown_value or defaults["max_daily_drawdown_pct"]),
                 "breakeven_buffer_ticks": int(
                     data.get("breakeven_buffer_ticks", defaults["breakeven_buffer_ticks"])
                     or defaults["breakeven_buffer_ticks"]
