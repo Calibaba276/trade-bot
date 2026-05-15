@@ -28,58 +28,30 @@ def _get_account_strategy_config(account_login: str, server: str) -> dict:
         "breakeven_buffer_ticks": 10,
     }
 
-    login_fields = ("login", "account_login", "account_number")
-    server_fields = ("server", "account_server")
-    for field in login_fields:
-        for server_field in server_fields:
-            try:
-                row = (
-                    supabase.table("broker_accounts")
-                    .select("rr_ratio,max_daily_drawdown_pct,breakeven_buffer_ticks")
-                    .eq(field, str(account_login))
-                    .eq(server_field, server)
-                    .limit(1)
-                    .execute()
-                )
-                if getattr(row, "data", None):
-                    data = row.data[0]
-                    return {
-                        "rr_ratio": float(data.get("rr_ratio", defaults["rr_ratio"]) or defaults["rr_ratio"]),
-                        "max_daily_drawdown_pct": float(
-                            data.get("max_daily_drawdown_pct", defaults["max_daily_drawdown_pct"])
-                            or defaults["max_daily_drawdown_pct"]
-                        ),
-                        "breakeven_buffer_ticks": int(
-                            data.get("breakeven_buffer_ticks", defaults["breakeven_buffer_ticks"])
-                            or defaults["breakeven_buffer_ticks"]
-                        ),
-                    }
-            except Exception:
-                continue
-
-        try:
-            row = (
-                supabase.table("broker_accounts")
-                .select("rr_ratio,max_daily_drawdown_pct,breakeven_buffer_ticks")
-                .eq(field, str(account_login))
-                .limit(1)
-                .execute()
-            )
-            if getattr(row, "data", None):
-                data = row.data[0]
-                return {
-                    "rr_ratio": float(data.get("rr_ratio", defaults["rr_ratio"]) or defaults["rr_ratio"]),
-                    "max_daily_drawdown_pct": float(
-                        data.get("max_daily_drawdown_pct", defaults["max_daily_drawdown_pct"])
-                        or defaults["max_daily_drawdown_pct"]
-                    ),
-                    "breakeven_buffer_ticks": int(
-                        data.get("breakeven_buffer_ticks", defaults["breakeven_buffer_ticks"])
-                        or defaults["breakeven_buffer_ticks"]
-                    ),
-                }
-        except Exception as exc:
-            logger.warning(f"Could not read strategy config using {field}: {exc}")
+    try:
+        row = (
+            supabase.table("broker_accounts")
+            .select("rr_ratio,max_daily_drawdown,breakeven_buffer_ticks")
+            .eq("account_number", str(account_login))
+            .eq("server", server)
+            .limit(1)
+            .execute()
+        )
+        if getattr(row, "data", None):
+            data = row.data[0]
+            return {
+                "rr_ratio": float(data.get("rr_ratio", defaults["rr_ratio"]) or defaults["rr_ratio"]),
+                "max_daily_drawdown_pct": float(
+                    data.get("max_daily_drawdown", defaults["max_daily_drawdown_pct"])
+                    or defaults["max_daily_drawdown_pct"]
+                ),
+                "breakeven_buffer_ticks": int(
+                    data.get("breakeven_buffer_ticks", defaults["breakeven_buffer_ticks"])
+                    or defaults["breakeven_buffer_ticks"]
+                ),
+            }
+    except Exception as exc:
+        logger.warning(f"Could not read strategy config for account={account_login} on server={server}: {exc}")
 
     logger.warning(
         f"No broker_accounts config found for account={account_login} on server={server}; using defaults"
