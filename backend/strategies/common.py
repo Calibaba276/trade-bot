@@ -33,6 +33,21 @@ def calculate_quantity(self, asset, stop_loss=None):
     return final_qty
 
 
+def _calculate_take_profit(entry_price, stop_loss, direction, rr_ratio):
+    """Calculate fixed-R take-profit from entry and stop-loss."""
+    risk = abs(entry_price - stop_loss)
+    if risk <= 0:
+        return None
+
+    if direction == "buy":
+        return entry_price + (risk * rr_ratio)
+
+    if direction == "sell":
+        return entry_price - (risk * rr_ratio)
+
+    return None
+
+
 def _is_daily_drawdown_halted(strategy, current_date):
     """Use broker drawdown guard when available, otherwise apply strategy-local fallback."""
     broker_drawdown_guard = getattr(strategy.broker, "is_daily_drawdown_halted", None)

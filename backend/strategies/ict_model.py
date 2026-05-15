@@ -3,7 +3,7 @@ from datetime import time
 from lumibot.entities import Asset
 from lumibot.strategies.strategy import Strategy
 
-from .common import _manage_risk_controls
+from .common import _calculate_take_profit, _manage_risk_controls
 from backend.services.verdict import build_verdict, save_verdict
 from backend.services.publisher import publish_verdict
 
@@ -202,13 +202,15 @@ class ICTModel(Strategy):
                 if self.bearish_fvg_confirmed and self.highest_sweep_point is not None:
                     entry_price = self.fvg_bottom
                     sl = self.highest_sweep_point + self.buffer
-                    tp = self.london_low if self.london_low else self.pdl
 
                     risk = sl - entry_price
-                    reward = entry_price - tp
-                    rr = reward / risk if risk > 0 else 0
 
-                    if risk > 0 and rr >= self.rr_ratio:
+                    if risk > 0:
+                        tp = _calculate_take_profit(entry_price, sl, "sell", self.rr_ratio)
+                        if tp is None:
+                            logger.warning(f" --- {current_time} [BEARISH TRADE SKIPPED] Invalid TP calculation ---")
+                            return
+                        rr = self.rr_ratio
                         quantity = round(self.risk_amount / (risk * 100000), 2)
 
                         verdict = build_verdict(
@@ -225,8 +227,7 @@ class ICTModel(Strategy):
                         logger.info(f" --- {current_time} [SELL ORDER] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
                     else:
                         logger.warning(
-                            f" --- {current_time} [BEARISH TRADE SKIPPED] Risk: {risk:.5f}, "
-                            f"R:R: {rr:.2f} (min {self.rr_ratio:.2f}), skipping ---"
+                            f" --- {current_time} [BEARISH TRADE SKIPPED] Invalid risk distance: {risk:.5f} ---"
                         )
                         return
 
@@ -297,13 +298,15 @@ class ICTModel(Strategy):
                 elif self.bullish_fvg_confirmed and self.lowest_sweep_point is not None:
                     entry_price = self.fvg_top
                     sl = self.lowest_sweep_point - self.buffer
-                    tp = self.london_high if self.london_high else self.pdh
 
                     risk = entry_price - sl
-                    reward = tp - entry_price
-                    rr = reward / risk if risk > 0 else 0
 
-                    if risk > 0 and rr >= self.rr_ratio:
+                    if risk > 0:
+                        tp = _calculate_take_profit(entry_price, sl, "buy", self.rr_ratio)
+                        if tp is None:
+                            logger.warning(f" --- {current_time} [BULLISH TRADE SKIPPED] Invalid TP calculation ---")
+                            return
+                        rr = self.rr_ratio
                         quantity = round(self.risk_amount / (risk * 100000), 2)
 
 
@@ -322,8 +325,7 @@ class ICTModel(Strategy):
                         logger.info(f" --- {current_time} [BUY ORDER] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
                     else:
                         logger.warning(
-                            f" --- {current_time} [BULLISH TRADE SKIPPED] Risk: {risk:.5f}, "
-                            f"R:R: {rr:.2f} (min {self.rr_ratio:.2f}), skipping ---"
+                            f" --- {current_time} [BULLISH TRADE SKIPPED] Invalid risk distance: {risk:.5f} ---"
                         )
                         return
 
@@ -429,13 +431,15 @@ class ICTModel(Strategy):
                         if self.mss_swing_low and last_price < self.mss_swing_low:
                             entry_price = self.mss_swing_low
                             sl = self.highest_sweep_point + self.buffer
-                            tp = self.pre_ny_low if self.pre_ny_low else self.pdl
 
                             risk = sl - entry_price
-                            reward = entry_price - tp
-                            rr = reward / risk if risk > 0 else 0
 
-                            if risk > 0 and rr >= self.rr_ratio:
+                            if risk > 0:
+                                tp = _calculate_take_profit(entry_price, sl, "sell", self.rr_ratio)
+                                if tp is None:
+                                    logger.warning(f"{current_time} --- [BEARISH NY CONTINUATION TRADE SKIPPED] Invalid TP calculation --- ")
+                                    return
+                                rr = self.rr_ratio
                                 quantity = round(self.risk_amount / (risk * 100000), 2)
 
                                 verdict = build_verdict(
@@ -454,7 +458,7 @@ class ICTModel(Strategy):
                             else:
                                 logger.warning(
                                     f"{current_time} --- [BEARISH NY CONTINUATION TRADE SKIPPED] "
-                                    f"Risk: {risk:.5f}, R:R: {rr:.2f} (min {self.rr_ratio:.2f}), skipping --- "
+                                    f"Invalid risk distance: {risk:.5f} --- "
                                 )
                                 return
                     elif self.swept_low:
@@ -496,13 +500,15 @@ class ICTModel(Strategy):
                         if self.mss_swing_high and last_price > self.mss_swing_high and not self.traded_ny:
                             entry_price = self.mss_swing_high
                             sl = self.lowest_sweep_point - self.buffer
-                            tp = self.pre_ny_high if self.pre_ny_high else self.pdh
 
                             risk = entry_price - sl
-                            reward = tp - entry_price
-                            rr = reward / risk if risk > 0 else 0
 
-                            if risk > 0 and rr >= self.rr_ratio:
+                            if risk > 0:
+                                tp = _calculate_take_profit(entry_price, sl, "buy", self.rr_ratio)
+                                if tp is None:
+                                    logger.warning(f"{current_time} --- [BULLISH NY CONTINUATION TRADE SKIPPED] Invalid TP calculation ---")
+                                    return
+                                rr = self.rr_ratio
                                 quantity = round(self.risk_amount / (risk * 100000), 2)
 
                                 order = self.create_order(
@@ -530,7 +536,7 @@ class ICTModel(Strategy):
                             else:
                                 logger.warning(
                                     f"{current_time} --- [BULLISH NY CONTINUATION TRADE SKIPPED] "
-                                    f"Risk: {risk:.5f}, R:R: {rr:.2f} (min {self.rr_ratio:.2f}), skipping ---"
+                                    f"Invalid risk distance: {risk:.5f} ---"
                                 )
                                 return
                 # SCENARIO B: LONDON REMAINED IN A RANGE
@@ -618,14 +624,16 @@ class ICTModel(Strategy):
                         if self.bearish_fvg_confirmed:
                             entry_price = self.mss_swing_low
                             sl = self.sweep_peak + self.buffer
-                            tp = self.ny_range_low
 
                             risk = sl - entry_price
-                            reward = entry_price - tp
-                            rr = reward / risk if risk > 0 else 0
 
-                            # Manage Trade: Ensure minimum R:R of 1:3
-                            if risk > 0 and rr >= self.rr_ratio:
+                            # Manage Trade: use fixed TP at configured RR multiple.
+                            if risk > 0:
+                                tp = _calculate_take_profit(entry_price, sl, "sell", self.rr_ratio)
+                                if tp is None:
+                                    logger.warning(f"{current_time} -- [BEARISH TRADE SKIPPED] Invalid TP calculation")
+                                    return
+                                rr = self.rr_ratio
                                 verdict = build_verdict(
                                     symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="ny_continuation_bearish"
                                 )
@@ -640,8 +648,7 @@ class ICTModel(Strategy):
                                 logger.info(f"{current_time} -- [SELL ORDER - SCENARIO B] Price: {entry_price} | RR: {rr:.2f}")
                             else:
                                 logger.warning(
-                                    f"{current_time} -- [BEARISH TRADE SKIPPED] Risk: {risk:.5f}, "
-                                    f"R:R: {rr:.2f} (min {self.rr_ratio:.2f}), skipping"
+                                    f"{current_time} -- [BEARISH TRADE SKIPPED] Invalid risk distance: {risk:.5f}"
                                 )
                                 return
 
@@ -685,14 +692,16 @@ class ICTModel(Strategy):
                             if self.bullish_fvg_confirmed:
                                 entry_price = self.mss_swing_high
                                 sl = self.sweep_trough - self.buffer  # SL below OB/Sweep Low
-                                tp = self.ny_range_high  # Target opposite side of range
 
                                 risk = entry_price - sl
-                                reward = tp - entry_price
-                                rr = reward / risk if risk > 0 else 0
 
-                                # Manage Trade: Ensure minimum R:R of 1:3
-                                if risk > 0 and rr >= self.rr_ratio:
+                                # Manage Trade: use fixed TP at configured RR multiple.
+                                if risk > 0:
+                                    tp = _calculate_take_profit(entry_price, sl, "buy", self.rr_ratio)
+                                    if tp is None:
+                                        logger.warning(f"{current_time} --- [BULLISH TRADE SKIPPED] Invalid TP calculation --- ")
+                                        return
+                                    rr = self.rr_ratio
                                     verdict = build_verdict(
                                     symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="ny_continuation_bullish"
                                     )
@@ -708,8 +717,7 @@ class ICTModel(Strategy):
                                     logger.info(f"{current_time} --- [BUY ORDER - SCENARIO B] Price: {entry_price} | RR: {rr:.2f} --- ")
                                 else:
                                     logger.warning(
-                                        f"{current_time} --- [BULLISH TRADE SKIPPED] Risk: {risk:.5f}, "
-                                        f"R:R: {rr:.2f} (min {self.rr_ratio:.2f}), skipping --- "
+                                        f"{current_time} --- [BULLISH TRADE SKIPPED] Invalid risk distance: {risk:.5f} --- "
                                     )
                                     return
         if current_time >= time(16, 0):

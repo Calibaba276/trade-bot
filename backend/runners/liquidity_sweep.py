@@ -48,7 +48,7 @@ def run():
             parameters={
                 "symbol": "EURUSDm",
                 "risk_amount": 500,
-                "rr_ratio": 2,
+                "rr_ratio": 3.0,
                 "max_daily_drawdown_pct": 0.02,
             },
         )
