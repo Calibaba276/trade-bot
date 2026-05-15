@@ -291,6 +291,7 @@ def run(channel: str, restart_limit: int) -> None:
 
     # --- Build worker registry ---
     workers: Dict[str, WorkerProcess] = {}
+    force_spawn_by_account_id: Dict[str, bool] = {}
     for acct in accounts:
         wp = WorkerProcess(
             account_id  = acct["id"],
@@ -298,12 +299,12 @@ def run(channel: str, restart_limit: int) -> None:
             channel     = channel,
         )
         workers[acct["id"]] = wp
+        force_spawn_by_account_id[acct["id"]] = bool(acct.get("force_spawn"))
 
     # --- Initial spawn ---
     for account_id, wp in workers.items():
         _spawn(wp)
-        acct = next((a for a in accounts if a["id"] == account_id), None)
-        if acct and acct.get("force_spawn"):
+        if force_spawn_by_account_id.get(account_id):
             _clear_force_spawn_flag(account_id)
 
     _log_process_table(workers)
