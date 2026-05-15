@@ -80,16 +80,26 @@ class WorkerProcess:
 
 def _load_runnable_accounts() -> list[dict]:
     """
-    Fetch all broker_accounts rows in a runnable state.
+    Fetch all broker_accounts rows in a runnable state OR manually forced to spawn.
     Returns a list of dicts — each dict is one account row.
     """
     res = (
         supabase.table("broker_accounts")
-        .select("id, account_number, status")
-        .in_("status", list(RUNNABLE_STATUSES))
+        .select("id, account_number, status, force_spawn")
+        .or_("status.in.(provisioned,authenticated,ready),force_spawn.eq.true")
         .execute()
     )
     return res.data or []
+
+
+def _clear_force_spawn_flag(account_id: str) -> None:
+    """Clear manual spawn override flag after account worker is started."""
+    try:
+        supabase.table("broker_accounts").update(
+            {"force_spawn": False}
+        ).eq("id", account_id).execute()
+    except Exception as e:
+        logger.warning(f"Failed to clear force_spawn for account {account_id}: {e}")
 
 
 def _mark_account_error(account_id: str, detail: str) -> None:
@@ -290,8 +300,11 @@ def run(channel: str, restart_limit: int) -> None:
         workers[acct["id"]] = wp
 
     # --- Initial spawn ---
-    for wp in workers.values():
+    for account_id, wp in workers.items():
         _spawn(wp)
+        acct = next((a for a in accounts if a["id"] == account_id), None)
+        if acct and acct.get("force_spawn"):
+            _clear_force_spawn_flag(account_id)
 
     _log_process_table(workers)
 
