@@ -12,6 +12,7 @@ from backend.brokers.mt5_broker import MetaTrader5
 from backend.config.logger import setup_logger
 from backend.config.secrets import get_azure_secret
 from backend.config.supaclient import supabase
+from backend.strategies.common import _calculate_take_profit
 from backend.services.position_monitor import (
     HaltFlag,
     MonitorConfig,
@@ -79,6 +80,7 @@ def _resolve_account_config(account_id: str) -> Dict[str, Any]:
         "path": path,
         "timezone": timezone_name,
         "risk_amount": float(_pick(cfg, "risk_amount", default=25)),
+        "rr_ratio": float(_pick(cfg, "rr_ratio", default=3.0)),
     }
     return cfg
 
@@ -245,7 +247,7 @@ def _start_monitor(account: Dict[str, Any], halt_flag: HaltFlag) -> PositionMoni
         account_id=str(account["id"]),
         account_number=account_number,
         symbol=symbol,
-        rr_ratio=float(_pick(account, "rr_ratio", default=2.0)),
+        rr_ratio=float(_pick(account, "rr_ratio", default=3.0)),
         breakeven_buffer_ticks=int(_pick(account, "breakeven_buffer_ticks", default=10)),
         max_daily_drawdown_pct=float(_pick(account, "max_daily_drawdown_pct", default=0.02)),
         poll_interval_seconds=5.0,
@@ -298,6 +300,7 @@ def _execute_signal(
     signal:       Dict[str, Any],
     account_id:   str,
     default_risk: float,
+    default_rr_ratio: float,
     halt_flag:    Optional[HaltFlag] = None,
     monitor:      Optional[PositionMonitor] = None,
 ) -> None:
@@ -370,6 +373,7 @@ def _execute_signal(
     # verdict carries risk_in_price for lot sizing transparency but
     # the account's configured risk_amount is the authoritative sizing input
     risk_amount = default_risk
+    rr_ratio = float(signal.get("rr_ratio") or default_rr_ratio)
  
     if stop_loss in (None, ""):
         _upsert_execution(signal_id, account_id, {"status": "error", "symbol": symbol, "error": "missing stop_loss"})
@@ -380,6 +384,13 @@ def _execute_signal(
         _upsert_execution(signal_id, account_id, {"status": "error", "symbol": symbol, "error": "missing entry_price"})
         _log_event(signal_id, account_id, "error", {"error": "missing entry_price"})
         return
+
+    if take_profit in (None, ""):
+        take_profit = _calculate_take_profit(entry_price, float(stop_loss), direction, rr_ratio)
+        if take_profit is None:
+            _upsert_execution(signal_id, account_id, {"status": "error", "symbol": symbol, "error": "invalid take_profit calculation"})
+            _log_event(signal_id, account_id, "error", {"error": "invalid take_profit calculation"})
+            return
  
     # --- Lot sizing ---
     lot_size = _compute_lot_size(symbol, entry_price, float(stop_loss), risk_amount)
@@ -500,6 +511,7 @@ def _on_signal_received(
     account_id: str,
     account_label: str,
     default_risk: float,
+    default_rr_ratio: float,
     halt_flag: HaltFlag,
     monitor: Optional[PositionMonitor],
 ) -> None:
@@ -516,6 +528,7 @@ def _on_signal_received(
         signal=raw_message,
         account_id=account_id,
         default_risk=default_risk,
+        default_rr_ratio=default_rr_ratio,
         halt_flag=halt_flag,
         monitor=monitor,
     )
@@ -607,6 +620,7 @@ def main():
                     account_id=account_id,
                     account_label=account_label,
                     default_risk=resolved["risk_amount"],
+                    default_rr_ratio=resolved["rr_ratio"],
                     halt_flag=halt_flag,
                     monitor=monitor,
                 )

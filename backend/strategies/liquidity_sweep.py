@@ -5,7 +5,7 @@ import pandas as pd
 from lumibot.entities import Asset
 from lumibot.strategies.strategy import Strategy
 
-from .common import calculate_quantity
+from .common import calculate_quantity, _calculate_take_profit
 from ..config.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -40,7 +40,7 @@ class LiquiditySweep(Strategy):
 
         # Breakeven & Drawdown Protection
         self.entry_prices = {}
-        self.rr_ratio = self.parameters.get("rr_ratio", 2)
+        self.rr_ratio = self.parameters.get("rr_ratio", 3.0)
         self.max_daily_drawdown_pct = self.parameters.get("max_daily_drawdown_pct", 0.02)
         self.daily_equity_start = None
         self.last_trade_date = None
@@ -118,7 +118,9 @@ class LiquiditySweep(Strategy):
                     # Step 3: Price breaks below the swing low — MSS confirmed, SELL
                     if self.mss_swing_low is not None and last_price < self.mss_swing_low:
                         sl = self.high + self.buffer
-                        tp = self.low
+                        tp = _calculate_take_profit(last_price, sl, "sell", self.rr_ratio)
+                        if tp is None:
+                            return
 
                         quantity = calculate_quantity(self, self.asset, sl)
 
@@ -161,7 +163,9 @@ class LiquiditySweep(Strategy):
                     # Step 3: Price breaks above the swing high — MSS confirmed, BUY
                     if self.mss_swing_high is not None and last_price > self.mss_swing_high:
                         sl = self.low - self.buffer
-                        tp = self.high
+                        tp = _calculate_take_profit(last_price, sl, "buy", self.rr_ratio)
+                        if tp is None:
+                            return
 
                         quantity = calculate_quantity(self, self.asset, sl)
 
