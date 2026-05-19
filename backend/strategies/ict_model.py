@@ -202,34 +202,25 @@ class ICTModel(Strategy):
                 if self.bearish_fvg_confirmed and self.highest_sweep_point is not None:
                     entry_price = self.fvg_bottom
                     sl = self.highest_sweep_point + self.buffer
-
+                    tp = _calculate_take_profit(entry_price, sl, "sell", self.rr_ratio)
                     risk = sl - entry_price
+                    
+                    if tp is None:
+                        logger.warning(f" --- {current_time} [BEARISH TRADE SKIPPED] Invalid TP calculation ---")
+                        return
 
-                    if risk > 0:
-                        tp = _calculate_take_profit(entry_price, sl, "sell", self.rr_ratio)
-                        if tp is None:
-                            logger.warning(f" --- {current_time} [BEARISH TRADE SKIPPED] Invalid TP calculation ---")
-                            return
-                        rr = self.rr_ratio
-                        quantity = round(self.risk_amount / (risk * 100000), 2)
-
-                        verdict = build_verdict(
-                            symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="london_bearish"
-                        )
-                        try:
-                            save_verdict(verdict)
-                            publish_verdict(verdict)
-                        except Exception as e:
-                            logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
-                            return
+                    verdict = build_verdict(
+                        symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="london_bearish"
+                    )
+                    try:
+                        save_verdict(verdict)
+                        publish_verdict(verdict)
+                    except Exception as e:
+                        logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
+                        return
 
                         self.traded_london = True
                         logger.info(f" --- {current_time} [SELL ORDER] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
-                    else:
-                        logger.warning(
-                            f" --- {current_time} [BEARISH TRADE SKIPPED] Invalid risk distance: {risk:.5f} ---"
-                        )
-                        return
 
                 # -- BULLISH --
 
@@ -298,36 +289,24 @@ class ICTModel(Strategy):
                 elif self.bullish_fvg_confirmed and self.lowest_sweep_point is not None:
                     entry_price = self.fvg_top
                     sl = self.lowest_sweep_point - self.buffer
-
                     risk = entry_price - sl
-
-                    if risk > 0:
-                        tp = _calculate_take_profit(entry_price, sl, "buy", self.rr_ratio)
-                        if tp is None:
-                            logger.warning(f" --- {current_time} [BULLISH TRADE SKIPPED] Invalid TP calculation ---")
-                            return
-                        rr = self.rr_ratio
-                        quantity = round(self.risk_amount / (risk * 100000), 2)
-
-
-                        verdict = build_verdict(
-                            symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="london_bullish"
-                        )
-                        try:
-                            save_verdict(verdict)
-                            publish_verdict(verdict)
-                        except Exception as e:
-                            logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
-                            return
-
-                        self.traded_london = True
-
-                        logger.info(f" --- {current_time} [BUY ORDER] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
-                    else:
-                        logger.warning(
-                            f" --- {current_time} [BULLISH TRADE SKIPPED] Invalid risk distance: {risk:.5f} ---"
-                        )
+                    tp = _calculate_take_profit(entry_price, sl, "buy", self.rr_ratio)
+                    if tp is None:
+                        logger.warning(f" --- {current_time} [BULLISH TRADE SKIPPED] Invalid TP calculation ---")
                         return
+
+                    verdict = build_verdict(
+                        symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="london_bullish"
+                    )
+                    try:
+                        save_verdict(verdict)
+                        publish_verdict(verdict)
+                    except Exception as e:
+                        logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
+                        return
+
+                    self.traded_london = True
+                    logger.info(f" --- {current_time} [BUY ORDER] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
 
             # Keep tracking London sweep state until NY open so Scenario A/B uses complete data.
             if time(11, 0) <= current_time < time(13, 30):
@@ -431,36 +410,26 @@ class ICTModel(Strategy):
                         if self.mss_swing_low and last_price < self.mss_swing_low:
                             entry_price = self.mss_swing_low
                             sl = self.highest_sweep_point + self.buffer
-
                             risk = sl - entry_price
-
-                            if risk > 0:
-                                tp = _calculate_take_profit(entry_price, sl, "sell", self.rr_ratio)
-                                if tp is None:
-                                    logger.warning(f"{current_time} --- [BEARISH NY CONTINUATION TRADE SKIPPED] Invalid TP calculation --- ")
-                                    return
-                                rr = self.rr_ratio
-                                quantity = round(self.risk_amount / (risk * 100000), 2)
-
-                                verdict = build_verdict(
-                                    symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="ny_continuation_bearish"
-                                )
-                                try:
-                                    save_verdict(verdict)
-                                    publish_verdict(verdict)
-                                except Exception as e:
-                                    logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
-                                    return
-
-                                self.traded_ny = True
-
-                                logger.info(f"{current_time} --- [SELL ORDER - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} --- ")
-                            else:
-                                logger.warning(
-                                    f"{current_time} --- [BEARISH NY CONTINUATION TRADE SKIPPED] "
-                                    f"Invalid risk distance: {risk:.5f} --- "
-                                )
+                            tp = _calculate_take_profit(entry_price, sl, "sell", self.rr_ratio)
+                            
+                            if tp is None:
+                                logger.warning(f"{current_time} --- [BEARISH NY CONTINUATION TRADE SKIPPED] Invalid TP calculation --- ")
                                 return
+
+                            verdict = build_verdict(
+                                symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bearish"
+                            )
+                            try:
+                                save_verdict(verdict)
+                                publish_verdict(verdict)
+                            except Exception as e:
+                                logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
+                                return
+
+                            self.traded_ny = True
+                            logger.info(f"{current_time} --- [SELL ORDER - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} --- ")
+                            
                     elif self.swept_low:
                         if self.lowest_sweep_point is None:
                             logger.warning("LOWEST SWEEP POINT: NOT FOUND")
@@ -500,45 +469,26 @@ class ICTModel(Strategy):
                         if self.mss_swing_high and last_price > self.mss_swing_high and not self.traded_ny:
                             entry_price = self.mss_swing_high
                             sl = self.lowest_sweep_point - self.buffer
-
                             risk = entry_price - sl
-
-                            if risk > 0:
-                                tp = _calculate_take_profit(entry_price, sl, "buy", self.rr_ratio)
-                                if tp is None:
-                                    logger.warning(f"{current_time} --- [BULLISH NY CONTINUATION TRADE SKIPPED] Invalid TP calculation ---")
-                                    return
-                                rr = self.rr_ratio
-                                quantity = round(self.risk_amount / (risk * 100000), 2)
-
-                                order = self.create_order(
-                                    self.asset,
-                                    quantity,
-                                    "buy",
-                                    take_profit_price=tp,
-                                    stop_loss_price=sl,
-                                )
-                                self.submit_order(order)
-
-                                verdict = build_verdict(
-                                    symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="ny_continuation_bullish"
-                                )
-                                try:
-                                    save_verdict(verdict)
-                                    publish_verdict(verdict)
-                                except Exception as e:
-                                    logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
-                                    return
-                                
-                                self.traded_ny = True
-
-                                logger.info(f"{current_time} --- [BUY ORDER - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
-                            else:
-                                logger.warning(
-                                    f"{current_time} --- [BULLISH NY CONTINUATION TRADE SKIPPED] "
-                                    f"Invalid risk distance: {risk:.5f} ---"
-                                )
+                            tp = _calculate_take_profit(entry_price, sl, "buy", self.rr_ratio)
+                            
+                            if tp is None:
+                                logger.warning(f"{current_time} --- [BULLISH NY CONTINUATION TRADE SKIPPED] Invalid TP calculation ---")
                                 return
+
+                            verdict = build_verdict(
+                                symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bullish"
+                            )
+                            try:
+                                save_verdict(verdict)
+                                publish_verdict(verdict)
+                            except Exception as e:
+                                logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
+                                return
+                                
+                            self.traded_ny = True
+                            logger.info(f"{current_time} --- [BUY ORDER - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
+                            
                 # SCENARIO B: LONDON REMAINED IN A RANGE
                 elif london_remained_in_range:
                     if current_time >= time(13, 30) and self.ny_range_date != current_date:
@@ -624,33 +574,25 @@ class ICTModel(Strategy):
                         if self.bearish_fvg_confirmed:
                             entry_price = self.mss_swing_low
                             sl = self.sweep_peak + self.buffer
-
                             risk = sl - entry_price
-
-                            # Manage Trade: use fixed TP at configured RR multiple.
-                            if risk > 0:
-                                tp = _calculate_take_profit(entry_price, sl, "sell", self.rr_ratio)
-                                if tp is None:
-                                    logger.warning(f"{current_time} -- [BEARISH TRADE SKIPPED] Invalid TP calculation")
-                                    return
-                                rr = self.rr_ratio
-                                verdict = build_verdict(
-                                    symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="ny_continuation_bearish"
-                                )
-                                try:
-                                    save_verdict(verdict)
-                                    publish_verdict(verdict)
-                                except Exception as e:
-                                    logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
-                                    return
-
-                                self.traded_ny = True
-                                logger.info(f"{current_time} -- [SELL ORDER - SCENARIO B] Price: {entry_price} | RR: {rr:.2f}")
-                            else:
-                                logger.warning(
-                                    f"{current_time} -- [BEARISH TRADE SKIPPED] Invalid risk distance: {risk:.5f}"
-                                )
+                            tp = _calculate_take_profit(entry_price, sl, "sell", self.rr_ratio)
+                            
+                            if tp is None:
+                                logger.warning(f"{current_time} -- [BEARISH TRADE SKIPPED] Invalid TP calculation")
                                 return
+                                
+                            verdict = build_verdict(
+                                symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bearish"
+                            )
+                            try:
+                                save_verdict(verdict)
+                                publish_verdict(verdict)
+                            except Exception as e:
+                                logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
+                                return
+
+                            self.traded_ny = True
+                            logger.info(f"{current_time} -- [SELL ORDER - SCENARIO B] Price: {entry_price} | RR: {rr:.2f}")
 
                     # --- 2. OBSERVE MSS & 3. IDENTIFY PD ARRAY (BULLISH REVERSAL) ---
                     elif self.ny_sweep_low and last_price > self.ny_range_low and not self.traded_ny:
@@ -692,33 +634,25 @@ class ICTModel(Strategy):
                             if self.bullish_fvg_confirmed:
                                 entry_price = self.mss_swing_high
                                 sl = self.sweep_trough - self.buffer  # SL below OB/Sweep Low
-
                                 risk = entry_price - sl
+                                tp = _calculate_take_profit(entry_price, sl, "buy", self.rr_ratio)
+                                
+                                if tp is None:
+                                    logger.warning(f"{current_time} --- [BULLISH TRADE SKIPPED] Invalid TP calculation --- ")
+                                    return
 
-                                # Manage Trade: use fixed TP at configured RR multiple.
-                                if risk > 0:
-                                    tp = _calculate_take_profit(entry_price, sl, "buy", self.rr_ratio)
-                                    if tp is None:
-                                        logger.warning(f"{current_time} --- [BULLISH TRADE SKIPPED] Invalid TP calculation --- ")
-                                        return
-                                    rr = self.rr_ratio
-                                    verdict = build_verdict(
-                                    symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="ny_continuation_bullish"
-                                    )
-                                    try:
-                                        save_verdict(verdict)
-                                        publish_verdict(verdict)
-                                    except Exception as e:
-                                        logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
-                                        return
+                                verdict = build_verdict(
+                                symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bullish"
+                                )
+                                try:
+                                    save_verdict(verdict)
+                                    publish_verdict(verdict)
+                                except Exception as e:
+                                    logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
+                                    return
 
                                     self.traded_ny = True
-
                                     logger.info(f"{current_time} --- [BUY ORDER - SCENARIO B] Price: {entry_price} | RR: {rr:.2f} --- ")
-                                else:
-                                    logger.warning(
-                                        f"{current_time} --- [BULLISH TRADE SKIPPED] Invalid risk distance: {risk:.5f} --- "
-                                    )
-                                    return
+                                
         if current_time >= time(16, 0):
             logger.info(f" --- {current_date} - Market is closed for the day --- ")
