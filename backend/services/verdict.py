@@ -4,7 +4,9 @@ from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone, timedelta
 from typing import Literal
 
-from backend.config import logger
+from backend.config.logger import setup_logger
+logger = setup_logger(__name__)
+
 from backend.config.supaclient import supabase
 
 Scenario = Literal[
