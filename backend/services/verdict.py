@@ -5,9 +5,10 @@ from datetime import datetime, timezone, timedelta
 from typing import Literal
 
 from backend.config.logger import setup_logger
-logger = setup_logger(__name__)
-
 from backend.config.supaclient import supabase
+from backend.config.secrets import get_azure_secret
+
+logger = setup_logger(__name__)
 
 Scenario = Literal[
     "london_bearish",
@@ -63,13 +64,41 @@ def save_verdict(verdict: Verdict):
     payload = asdict(verdict)
 
     try:
-        result = supabase.table("signals").insert(payload).execute()
+        supabase.table("signals").insert(payload).execute()
         logger.info(
             f"[VERDICT SAVED] signal_id={verdict.signal_id} "
             f"symbol={verdict.symbol} direction={verdict.direction} "
             f"scenario={verdict.scenario} execute_at={verdict.execute_at}"
         )
-        return result
+        return payload
     except Exception as e:
         logger.error(f"[VERDICT SAVE FAILED] signal_id={verdict.signal_id} error={e}")
+        raise
+
+def publish_verdict(payload: dict):
+    """
+    Publishes the saved verdict payload directly to Upstash Redis.
+    Accepts the dictionary returned by save_verdict.
+    """
+    try:
+        # Pull your connection string straight from Azure Key Vault
+        redis_url = get_azure_secret("REDIS-URL")
+        if not redis_url:
+            raise ValueError("REDIS-URL secret could not be retrieved from Key Vault.")
+            
+        # Connect with short execution timeouts to keep execution rapid
+        r = redis.from_url(redis_url, socket_connect_timeout=5, socket_timeout=5)
+        
+        # Publish the data payload to your primary engine channel
+        channel = "signals"
+        serialized_data = json.dumps(payload)
+        
+        r.publish(channel, serialized_data)
+        
+        logger.info(
+            f"[REDIS PUBLISHED] channel={channel} "
+            f"signal_id={payload.get('signal_id')} symbol={payload.get('symbol')}"
+        )
+    except Exception as e:
+        logger.error(f"[REDIS PUBLISH FAILED] error={e}")
         raise
