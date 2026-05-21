@@ -4,8 +4,7 @@ from lumibot.entities import Asset
 from lumibot.strategies.strategy import Strategy
 
 from .common import _calculate_take_profit, _manage_risk_controls
-from backend.services.verdict import build_verdict, save_verdict
-from backend.services.publisher import publish_verdict
+from backend.services.verdict import build_verdict, save_verdict, publish_verdict
 
 from ..config.logger import setup_logger
 
@@ -213,14 +212,14 @@ class ICTModel(Strategy):
                         symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="london_bearish"
                     )
                     try:
-                        save_verdict(verdict)
-                        publish_verdict(verdict)
+                        payload = save_verdict(verdict)
+                        publish_verdict(payload)
                     except Exception as e:
                         logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
                         return
 
-                        self.traded_london = True
-                        logger.info(f" --- {current_time} [SELL ORDER] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
+                    self.traded_london = True
+                    logger.info(f" --- {current_time} [SELL ORDER] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
 
                 # -- BULLISH --
 
@@ -299,14 +298,14 @@ class ICTModel(Strategy):
                         symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="london_bullish"
                     )
                     try:
-                        save_verdict(verdict)
-                        publish_verdict(verdict)
+                        payload = save_verdict(verdict)
+                        publish_verdict(payload)
                     except Exception as e:
                         logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
                         return
 
                     self.traded_london = True
-                    logger.info(f" --- {current_time} [BUY ORDER] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
+                    logger.info(f" --- {current_time} [BUY ORDER] Price: {entry_price} | SL: {sl} | TP: {tp} ---")
 
             # Keep tracking London sweep state until NY open so Scenario A/B uses complete data.
             if time(11, 0) <= current_time < time(13, 30):
@@ -421,8 +420,8 @@ class ICTModel(Strategy):
                                 symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bearish"
                             )
                             try:
-                                save_verdict(verdict)
-                                publish_verdict(verdict)
+                                payload = save_verdict(verdict)
+                                publish_verdict(payload)
                             except Exception as e:
                                 logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
                                 return
@@ -480,14 +479,14 @@ class ICTModel(Strategy):
                                 symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bullish"
                             )
                             try:
-                                save_verdict(verdict)
-                                publish_verdict(verdict)
+                                payload = save_verdict(verdict)
+                                publish_verdict(payload)
                             except Exception as e:
                                 logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
                                 return
                                 
                             self.traded_ny = True
-                            logger.info(f"{current_time} --- [BUY ORDER - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
+                            logger.info(f"{current_time} --- [BUY ORDER - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} ---")
                             
                 # SCENARIO B: LONDON REMAINED IN A RANGE
                 elif london_remained_in_range:
@@ -585,14 +584,14 @@ class ICTModel(Strategy):
                                 symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bearish"
                             )
                             try:
-                                save_verdict(verdict)
-                                publish_verdict(verdict)
+                                payload = save_verdict(verdict)
+                                publish_verdict(payload)
                             except Exception as e:
                                 logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
                                 return
 
                             self.traded_ny = True
-                            logger.info(f"{current_time} -- [SELL ORDER - SCENARIO B] Price: {entry_price} | RR: {rr:.2f}")
+                            logger.info(f"{current_time} --- [SELL ORDER - SCENARIO B] Price: {entry_price} | RR: {rr:.2f} ---")
 
                     # --- 2. OBSERVE MSS & 3. IDENTIFY PD ARRAY (BULLISH REVERSAL) ---
                     elif self.ny_sweep_low and last_price > self.ny_range_low and not self.traded_ny:
@@ -645,14 +644,14 @@ class ICTModel(Strategy):
                                 symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bullish"
                                 )
                                 try:
-                                    save_verdict(verdict)
-                                    publish_verdict(verdict)
+                                    payload = save_verdict(verdict)
+                                    publish_verdict(payload)
                                 except Exception as e:
                                     logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
                                     return
 
-                                    self.traded_ny = True
-                                    logger.info(f"{current_time} --- [BUY ORDER - SCENARIO B] Price: {entry_price} | RR: {rr:.2f} --- ")
+                                self.traded_ny = True
+                                logger.info(f"{current_time} --- [BUY ORDER - SCENARIO B] Price: {entry_price} | RR: {rr:.2f} --- ")
                                 
         if current_time >= time(16, 0):
             logger.info(f" --- {current_date} - Market is closed for the day --- ")
