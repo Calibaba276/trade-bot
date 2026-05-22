@@ -252,17 +252,17 @@ def test_key_vault_latency(
 # Supabase
 # ---------------------------------------------------------------------------
 
-def test_supabase_latency(
-    supabase_url: str,
-    supabase_key: str,
-    num_requests: int = 5,
-) -> Optional[dict]:
+def test_supabase_latency(num_requests: int = 5) -> Optional[dict]:
     """Test latency to Supabase."""
     try:
-        from supabase import create_client
-    except ImportError:
-        print("\n❌ Supabase client not installed. Run: pip install supabase")
-        logger.error("supabase client not installed")
+        from backend.config.supaclient import supabase
+    except ImportError as e:
+        print("\n❌ Supabase module import failed. Run: pip install supabase")
+        logger.error(f"[SUPABASE] Import failed: {e}")
+        return None
+    except Exception as e:
+        print(f"\n❌ Failed to initialize Supabase client from supaclient.py: {e}")
+        logger.error(f"[SUPABASE] Client initialization failed in supaclient.py: {e}")
         return None
 
     print("\n" + "=" * 70)
@@ -270,7 +270,6 @@ def test_supabase_latency(
     print("=" * 70)
 
     try:
-        supabase = create_client(supabase_url, supabase_key)
         print("✅ Connected to Supabase")
         logger.info("[SUPABASE] Connected successfully")
     except Exception as e:
@@ -425,9 +424,6 @@ def main() -> None:
     # GLASS_BOX_VAULT_URL.
     redis_url = get_azure_secret("REDIS-URL") or os.getenv("REDIS_URL")
     vault_url = GLASS_BOX_VAULT_URL
-    supabase_url = get_azure_secret("SUPABASE-URL") or os.getenv("SUPABASE_URL")
-    supabase_key = get_azure_secret("SUPABASE-KEY") or os.getenv("SUPABASE_SERVICE_KEY")
-
     if not redis_url:
         print("❌ Redis URL not found. Set REDIS-URL in Key Vault or REDIS_URL env var.")
         logger.error("[LATENCY] REDIS_URL not configured")
@@ -435,14 +431,12 @@ def main() -> None:
     print("Configuration detected:")
     print(f"  Redis:     [REDIS-URL from Key Vault]")
     print(f"  Key Vault: {vault_url}")
-    print(f"  Supabase:  {'[SUPABASE-URL from Key Vault]' if supabase_url else 'Not configured'}")
+    print("  Supabase:  [Client from backend.config.supaclient]")
 
     redis_stats = test_redis_latency(redis_url, num_pings=20)
     vault_stats = test_key_vault_latency(vault_url, num_fetches=10)
 
-    supabase_stats = None
-    if supabase_url and supabase_key:
-        supabase_stats = test_supabase_latency(supabase_url, supabase_key, num_requests=5)
+    supabase_stats = test_supabase_latency(num_requests=5)
 
     if redis_stats and vault_stats:
         calculate_end_to_end(redis_stats, vault_stats, supabase_stats)
