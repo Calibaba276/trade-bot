@@ -4,6 +4,8 @@ from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone, timedelta
 from typing import Literal
 
+import redis
+
 from backend.config.logger import setup_logger
 from backend.config.supaclient import supabase
 from backend.config.secrets import get_azure_secret
