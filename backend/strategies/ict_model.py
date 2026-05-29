@@ -219,7 +219,7 @@ class ICTModel(Strategy):
                         return
 
                     self.traded_london = True
-                    logger.info(f" --- {current_time} [SELL ORDER] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} ---")
+                    logger.info(f" --- {current_time} [SELL ORDER] Price: {entry_price} | SL: {sl} | TP: {tp} | RR: {self.rr_ratio:.2f} ---")
 
                 # -- BULLISH --
 
@@ -427,7 +427,7 @@ class ICTModel(Strategy):
                                 return
 
                             self.traded_ny = True
-                            logger.info(f"{current_time} --- [SELL ORDER - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} | Qty: {quantity} --- ")
+                            logger.info(f"{current_time} --- [SELL ORDER - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} | RR: {self.rr_ratio:.2f} --- ")
                             
                     elif self.swept_low:
                         if self.lowest_sweep_point is None:
@@ -591,7 +591,7 @@ class ICTModel(Strategy):
                                 return
 
                             self.traded_ny = True
-                            logger.info(f"{current_time} --- [SELL ORDER - SCENARIO B] Price: {entry_price} | RR: {rr:.2f} ---")
+                            logger.info(f"{current_time} --- [SELL ORDER - SCENARIO B] Price: {entry_price} | RR: {self.rr_ratio:.2f} ---")
 
                     # --- 2. OBSERVE MSS & 3. IDENTIFY PD ARRAY (BULLISH REVERSAL) ---
                     elif self.ny_sweep_low and last_price > self.ny_range_low and not self.traded_ny:
@@ -651,7 +651,7 @@ class ICTModel(Strategy):
                                     return
 
                                 self.traded_ny = True
-                                logger.info(f"{current_time} --- [BUY ORDER - SCENARIO B] Price: {entry_price} | RR: {rr:.2f} --- ")
+                                logger.info(f"{current_time} --- [BUY ORDER - SCENARIO B] Price: {entry_price} | RR: {self.rr_ratio:.2f} --- ")
                                 
         if current_time >= time(16, 0):
             logger.info(f" --- {current_date} - Market is closed for the day --- ")
