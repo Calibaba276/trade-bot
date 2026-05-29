@@ -373,7 +373,7 @@ def _execute_signal(
     # verdict carries risk_in_price for lot sizing transparency but
     # the account's configured risk_amount is the authoritative sizing input
     risk_amount = default_risk
-    rr_ratio = float(signal.get("rr_ratio") or default_rr_ratio)
+    rr_ratio = float(_pick(signal, "rr_ratio", "reward_risk_ratio", default=default_rr_ratio))
  
     if stop_loss in (None, ""):
         _upsert_execution(signal_id, account_id, {"status": "error", "symbol": symbol, "error": "missing stop_loss"})
