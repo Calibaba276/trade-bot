@@ -42,6 +42,7 @@ BACKOFF_BASE         = 5      # initial restart delay in seconds
 BACKOFF_MAX          = 300    # cap restart delay at 5 minutes
 DEFAULT_RESTART_LIMIT = 10    # max restarts per worker before giving up (0 = unlimited)
 STALE_HEARTBEAT_SEC  = 90     # seconds before a worker heartbeat is considered stale
+STALE_KILL_SEC       = 300
 NON_RETRYABLE_EXIT_CODES = {78}  # Worker startup/config errors (EX_CONFIG)
 
 WAT = timezone(timedelta(hours=1), name="WAT")
@@ -162,9 +163,20 @@ def _check_stale_heartbeats(workers: Dict[str, WorkerProcess]) -> None:
             if age > STALE_HEARTBEAT_SEC:
                 acct = workers.get(row["id"])
                 label = acct.account_num if acct else row["id"]
-                logger.warning(
-                    f"[STALE HEARTBEAT] account={label} last_heartbeat={age:.0f}s ago - "
-                    f"worker may be hung"
+
+                if age > STALE_KILL_SEC and acct and acct.process and acct.process.poll() is None:
+                    logger.warning(
+                        f"[STALE HEARTBEAT] account={label} last_heartbeat={age:.0f}s ago - "
+                        f"killing hung worker"
+                    )
+                    acct.process.kill()
+                    # Do not restart here — the monitor loop detects the exit
+                    # on the next POLL_INTERVAL tick and calls _restart() with backoff.
+                else:
+                    logger.warning(
+                        f"[STALE HEARTBEAT] account={label} last_heartbeat={age:.0f}s ago - "
+                        f"worker may be hung"
+          )
                 )
     except Exception as e:
         logger.warning(f"Heartbeat check failed: {e}")
