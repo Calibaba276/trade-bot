@@ -69,8 +69,6 @@ def save_verdict(verdict: Verdict):
     """Saves the verdict to Supabase Signals table and returns the data for Redis broadcasting"""
 
     payload = asdict(verdict)
-    payload["sl_price"] = payload.get("stop_loss")
-    payload["tp_price"] = payload.get("take_profit")
 
     try:
         supabase.table("signals").insert(payload).execute()
