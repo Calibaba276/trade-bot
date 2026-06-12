@@ -1,0 +1,402 @@
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+.db{display:flex;flex-direction:column;background:#0f1419;color:#e5e7eb;font-size:12px;height:900px;overflow:hidden;}
+.topbar{padding:8px 16px;border-bottom:1px solid #1e2530;background:#141921;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-shrink:0;}
+.greeting{font-size:14px;font-weight:500;color:#f3f4f6;white-space:nowrap;}
+.greeting span{color:#34d399;}
+.account-stats{display:flex;gap:0;align-items:center;flex:1;justify-content:center;}
+.astat{display:flex;flex-direction:column;align-items:center;gap:1px;padding:0 18px;}
+.astat-label{font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;}
+.astat-value{font-size:13px;font-weight:500;color:#f3f4f6;}
+.astat-value.pos{color:#34d399;}
+.astat-value.neg{color:#f87171;}
+.astat-div{width:1px;height:28px;background:#1e2530;}
+.hnav{display:flex;gap:6px;align-items:center;}
+.sel{background:#1e2530;border:0.5px solid #2a3040;border-radius:4px;padding:4px 8px;color:#e5e7eb;font-size:11px;cursor:pointer;}
+.btn{background:#1e2530;border:0.5px solid #2a3040;border-radius:4px;padding:4px 9px;color:#e5e7eb;font-size:11px;cursor:pointer;}
+.body{display:flex;flex:1;min-height:0;}
+.markets-panel{width:160px;min-width:160px;background:#141921;border-right:1px solid #1e2530;display:flex;flex-direction:column;flex-shrink:0;transition:width 0.2s,min-width 0.2s;}
+.markets-panel.collapsed{width:34px;min-width:34px;}
+.mhdr{display:flex;align-items:center;justify-content:space-between;padding:8px 8px 6px;border-bottom:1px solid #1e2530;flex-shrink:0;}
+.mtitle{font-size:10px;font-weight:500;color:#9ca3af;letter-spacing:0.06em;text-transform:uppercase;white-space:nowrap;overflow:hidden;}
+.markets-panel.collapsed .mtitle{display:none;}
+.cbtn{background:none;border:none;color:#6b7280;cursor:pointer;font-size:13px;padding:1px;line-height:1;flex-shrink:0;}
+.markets-panel.collapsed .cbtn{transform:rotate(180deg);}
+.mscroll{flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#2a3040 transparent;}
+.mgrp{font-size:9px;color:#4b5563;padding:6px 8px 3px;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap;overflow:hidden;}
+.markets-panel.collapsed .mgrp{display:none;}
+.mitem{display:flex;align-items:center;justify-content:space-between;padding:5px 8px;cursor:pointer;border-left:2px solid transparent;transition:all 0.1s;}
+.mitem:hover{background:#1a2030;border-left-color:#2a3040;}
+.mitem.active{background:#162040;border-left-color:#378add;}
+.msym{font-size:11px;font-weight:500;color:#e5e7eb;white-space:nowrap;}
+.mprice{font-size:10px;color:#9ca3af;}
+.mchg{font-size:9px;}
+.mchg.pos{color:#34d399;}
+.mchg.neg{color:#f87171;}
+.markets-panel.collapsed .mprice,.markets-panel.collapsed .mchg{display:none;}
+.markets-panel.collapsed .mitem{justify-content:center;padding:5px 0;}
+.main{display:flex;flex-direction:column;flex:1;min-width:0;}
+.chart-section{display:flex;flex:1;min-height:0;}
+.chart-wrap{flex:1;display:flex;flex-direction:column;background:#141921;min-width:0;}
+.chart-topbar{display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid #1e2530;flex-shrink:0;}
+.pair-label{font-size:13px;font-weight:500;color:#f3f4f6;}
+.price-label{font-size:13px;color:#34d399;font-weight:500;}
+.tf-pills{display:flex;gap:3px;margin-left:4px;}
+.tf-pill{padding:2px 7px;border-radius:3px;font-size:10px;cursor:pointer;background:#1e2530;border:0.5px solid #2a3040;color:#9ca3af;}
+.tf-pill.active{background:#162040;border-color:#378add;color:#85b7eb;}
+.chart-area{flex:1;background:#0f1419;display:flex;align-items:center;justify-content:center;color:#374151;font-size:12px;}
+.chart-hint{text-align:center;line-height:1.8;}
+.chart-hint .legend{display:flex;gap:10px;justify-content:center;font-size:10px;margin-top:6px;}
+.pb-bar{display:flex;align-items:center;gap:6px;padding:6px 10px;border-top:1px solid #1e2530;background:#0f1419;flex-shrink:0;}
+.pb-btn{background:#1e2530;border:0.5px solid #2a3040;border-radius:3px;padding:3px 7px;color:#e5e7eb;font-size:10px;cursor:pointer;}
+.pb-btn.active{background:#162040;border-color:#378add;color:#85b7eb;}
+.pb-slider{flex:1;max-width:200px;}
+.pb-time{font-size:10px;color:#6b7280;font-family:monospace;}
+.trades-section{border-top:1px solid #1e2530;background:#0f1419;flex-shrink:0;}
+.trades-hdr{display:flex;align-items:center;justify-content:space-between;padding:5px 10px;border-bottom:1px solid #1e2530;}
+.trades-title{font-size:10px;font-weight:500;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;}
+.ttabs{display:flex;gap:1px;}
+.ttab{padding:3px 9px;font-size:10px;color:#6b7280;cursor:pointer;border-radius:3px;}
+.ttab.active{background:#162040;color:#85b7eb;}
+.ttable{width:100%;border-collapse:collapse;font-size:10px;}
+.ttable th{padding:4px 10px;text-align:left;color:#6b7280;font-weight:400;border-bottom:0.5px solid #1e2530;background:#0f1419;white-space:nowrap;}
+.ttable td{padding:5px 10px;border-bottom:0.5px solid #1a1f2b;color:#d1d5db;white-space:nowrap;}
+.ttable tr:hover td{background:#141921;}
+.ttable tr:last-child td{border-bottom:none;}
+.badge{display:inline-block;padding:1px 5px;border-radius:2px;font-size:9px;font-weight:500;}
+.b-buy{background:#0d2d1a;color:#34d399;border:0.5px solid #166534;}
+.b-sell{background:#2d0d0d;color:#f87171;border:0.5px solid #7f1d1d;}
+.b-win{background:#0d2d1a;color:#34d399;}
+.b-loss{background:#2d0d0d;color:#f87171;}
+.b-open{background:#1a2535;color:#60a5fa;}
+.right-panel{width:220px;min-width:220px;display:flex;flex-direction:column;border-left:1px solid #1e2530;background:#141921;overflow:hidden;}
+.rp-sec{border-bottom:1px solid #1e2530;padding:10px;}
+.rp-title{font-size:9px;color:#6b7280;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;}
+.evlog{display:flex;flex-direction:column;gap:4px;}
+.ev{display:flex;align-items:flex-start;gap:6px;padding:4px 6px;background:#0f1419;border-radius:3px;}
+.ev-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;margin-top:3px;}
+.ev-dot.entry{background:#34d399;}
+.ev-dot.fvg{background:#fbbf24;}
+.ev-dot.ob{background:#38bdf8;}
+.ev-dot.mss{background:#14b8a6;}
+.ev-dot.scan{background:#6b7280;}
+.ev-body{display:flex;flex-direction:column;gap:1px;min-width:0;}
+.ev-top{display:flex;gap:5px;align-items:center;}
+.ev-time{font-size:9px;color:#6b7280;font-family:monospace;}
+.ev-type{font-size:10px;font-weight:500;color:#f3f4f6;}
+.ev-desc{font-size:10px;color:#9ca3af;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.prop-row{margin-bottom:7px;}
+.prop-lbl{display:flex;justify-content:space-between;font-size:10px;color:#9ca3af;margin-bottom:3px;}
+.prop-val{color:#e5e7eb;font-weight:500;}
+.bar-bg{height:4px;background:#1e2530;border-radius:2px;overflow:hidden;}
+.bar-fill{height:100%;border-radius:2px;}
+.loss-dots{display:flex;gap:3px;margin-top:5px;}
+.ldot{width:8px;height:8px;border-radius:50%;background:#1e2530;}
+.ldot.used{background:#f87171;}
+.perf-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:0.5px solid #1e2530;font-size:10px;}
+.perf-row:last-child{border-bottom:none;}
+</style>
+
+<div class="db">
+  <div class="topbar">
+    <div class="greeting">Good morning, <span>Adewale</span> 👋</div>
+    <div class="account-stats">
+      <div class="astat">
+        <span class="astat-label">Balance</span>
+        <span class="astat-value">$12,450</span>
+      </div>
+      <div class="astat-div"></div>
+      <div class="astat">
+        <span class="astat-label">Equity</span>
+        <span class="astat-value">$12,125</span>
+      </div>
+      <div class="astat-div"></div>
+      <div class="astat">
+        <span class="astat-label">P/L Today</span>
+        <span class="astat-value pos">+$325 (2.6%)</span>
+      </div>
+      <div class="astat-div"></div>
+      <div class="astat">
+        <span class="astat-label">Drawdown</span>
+        <span class="astat-value neg">-1.2%</span>
+      </div>
+    </div>
+    <div class="hnav">
+      <select class="sel">
+        <option>Account #123456</option>
+        <option>Account #789012</option>
+      </select>
+      <button class="btn">🔔</button>
+      <button class="btn">⚙️</button>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="markets-panel" id="mktPanel">
+      <div class="mhdr">
+        <span class="mtitle">Markets</span>
+        <button class="cbtn" onclick="toggleMarkets()" aria-label="Toggle markets">‹</button>
+      </div>
+      <div class="mscroll">
+        <div class="mgrp">Forex</div>
+        <div class="mitem active" onclick="selectMarket(this,'EURUSD','1.08750')">
+          <span class="msym">EURUSD</span>
+          <div style="text-align:right"><div class="mprice">1.0875</div><div class="mchg pos">+0.12%</div></div>
+        </div>
+        <div class="mitem" onclick="selectMarket(this,'GBPUSD','1.27430')">
+          <span class="msym">GBPUSD</span>
+          <div style="text-align:right"><div class="mprice">1.2743</div><div class="mchg neg">-0.08%</div></div>
+        </div>
+        <div class="mitem" onclick="selectMarket(this,'USDJPY','149.820')">
+          <span class="msym">USDJPY</span>
+          <div style="text-align:right"><div class="mprice">149.82</div><div class="mchg pos">+0.21%</div></div>
+        </div>
+        <div class="mitem" onclick="selectMarket(this,'AUDUSD','0.65340')">
+          <span class="msym">AUDUSD</span>
+          <div style="text-align:right"><div class="mprice">0.6534</div><div class="mchg neg">-0.15%</div></div>
+        </div>
+        <div class="mitem" onclick="selectMarket(this,'USDCAD','1.36120')">
+          <span class="msym">USDCAD</span>
+          <div style="text-align:right"><div class="mprice">1.3612</div><div class="mchg pos">+0.05%</div></div>
+        </div>
+        <div class="mitem" onclick="selectMarket(this,'NZDUSD','0.59870')">
+          <span class="msym">NZDUSD</span>
+          <div style="text-align:right"><div class="mprice">0.5987</div><div class="mchg neg">-0.09%</div></div>
+        </div>
+        <div class="mgrp">Indices</div>
+        <div class="mitem" onclick="selectMarket(this,'NAS100','17842')">
+          <span class="msym">NAS100</span>
+          <div style="text-align:right"><div class="mprice">17842</div><div class="mchg pos">+0.34%</div></div>
+        </div>
+        <div class="mitem" onclick="selectMarket(this,'US30','38450')">
+          <span class="msym">US30</span>
+          <div style="text-align:right"><div class="mprice">38450</div><div class="mchg neg">-0.11%</div></div>
+        </div>
+        <div class="mitem" onclick="selectMarket(this,'SPX500','5124')">
+          <span class="msym">SPX500</span>
+          <div style="text-align:right"><div class="mprice">5124</div><div class="mchg pos">+0.18%</div></div>
+        </div>
+        <div class="mgrp">Commodities</div>
+        <div class="mitem" onclick="selectMarket(this,'XAUUSD','2318.50')">
+          <span class="msym">XAUUSD</span>
+          <div style="text-align:right"><div class="mprice">2318.5</div><div class="mchg pos">+0.44%</div></div>
+        </div>
+        <div class="mitem" onclick="selectMarket(this,'XAGUSD','27.340')">
+          <span class="msym">XAGUSD</span>
+          <div style="text-align:right"><div class="mprice">27.34</div><div class="mchg pos">+0.22%</div></div>
+        </div>
+        <div class="mitem" onclick="selectMarket(this,'USOIL','82.450')">
+          <span class="msym">USOIL</span>
+          <div style="text-align:right"><div class="mprice">82.45</div><div class="mchg neg">-0.31%</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="main">
+      <div class="chart-section">
+        <div class="chart-wrap">
+          <div class="chart-topbar">
+            <span class="pair-label" id="chartPair">EURUSD</span>
+            <span class="price-label" id="chartPrice">1.08750</span>
+            <div class="tf-pills">
+              <span class="tf-pill" onclick="setTF(this)">1m</span>
+              <span class="tf-pill active" onclick="setTF(this)">5m</span>
+              <span class="tf-pill" onclick="setTF(this)">15m</span>
+              <span class="tf-pill" onclick="setTF(this)">1h</span>
+            </div>
+          </div>
+          <div class="chart-area">
+            <div class="chart-hint">
+              TradingView Lightweight Charts
+              <div style="font-size:10px;color:#4b5563;">Candles + FVG / OB / MSS overlays render here</div>
+              <div class="legend">
+                <span style="color:#fbbf24;">■ FVG</span>
+                <span style="color:#38bdf8;">■ OB</span>
+                <span style="color:#14b8a6;">■ MSS</span>
+                <span style="color:#34d399;">▲ Entry</span>
+                <span style="color:#f87171;">▼ Exit</span>
+              </div>
+            </div>
+          </div>
+          <div class="pb-bar">
+            <button class="pb-btn">⏮</button>
+            <button class="pb-btn active">⏯</button>
+            <button class="pb-btn">⏭</button>
+            <input type="range" class="pb-slider" min="0" max="100" value="62">
+            <span class="pb-time">14:32 UTC</span>
+            <select class="sel" style="width:50px;font-size:10px;">
+              <option>1x</option><option>2x</option><option>4x</option>
+            </select>
+            <span style="color:#6b7280;font-size:10px;">Replay</span>
+          </div>
+        </div>
+
+        <div class="right-panel">
+          <div class="rp-sec">
+            <div class="rp-title">Event Log</div>
+            <div class="evlog">
+              <div class="ev">
+                <div class="ev-dot entry"></div>
+                <div class="ev-body">
+                  <div class="ev-top"><span class="ev-time">14:32</span><span class="ev-type">ENTRY</span></div>
+                  <span class="ev-desc">FVG+MSS @ 1.0875</span>
+                </div>
+              </div>
+              <div class="ev">
+                <div class="ev-dot fvg"></div>
+                <div class="ev-body">
+                  <div class="ev-top"><span class="ev-time">14:31</span><span class="ev-type" style="color:#fbbf24;">FVG</span></div>
+                  <span class="ev-desc">Fair value gap (5m)</span>
+                </div>
+              </div>
+              <div class="ev">
+                <div class="ev-dot ob"></div>
+                <div class="ev-body">
+                  <div class="ev-top"><span class="ev-time">14:30</span><span class="ev-type" style="color:#38bdf8;">OB</span></div>
+                  <span class="ev-desc">Order block (1h confirm)</span>
+                </div>
+              </div>
+              <div class="ev">
+                <div class="ev-dot mss"></div>
+                <div class="ev-body">
+                  <div class="ev-top"><span class="ev-time">14:29</span><span class="ev-type" style="color:#14b8a6;">MSS</span></div>
+                  <span class="ev-desc">Structure shift (15m)</span>
+                </div>
+              </div>
+              <div class="ev">
+                <div class="ev-dot scan"></div>
+                <div class="ev-body">
+                  <div class="ev-top"><span class="ev-time">14:27</span><span class="ev-type" style="color:#9ca3af;">SCAN</span></div>
+                  <span class="ev-desc">Scanning 1m for sweep...</span>
+                </div>
+              </div>
+              <div class="ev">
+                <div class="ev-dot scan"></div>
+                <div class="ev-body">
+                  <div class="ev-top"><span class="ev-time">14:25</span><span class="ev-type" style="color:#9ca3af;">PDH/PDL</span></div>
+                  <span class="ev-desc">H:1.0912 L:1.0821</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="rp-sec">
+            <div class="rp-title">Prop Firm Rules</div>
+            <div class="prop-row">
+              <div class="prop-lbl"><span>Daily loss</span><span class="prop-val">$550 / $1,200</span></div>
+              <div class="bar-bg"><div class="bar-fill" style="width:46%;background:#34d399;"></div></div>
+            </div>
+            <div class="prop-row">
+              <div class="prop-lbl"><span>Max drawdown</span><span class="prop-val">3.2% / 10%</span></div>
+              <div class="bar-bg"><div class="bar-fill" style="width:32%;background:#fbbf24;"></div></div>
+            </div>
+            <div class="prop-lbl" style="margin-top:6px;margin-bottom:3px;"><span>Consecutive losses</span><span class="prop-val">2 / 5</span></div>
+            <div class="loss-dots">
+              <div class="ldot used"></div><div class="ldot used"></div>
+              <div class="ldot"></div><div class="ldot"></div><div class="ldot"></div>
+            </div>
+          </div>
+
+          <div class="rp-sec" style="flex:1;border-bottom:none;">
+            <div class="rp-title">Monthly Performance</div>
+            <div class="perf-row"><span style="color:#9ca3af;">Win rate</span><span style="color:#f3f4f6;font-weight:500;">77.8%</span></div>
+            <div class="perf-row"><span style="color:#9ca3af;">Avg R:R</span><span style="color:#f3f4f6;font-weight:500;">2.8</span></div>
+            <div class="perf-row"><span style="color:#9ca3af;">Total trades</span><span style="color:#f3f4f6;font-weight:500;">9</span></div>
+            <div class="perf-row"><span style="color:#9ca3af;">Best trade</span><span style="color:#34d399;font-weight:500;">+$480</span></div>
+            <div class="perf-row"><span style="color:#9ca3af;">Worst trade</span><span style="color:#f87171;font-weight:500;">-$210</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="trades-section">
+        <div class="trades-hdr">
+          <span class="trades-title">Trades</span>
+          <div class="ttabs">
+            <span class="ttab active" onclick="setTab(this)">All</span>
+            <span class="ttab" onclick="setTab(this)">Open</span>
+            <span class="ttab" onclick="setTab(this)">Closed</span>
+          </div>
+        </div>
+        <table class="ttable">
+          <thead>
+            <tr>
+              <th>Time</th><th>Pair</th><th>Dir</th><th>Entry</th>
+              <th>SL</th><th>TP</th><th>Lots</th><th>R:R</th>
+              <th>P/L</th><th>Status</th><th>Setup</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="color:#6b7280;">14:32</td>
+              <td>EURUSD</td>
+              <td><span class="badge b-buy">BUY</span></td>
+              <td>1.08750</td>
+              <td style="color:#f87171;">1.08420</td>
+              <td style="color:#34d399;">1.09660</td>
+              <td>0.25</td><td>2.76</td>
+              <td style="color:#60a5fa;">—</td>
+              <td><span class="badge b-open">OPEN</span></td>
+              <td style="color:#9ca3af;">FVG+MSS</td>
+            </tr>
+            <tr>
+              <td style="color:#6b7280;">11:14</td>
+              <td>GBPUSD</td>
+              <td><span class="badge b-sell">SELL</span></td>
+              <td>1.27480</td>
+              <td style="color:#f87171;">1.27810</td>
+              <td style="color:#34d399;">1.26820</td>
+              <td>0.20</td><td>2.0</td>
+              <td style="color:#34d399;">+$132</td>
+              <td><span class="badge b-win">WIN</span></td>
+              <td style="color:#9ca3af;">London Bear</td>
+            </tr>
+            <tr>
+              <td style="color:#6b7280;">09:42</td>
+              <td>EURUSD</td>
+              <td><span class="badge b-buy">BUY</span></td>
+              <td>1.08310</td>
+              <td style="color:#f87171;">1.08110</td>
+              <td style="color:#34d399;">1.08910</td>
+              <td>0.15</td><td>3.0</td>
+              <td style="color:#f87171;">-$90</td>
+              <td><span class="badge b-loss">LOSS</span></td>
+              <td style="color:#9ca3af;">London Bull</td>
+            </tr>
+            <tr>
+              <td style="color:#6b7280;">Yest.</td>
+              <td>XAUUSD</td>
+              <td><span class="badge b-buy">BUY</span></td>
+              <td>2301.50</td>
+              <td style="color:#f87171;">2292.00</td>
+              <td style="color:#34d399;">2328.00</td>
+              <td>0.05</td><td>2.79</td>
+              <td style="color:#34d399;">+$283</td>
+              <td><span class="badge b-win">WIN</span></td>
+              <td style="color:#9ca3af;">NY Cont. Bull</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleMarkets(){
+  document.getElementById('mktPanel').classList.toggle('collapsed');
+}
+function selectMarket(el,pair,price){
+  document.querySelectorAll('.mitem').forEach(i=>i.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('chartPair').textContent=pair;
+  document.getElementById('chartPrice').textContent=price;
+}
+function setTF(el){
+  document.querySelectorAll('.tf-pill').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+}
+function setTab(el){
+  document.querySelectorAll('.ttab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+}
+</script>
