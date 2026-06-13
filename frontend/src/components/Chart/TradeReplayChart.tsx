@@ -9,6 +9,7 @@ import {
   type Time,
 } from "lightweight-charts";
 import { useReplayStore } from "../../store/replayStore";
+import { renderPatterns } from "../../utils/patternRenderer";
 
 interface Props {
   containerRef: React.RefObject<HTMLDivElement | null>;
@@ -17,8 +18,10 @@ interface Props {
 export function TradeReplayChart({ containerRef }: Props) {
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const drawRef = useRef<(() => void) | null>(null);
 
-  const { selectedTimeframe, currentTime, priceData } = useReplayStore();
+  const { selectedTimeframe, currentTime, priceData, events } = useReplayStore();
 
   // Initialise chart once
   useEffect(() => {
@@ -48,7 +51,6 @@ export function TradeReplayChart({ containerRef }: Props) {
       height: el.clientHeight,
     });
 
-    // v5 API: addSeries(SeriesType, options)
     const series = chart.addSeries(CandlestickSeries, {
       upColor: "#34d399",
       downColor: "#f87171",
@@ -61,16 +63,46 @@ export function TradeReplayChart({ containerRef }: Props) {
     chartRef.current = chart;
     seriesRef.current = series;
 
+    // Reads store directly so scroll/zoom handler never holds stale data
+    const draw = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const { events: ev, currentTime: ct, selectedTimeframe: tf } =
+        useReplayStore.getState();
+      renderPatterns(canvas, chart, series, ev, ct, tf);
+    };
+    drawRef.current = draw;
+
+    const syncCanvas = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = el.clientWidth * dpr;
+      canvas.height = el.clientHeight * dpr;
+    };
+
     const ro = new ResizeObserver(() => {
-      if (el) chart.applyOptions({ width: el.clientWidth, height: el.clientHeight });
+      if (!el) return;
+      chart.applyOptions({ width: el.clientWidth, height: el.clientHeight });
+      syncCanvas();
+      draw();
     });
     ro.observe(el);
 
+    // Sync canvas on initial mount
+    syncCanvas();
+
+    // Redraw overlays when the user scrolls or zooms the chart
+    const scrollHandler = () => draw();
+    chart.timeScale().subscribeVisibleTimeRangeChange(scrollHandler);
+
     return () => {
       ro.disconnect();
+      chart.timeScale().unsubscribeVisibleTimeRangeChange(scrollHandler);
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
+      drawRef.current = null;
     };
   }, [containerRef]);
 
@@ -88,12 +120,32 @@ export function TradeReplayChart({ containerRef }: Props) {
           high: c.high,
           low: c.low,
           close: c.close,
-        })
+        }),
       );
 
     series.setData(candles);
     if (candles.length > 0) chartRef.current?.timeScale().fitContent();
+
+    // Redraw overlays after candle data changes
+    drawRef.current?.();
   }, [currentTime, selectedTimeframe, priceData]);
 
-  return null;
+  // Redraw overlays when event list changes (new live events arriving)
+  useEffect(() => {
+    drawRef.current?.();
+  }, [events]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: "100%",
+        pointerEvents: "none",
+      }}
+    />
+  );
 }
