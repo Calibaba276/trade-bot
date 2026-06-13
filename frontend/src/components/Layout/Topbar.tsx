@@ -88,6 +88,22 @@ export function Topbar({
         )}
         <TopbarBtn title="Notifications">🔔</TopbarBtn>
         <TopbarBtn title="Settings">⚙️</TopbarBtn>
+        <TopbarBtn
+          title={[
+            "Keyboard shortcuts",
+            "Space  — Play / Pause",
+            "← →    — Step one candle",
+            "Home   — Jump to start",
+            "End    — Jump to end",
+            "L      — Toggle Live / Replay",
+            "1      — 1m timeframe",
+            "5      — 5m timeframe",
+            "F      — 15m timeframe",
+            "H      — 1h timeframe",
+          ].join("\n")}
+        >
+          ?
+        </TopbarBtn>
         {/* Live / Replay mode indicator */}
         <button
           onClick={onToggleLive}

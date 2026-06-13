@@ -3,6 +3,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useReplayStore } from "../store/replayStore";
 import { useLiveTradeEvents } from "../hooks/useLiveTradeEvents";
 import { useReplaySession } from "../hooks/useReplaySession";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { Topbar } from "../components/Layout/Topbar";
 import { MarketsPanel } from "../components/Layout/MarketsPanel";
 import { ChartArea } from "../components/Chart/ChartArea";
@@ -24,6 +25,9 @@ export function Dashboard() {
 
   // Persist and restore scrub position across sessions
   useReplaySession();
+
+  // Global keyboard shortcuts (Space, ←/→, L, 1/5/F/H)
+  useKeyboardShortcuts({ isLive, onToggleLive: () => setIsLive((v) => !v) });
 
   // In live mode, keep currentTime at now so new events are immediately visible
   useEffect(() => {

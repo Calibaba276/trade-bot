@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { EventLog } from "../EventLog/EventLog";
 import { usePerformanceStats } from "../../hooks/usePerformanceStats";
 
@@ -25,11 +26,39 @@ const DEFAULT_PROP: PropFirmStats = {
 
 export function RightPanel({ propFirm = DEFAULT_PROP }: Props) {
   const performance = usePerformanceStats();
+  const [collapsed, setCollapsed] = useState(false);
+
   return (
     <div
-      className="flex flex-col overflow-hidden flex-shrink-0"
-      style={{ width: "220px", minWidth: "220px", background: "#141921", borderLeft: "0.5px solid #1e2530" }}
+      className="flex flex-col overflow-hidden flex-shrink-0 transition-all duration-200"
+      style={{
+        width: collapsed ? "28px" : "220px",
+        minWidth: collapsed ? "28px" : "220px",
+        background: "#141921",
+        borderLeft: "0.5px solid #1e2530",
+      }}
     >
+      {/* Collapse toggle */}
+      <button
+        onClick={() => setCollapsed((c) => !c)}
+        title={collapsed ? "Expand panel" : "Collapse panel"}
+        aria-label="Toggle right panel"
+        className="flex-shrink-0 text-[#6b7280] hover:text-[#9ca3af] cursor-pointer transition-colors"
+        style={{
+          background: "none",
+          border: "none",
+          borderBottom: "0.5px solid #1e2530",
+          padding: "6px",
+          fontSize: "13px",
+          textAlign: collapsed ? "center" : "right",
+          transform: collapsed ? "rotate(180deg)" : "none",
+        }}
+      >
+        ›
+      </button>
+
+      {collapsed ? <div style={{ flex: 1 }} /> : (
+      <>
       {/* Event Log */}
       <Section title="Event Log" flex>
         <EventLog />
@@ -90,6 +119,8 @@ export function RightPanel({ propFirm = DEFAULT_PROP }: Props) {
           color="#f87171"
         />
       </Section>
+      </>
+      )}
     </div>
   );
 }
