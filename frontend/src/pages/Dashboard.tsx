@@ -1,6 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { useReplayStore } from "../store/replayStore";
+import { useLiveTradeEvents } from "../hooks/useLiveTradeEvents";
 import { Topbar } from "../components/Layout/Topbar";
 import { MarketsPanel } from "../components/Layout/MarketsPanel";
 import { ChartArea } from "../components/Chart/ChartArea";
@@ -10,9 +11,25 @@ import { TradesTable } from "../components/Layout/TradesTable";
 
 export function Dashboard() {
   const { user } = useAuth();
-  const { selectedPair, dateRange, loadEventsForDateRange } = useReplayStore();
+  const { selectedPair, dateRange, loadEventsForDateRange, setCurrentTime } =
+    useReplayStore();
 
-  // Load events whenever pair or date range changes
+  // Live mode: Realtime events stream in and currentTime tracks now.
+  // Replay mode: scrubber controls currentTime over historical data.
+  const [isLive, setIsLive] = useState(false);
+
+  // Subscribe to live trade_events for the selected pair (only in live mode)
+  useLiveTradeEvents(selectedPair, isLive);
+
+  // In live mode, keep currentTime at now so new events are immediately visible
+  useEffect(() => {
+    if (!isLive) return;
+    setCurrentTime(Date.now());
+    const id = setInterval(() => setCurrentTime(Date.now()), 5000);
+    return () => clearInterval(id);
+  }, [isLive, setCurrentTime]);
+
+  // Load historical events whenever pair or date range changes
   useEffect(() => {
     if (!user) return;
     loadEventsForDateRange(dateRange.start, dateRange.end, selectedPair).catch(
@@ -28,7 +45,7 @@ export function Dashboard() {
       style={{ height: "100vh", background: "#0f1419", color: "#e5e7eb" }}
     >
       {/* Top bar */}
-      <Topbar userName={userName} />
+      <Topbar userName={userName} isLive={isLive} onToggleLive={() => setIsLive((v) => !v)} />
 
       {/* Body */}
       <div className="flex flex-1 min-h-0">
@@ -37,15 +54,13 @@ export function Dashboard() {
 
         {/* Centre — chart + playback + trades */}
         <div className="flex flex-col flex-1 min-w-0">
-          {/* Chart section */}
           <div className="flex flex-1 min-h-0">
             <div className="flex flex-col flex-1 min-w-0">
               <ChartArea />
-              <PlaybackControls />
+              {/* Playback controls disabled in live mode */}
+              {!isLive && <PlaybackControls />}
             </div>
           </div>
-
-          {/* Trades table */}
           <TradesTable />
         </div>
 

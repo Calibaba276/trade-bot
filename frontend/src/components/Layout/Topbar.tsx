@@ -14,6 +14,8 @@ interface Props {
   accounts?: { id: string; label: string }[];
   selectedAccountId?: string;
   onAccountChange?: (id: string) => void;
+  isLive?: boolean;
+  onToggleLive?: () => void;
 }
 
 export function Topbar({
@@ -22,6 +24,8 @@ export function Topbar({
   accounts = [],
   selectedAccountId,
   onAccountChange,
+  isLive = false,
+  onToggleLive,
 }: Props) {
   const fmt = (n: number, decimals = 2) =>
     n.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
@@ -84,6 +88,23 @@ export function Topbar({
         )}
         <TopbarBtn title="Notifications">🔔</TopbarBtn>
         <TopbarBtn title="Settings">⚙️</TopbarBtn>
+        {/* Live / Replay mode indicator */}
+        <button
+          onClick={onToggleLive}
+          title={isLive ? "Switch to Replay mode" : "Switch to Live mode"}
+          className="font-mono text-[9px] uppercase cursor-pointer transition-colors"
+          style={{
+            padding: "2px 7px",
+            borderRadius: "3px",
+            background: isLive ? "rgba(52,211,153,0.12)" : "#1e2530",
+            border: `0.5px solid ${isLive ? "#34d399" : "#2a3040"}`,
+            color: isLive ? "#34d399" : "#6b7280",
+            letterSpacing: "0.06em",
+          }}
+        >
+          {isLive ? "● LIVE" : "REPLAY"}
+        </button>
+
         <TopbarBtn title="Sign out" onClick={() => signOut()}>
           ↪
         </TopbarBtn>
