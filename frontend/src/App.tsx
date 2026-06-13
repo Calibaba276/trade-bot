@@ -2,12 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./hooks/useAuth";
 import { Login } from "./components/Auth/Login";
 import { SignUp } from "./components/Auth/SignUp";
-
-const Dashboard = () => (
-  <div className="flex items-center justify-center min-h-screen bg-[#0f1419] font-mono text-[11px] text-[#6b7280]">
-    Dashboard — coming in Phase 2
-  </div>
-);
+import { Dashboard } from "./pages/Dashboard";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
