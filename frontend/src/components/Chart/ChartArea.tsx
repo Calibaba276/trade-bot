@@ -2,6 +2,7 @@ import { useRef, useMemo } from "react";
 import { useReplayStore } from "../../store/replayStore";
 import { TimeframeSelector } from "../Controls/TimeframeSelector";
 import { TradeReplayChart } from "./TradeReplayChart";
+import { ContextCascade } from "./ContextCascade";
 
 export function ChartArea() {
   const { selectedPair, currentTime, priceData, selectedTimeframe } = useReplayStore();
@@ -29,6 +30,9 @@ export function ChartArea() {
         </span>
         <TimeframeSelector />
       </div>
+
+      {/* Parent-timeframe confluence strip */}
+      <ContextCascade />
 
       {/* Chart body — TradingView mounts into this div */}
       <div
