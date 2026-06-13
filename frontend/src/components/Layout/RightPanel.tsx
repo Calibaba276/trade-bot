@@ -1,4 +1,5 @@
 import { EventLog } from "../EventLog/EventLog";
+import { usePerformanceStats } from "../../hooks/usePerformanceStats";
 
 interface PropFirmStats {
   dailyLoss: number;
@@ -9,17 +10,8 @@ interface PropFirmStats {
   consecutiveLossLimit: number;
 }
 
-interface PerfStats {
-  winRate: number;
-  avgRR: number;
-  totalTrades: number;
-  bestTrade: number;
-  worstTrade: number;
-}
-
 interface Props {
   propFirm?: PropFirmStats;
-  performance?: PerfStats;
 }
 
 const DEFAULT_PROP: PropFirmStats = {
@@ -31,15 +23,8 @@ const DEFAULT_PROP: PropFirmStats = {
   consecutiveLossLimit: 5,
 };
 
-const DEFAULT_PERF: PerfStats = {
-  winRate: 0,
-  avgRR: 0,
-  totalTrades: 0,
-  bestTrade: 0,
-  worstTrade: 0,
-};
-
-export function RightPanel({ propFirm = DEFAULT_PROP, performance = DEFAULT_PERF }: Props) {
+export function RightPanel({ propFirm = DEFAULT_PROP }: Props) {
+  const performance = usePerformanceStats();
   return (
     <div
       className="flex flex-col overflow-hidden flex-shrink-0"
@@ -91,7 +76,7 @@ export function RightPanel({ propFirm = DEFAULT_PROP, performance = DEFAULT_PERF
 
       {/* Monthly Performance */}
       <Section title="Monthly Performance" noBorder>
-        <PerfRow label="Win rate" value={`${propFirm.dailyLossLimit > 0 ? performance.winRate.toFixed(1) : "—"}%`} />
+        <PerfRow label="Win rate" value={performance.totalTrades > 0 ? `${performance.winRate.toFixed(1)}%` : "—"} />
         <PerfRow label="Avg R:R" value={performance.avgRR > 0 ? performance.avgRR.toFixed(1) : "—"} />
         <PerfRow label="Total trades" value={String(performance.totalTrades)} />
         <PerfRow

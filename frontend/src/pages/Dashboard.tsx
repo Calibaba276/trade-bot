@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { useReplayStore } from "../store/replayStore";
 import { useLiveTradeEvents } from "../hooks/useLiveTradeEvents";
+import { useReplaySession } from "../hooks/useReplaySession";
 import { Topbar } from "../components/Layout/Topbar";
 import { MarketsPanel } from "../components/Layout/MarketsPanel";
 import { ChartArea } from "../components/Chart/ChartArea";
@@ -20,6 +21,9 @@ export function Dashboard() {
 
   // Subscribe to live trade_events for the selected pair (only in live mode)
   useLiveTradeEvents(selectedPair, isLive);
+
+  // Persist and restore scrub position across sessions
+  useReplaySession();
 
   // In live mode, keep currentTime at now so new events are immediately visible
   useEffect(() => {
