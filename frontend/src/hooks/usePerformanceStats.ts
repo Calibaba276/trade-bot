@@ -14,6 +14,11 @@ export function usePerformanceStats(): PerformanceStats {
   const currentTime = useReplayStore((s) => s.currentTime);
 
   return useMemo(() => {
+    // Total entries is meaningful even before any position closes
+    const totalTrades = events.filter(
+      (e) => e.type === "entry" && e.timestamp <= currentTime,
+    ).length;
+
     const exits = events.filter(
       (e) =>
         e.type === "exit" &&
@@ -22,7 +27,7 @@ export function usePerformanceStats(): PerformanceStats {
     );
 
     if (!exits.length) {
-      return { winRate: 0, avgRR: 0, totalTrades: 0, bestTrade: 0, worstTrade: 0 };
+      return { winRate: 0, avgRR: 0, totalTrades, bestTrade: 0, worstTrade: 0 };
     }
 
     const pnls = exits.map((e) => e.metadata!.pnl as number);
@@ -35,9 +40,6 @@ export function usePerformanceStats(): PerformanceStats {
       ? Math.abs(losses.reduce((a, b) => a + b, 0) / losses.length)
       : 1;
     const avgRR = avgWin / avgLoss;
-    const totalTrades = events.filter(
-      (e) => e.type === "entry" && e.timestamp <= currentTime,
-    ).length;
 
     return {
       winRate,
