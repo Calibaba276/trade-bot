@@ -52,6 +52,9 @@ def _get_account_strategy_config(account_login: str, server: str) -> dict:
                     data.get("breakeven_buffer_ticks", defaults["breakeven_buffer_ticks"])
                     or defaults["breakeven_buffer_ticks"]
                 ),
+                # Frontend emitter needs these to satisfy RLS on trade_events / candles
+                "account_id": str(data["id"]) if data.get("id") else None,
+                "user_id": str(data["user_id"]) if data.get("user_id") else None,
             }
     except Exception as exc:
         logger.warning(f"Could not read strategy config for account={account_login} on server={server}: {exc}")
@@ -114,6 +117,9 @@ def run():
                 "max_daily_drawdown_pct": strategy_cfg["max_daily_drawdown_pct"],
                 "breakeven_buffer_ticks": strategy_cfg["breakeven_buffer_ticks"],
                 "stop_buffer_pips": 2,
+                # Frontend emitter identifiers (None in backtest / when account has no user yet)
+                "user_id": strategy_cfg.get("user_id"),
+                "account_id": strategy_cfg.get("account_id"),
             },
         )
 

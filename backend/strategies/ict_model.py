@@ -5,6 +5,12 @@ from lumibot.strategies.strategy import Strategy
 
 from .common import _calculate_take_profit, _manage_risk_controls
 from backend.services.verdict import build_verdict, save_verdict, publish_verdict
+from backend.services.frontend_emitter import (
+    _pair,
+    emit_candle,
+    emit_trade_event,
+    emit_candles_from_df,
+)
 
 from ..config.logger import setup_logger
 
@@ -65,6 +71,84 @@ class ICTModel(Strategy):
         self.daily_equity_start = None
         self.last_trade_date = None
 
+        # Frontend emitter identifiers — None in backtest or when account has no user yet
+        self.user_id: str | None = self.parameters.get("user_id")
+        self.account_id: str | None = self.parameters.get("account_id")
+        self.pair_normalized: str = _pair(self.symbol or "")
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Frontend emit helpers (all no-ops when user_id is not configured)
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def _emit_bars(self, df=None) -> None:
+        """Emit OHLCV candles to Supabase. When df (>=60 rows) is provided,
+        resample to all 4 timeframes; otherwise fetch 1 bar for the 1m candle."""
+        if not self.user_id:
+            return
+        try:
+            if df is not None and len(df) >= 60:
+                emit_candles_from_df(self.user_id, self.account_id, self.pair_normalized, df)
+            else:
+                bar_df = self.get_historical_prices(self.asset, 1, "minute")
+                if bar_df is None or bar_df.empty:
+                    return
+                bar = bar_df.iloc[-1]
+                bar_ms = int(bar_df.index[-1].timestamp() * 1000)
+                emit_candle(
+                    self.user_id, self.account_id, self.pair_normalized, "1m",
+                    bar_ms,
+                    float(bar["open"]), float(bar["high"]),
+                    float(bar["low"]), float(bar["close"]),
+                    float(bar.get("volume", 0)),
+                )
+        except Exception as exc:
+            logger.warning(f"[BARS EMIT] {exc}")
+
+    def _emit_mss(self, swing_price: float, direction: str) -> None:
+        if not self.user_id:
+            return
+        emit_trade_event(
+            self.user_id, self.account_id,
+            self.pair_normalized, "1m",
+            "pattern_detected",
+            pattern="MSS",
+            price=swing_price,
+            high=swing_price,
+            low=swing_price,
+            metadata={"direction": direction},
+        )
+
+    def _emit_fvg(self) -> None:
+        if not self.user_id or self.fvg_top is None or self.fvg_bottom is None:
+            return
+        emit_trade_event(
+            self.user_id, self.account_id,
+            self.pair_normalized, "1m",
+            "pattern_detected",
+            pattern="FVG",
+            price=(self.fvg_top + self.fvg_bottom) / 2,
+            high=self.fvg_top,
+            low=self.fvg_bottom,
+        )
+
+    def _emit_entry(self, verdict, entry_price: float, sl: float, tp: float) -> None:
+        if not self.user_id:
+            return
+        emit_trade_event(
+            self.user_id, self.account_id,
+            self.pair_normalized, "1m",
+            "entry",
+            price=entry_price,
+            high=tp,
+            low=sl,
+            metadata={
+                "signal_id": verdict.signal_id,
+                "direction": verdict.direction,
+                "scenario": verdict.scenario,
+                "rr_ratio": verdict.reward_risk_ratio,
+            },
+        )
+
     def before_market_opens(self):
         self.traded_london = False
         self.traded_ny = False
@@ -103,6 +187,9 @@ class ICTModel(Strategy):
         current_time = dt.time()
         current_date = dt.date()
 
+        # Emit latest 1m bar to frontend on every tick
+        self._emit_bars()
+
         if _manage_risk_controls(self, current_date, current_time):
             return
 
@@ -113,6 +200,9 @@ class ICTModel(Strategy):
             except Exception:
                 logger.warning(f" --- {current_time} Failed to fetch Historical Prices ---")
                 return
+
+            # Backfill all 4 timeframes from the 200-bar fetch
+            self._emit_bars(df)
 
             morning_data = df.between_time("06:00", "08:59")
 
@@ -161,6 +251,7 @@ class ICTModel(Strategy):
                         if lows[i] < lows[i - 1] and lows[i] < lows[i + 1] and lows[i] > self.pdl:
                             self.mss_swing_low = float(lows[i])
                             logger.info(f" --- {current_time} -- Bearish MSS: Swing Low identified at {self.mss_swing_low} ---")
+                            self._emit_mss(self.mss_swing_low, "bearish")
                             break
                     if self.mss_swing_low is None:
                         logger.warning(f"{current_time} -- [STEP 2 NOT COMPLETE - BEARISH] Price reversed below PDH but no valid swing low found, skipping")
@@ -192,6 +283,7 @@ class ICTModel(Strategy):
                         self.bullish_fvg_confirmed = False
                         logger.info(f"--- MSS & FVG CONFIRMED ---")
                         logger.info(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}")
+                        self._emit_fvg()
                     else:
                         # If no FVG is formed, ICT traders usually wait for a secondary break
                         logger.warning("Price broke swing low but no displacement (FVG) found. Skipping entry.")
@@ -203,7 +295,7 @@ class ICTModel(Strategy):
                     sl = self.highest_sweep_point + self.buffer
                     tp = _calculate_take_profit(entry_price, sl, "sell", self.rr_ratio)
                     risk = sl - entry_price
-                    
+
                     if tp is None:
                         logger.warning(f" --- {current_time} [BEARISH TRADE SKIPPED] Invalid TP calculation ---")
                         return
@@ -214,6 +306,7 @@ class ICTModel(Strategy):
                     try:
                         payload = save_verdict(verdict)
                         publish_verdict(payload)
+                        self._emit_entry(verdict, entry_price, sl, tp)
                     except Exception as e:
                         logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
                         return
@@ -248,6 +341,7 @@ class ICTModel(Strategy):
                         if highs[i] > highs[i - 1] and highs[i] > highs[i + 1] and highs[i] < self.pdh:
                             self.mss_swing_high = float(highs[i])
                             logger.info(f" --- {current_time} [BULLISH MSS] Swing High identified at {self.mss_swing_high} ---")
+                            self._emit_mss(self.mss_swing_high, "bullish")
                             break
                     if self.mss_swing_high is None:
                         logger.warning(f" --- {current_time} [STEP 2 NOT COMPLETE - BULLISH] Price reversed above PDL but no valid swing high found, skipping ---")
@@ -279,6 +373,7 @@ class ICTModel(Strategy):
                         self.bearish_fvg_confirmed = False
                         logger.info(f" --- {current_time} [MSS & FVG CONFIRMED] ---")
                         logger.info(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}")
+                        self._emit_fvg()
                     else:
                         # If no FVG is formed, ICT traders usually wait for a secondary break
                         logger.warning(f" --- {current_time} [FVG NOT FOUND] Price broke swing high but no displacement (FVG) found. Skipping entry. ---")
@@ -300,6 +395,7 @@ class ICTModel(Strategy):
                     try:
                         payload = save_verdict(verdict)
                         publish_verdict(payload)
+                        self._emit_entry(verdict, entry_price, sl, tp)
                     except Exception as e:
                         logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
                         return
@@ -403,6 +499,7 @@ class ICTModel(Strategy):
                             for i in range(len(lows) - 2, 0, -1):
                                 if lows[i] < lows[i - 1] and lows[i] < lows[i + 1]:
                                     self.mss_swing_low = float(lows[i])
+                                    self._emit_mss(self.mss_swing_low, "bearish")
                                     break
 
                         # Entry on MSS confirmation
@@ -411,7 +508,7 @@ class ICTModel(Strategy):
                             sl = self.highest_sweep_point + self.buffer
                             risk = sl - entry_price
                             tp = _calculate_take_profit(entry_price, sl, "sell", self.rr_ratio)
-                            
+
                             if tp is None:
                                 logger.warning(f"{current_time} --- [BEARISH NY CONTINUATION TRADE SKIPPED] Invalid TP calculation --- ")
                                 return
@@ -422,6 +519,7 @@ class ICTModel(Strategy):
                             try:
                                 payload = save_verdict(verdict)
                                 publish_verdict(payload)
+                                self._emit_entry(verdict, entry_price, sl, tp)
                             except Exception as e:
                                 logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
                                 return
@@ -458,6 +556,7 @@ class ICTModel(Strategy):
                             for i in range(len(highs) - 2, 0, -1):
                                 if highs[i] > highs[i - 1] and highs[i] > highs[i + 1]:
                                     self.mss_swing_high = float(highs[i])
+                                    self._emit_mss(self.mss_swing_high, "bullish")
                                     break
 
                         if self.mss_swing_high is None:
@@ -470,7 +569,7 @@ class ICTModel(Strategy):
                             sl = self.lowest_sweep_point - self.buffer
                             risk = entry_price - sl
                             tp = _calculate_take_profit(entry_price, sl, "buy", self.rr_ratio)
-                            
+
                             if tp is None:
                                 logger.warning(f"{current_time} --- [BULLISH NY CONTINUATION TRADE SKIPPED] Invalid TP calculation ---")
                                 return
@@ -481,10 +580,11 @@ class ICTModel(Strategy):
                             try:
                                 payload = save_verdict(verdict)
                                 publish_verdict(payload)
+                                self._emit_entry(verdict, entry_price, sl, tp)
                             except Exception as e:
                                 logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
                                 return
-                                
+
                             self.traded_ny = True
                             logger.info(f"{current_time} --- [BUY ORDER - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} ---")
                             
@@ -534,6 +634,7 @@ class ICTModel(Strategy):
                             if lows[i] < lows[i - 1] and lows[i] < lows[i + 1]:
                                 self.mss_swing_low = float(lows[i])
                                 logger.info(f"{current_time} -- Bearish MSS: Swing Low identified at {self.mss_swing_low}")
+                                self._emit_mss(self.mss_swing_low, "bearish")
                                 break
                         if self.mss_swing_low is None:
                             logger.warning(f"{current_time} -- [STEP 2 NOT COMPLETE - BEARISH] Price reversed below PDH but no valid swing low found, skipping")
@@ -565,6 +666,7 @@ class ICTModel(Strategy):
                                 self.bullish_fvg_confirmed = False
                                 logger.info(f"--- MSS & FVG CONFIRMED ---")
                                 logger.info(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}")
+                                self._emit_fvg()
                             else:
                                 # If no FVG is formed, ICT traders usually wait for a secondary break
                                 logger.warning("Price broke swing low but no displacement (FVG) found. Skipping entry.")
@@ -575,17 +677,18 @@ class ICTModel(Strategy):
                             sl = self.sweep_peak + self.buffer
                             risk = sl - entry_price
                             tp = _calculate_take_profit(entry_price, sl, "sell", self.rr_ratio)
-                            
+
                             if tp is None:
                                 logger.warning(f"{current_time} -- [BEARISH TRADE SKIPPED] Invalid TP calculation")
                                 return
-                                
+
                             verdict = build_verdict(
                                 symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bearish"
                             )
                             try:
                                 payload = save_verdict(verdict)
                                 publish_verdict(payload)
+                                self._emit_entry(verdict, entry_price, sl, tp)
                             except Exception as e:
                                 logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
                                 return
@@ -609,6 +712,7 @@ class ICTModel(Strategy):
                         for i in range(len(highs) - 2, 0, -1):
                             if highs[i] > highs[i - 1] and highs[i] > highs[i + 1]:
                                 self.mss_swing_high = float(highs[i])
+                                self._emit_mss(self.mss_swing_high, "bullish")
                                 break
 
                         # If MSS occurs, Locate PD Array (FVG)
@@ -626,6 +730,7 @@ class ICTModel(Strategy):
                                     self.bullish_fvg_confirmed = True
                                     logger.info(f"--- MSS & FVG CONFIRMED ---")
                                     logger.info(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}")
+                                    self._emit_fvg()
                                 else:
                                     # If no FVG is formed, ICT traders usually wait for a secondary break
                                     logger.warning("Price broke swing low but no displacement (FVG) found. Skipping entry.")
@@ -635,17 +740,18 @@ class ICTModel(Strategy):
                                 sl = self.sweep_trough - self.buffer  # SL below OB/Sweep Low
                                 risk = entry_price - sl
                                 tp = _calculate_take_profit(entry_price, sl, "buy", self.rr_ratio)
-                                
+
                                 if tp is None:
                                     logger.warning(f"{current_time} --- [BULLISH TRADE SKIPPED] Invalid TP calculation --- ")
                                     return
 
                                 verdict = build_verdict(
-                                symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bullish"
+                                    symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bullish"
                                 )
                                 try:
                                     payload = save_verdict(verdict)
                                     publish_verdict(payload)
+                                    self._emit_entry(verdict, entry_price, sl, tp)
                                 except Exception as e:
                                     logger.error(f" --- [SIGNAL ERROR]: {e} --- ")
                                     return
