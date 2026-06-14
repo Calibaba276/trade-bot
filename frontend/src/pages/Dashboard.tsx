@@ -10,6 +10,18 @@ import { ChartArea } from "../components/Chart/ChartArea";
 import { PlaybackControls } from "../components/Controls/PlaybackControls";
 import { RightPanel } from "../components/Layout/RightPanel";
 import { TradesTable } from "../components/Layout/TradesTable";
+import { MarketClosed } from "../components/Layout/MarketClosed";
+
+function isMarketOpen(): boolean {
+  const now = new Date();
+  const day = now.getUTCDay();   // 0=Sun, 6=Sat
+  const hour = now.getUTCHours();
+  // Closed: Friday 22:00 UTC through Sunday 22:00 UTC
+  if (day === 6) return false;                        // all Saturday
+  if (day === 5 && hour >= 22) return false;          // Friday after close
+  if (day === 0 && hour < 22) return false;           // Sunday before open
+  return true;
+}
 
 export function Dashboard() {
   const { user } = useAuth();
@@ -19,6 +31,13 @@ export function Dashboard() {
   // Live mode: Realtime events stream in and currentTime tracks now.
   // Replay mode: scrubber controls currentTime over historical data.
   const [isLive, setIsLive] = useState(false);
+  const [marketOpen, setMarketOpen] = useState(isMarketOpen);
+
+  // Re-check market status every minute
+  useEffect(() => {
+    const id = setInterval(() => setMarketOpen(isMarketOpen()), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   // Subscribe to live trade_events for the selected pair (only in live mode)
   useLiveTradeEvents(selectedPair, isLive);
@@ -60,16 +79,21 @@ export function Dashboard() {
         {/* Left — markets panel */}
         <MarketsPanel />
 
-        {/* Centre — chart + playback + trades */}
+        {/* Centre — chart + playback + trades (or market-closed screen) */}
         <div className="flex flex-col flex-1 min-w-0">
-          <div className="flex flex-1 min-h-0">
-            <div className="flex flex-col flex-1 min-w-0">
-              <ChartArea />
-              {/* Playback controls disabled in live mode */}
-              {!isLive && <PlaybackControls />}
-            </div>
-          </div>
-          <TradesTable />
+          {isLive && !marketOpen ? (
+            <MarketClosed onGoToReplay={() => setIsLive(false)} />
+          ) : (
+            <>
+              <div className="flex flex-1 min-h-0">
+                <div className="flex flex-col flex-1 min-w-0">
+                  <ChartArea />
+                  {!isLive && <PlaybackControls />}
+                </div>
+              </div>
+              <TradesTable />
+            </>
+          )}
         </div>
 
         {/* Right — event log + prop firm rules + performance */}
