@@ -51,14 +51,14 @@ The name "Glass Box" is the core brand promise: **you can see everything the bot
 
 ```
 Framework:        React (Vite)
-Styling:          Tailwind CSS v3
-Component Library: shadcn/ui (use CLI: npx shadcn-ui@latest add [component])
-Auth:             Supabase
+Styling:          Tailwind CSS v4
+Component Library: shadcn/ui (use CLI: npx shadcn@latest add [component])
+Auth:             Supabase (@supabase/auth-ui-react + @supabase/auth-ui-shared)
 Realtime:         Supabase JS client (subscribe() for live signals/executions)
-Charts:           Lightweight Charts by TradingView (npm: lightweight-charts)
+Charts:           Lightweight Charts by TradingView v5 (npm: lightweight-charts)
 Icons:            Lucide React
 Fonts:            See §3
-State:            React Context + useReducer for global state; React Query (TanStack) for server state
+State:            React Context + useReducer for global state; TanStack Query v5 (@tanstack/react-query) for server state
 ```
 
 **Do not use:** Material UI, Chakra UI, Bootstrap, Ant Design, or any other component library in addition to shadcn/ui.
@@ -628,33 +628,77 @@ A: "The ICT methodology, like any strategy, has losing trades. Glass Box does no
 
 Three columns: Brand (logo + one-line description + socials), Links (Product, Company, Legal), Contact.
 
-Bottom strip: `© 2025 Glass Box Trading Engine. Not financial advice. Trading forex carries risk.`
+Bottom strip: `© 2026 Glass Box Trading Engine. Not financial advice. Trading forex carries risk.`
 
 ---
 
-## 5. Authentication Flow (Clerk)
+## 5. Authentication Flow (Supabase)
 
 **Routes:**
-- `/sign-in` — Clerk's `<SignIn />` component, centered on page, `bg-bg-base`
-- `/sign-up` — Clerk's `<SignUp />` component, same treatment
+- `/sign-in` — `@supabase/auth-ui-react` `<Auth />` in `view="sign_in"`, centered on page, `bg-bg-base`
+- `/sign-up` — same `<Auth />` in `view="sign_up"`, same treatment
 
-**Wrapper styling:** Override Clerk's appearance with their `appearance` prop:
+**Packages:**
+```bash
+npm install @supabase/auth-ui-react @supabase/auth-ui-shared
+```
+
+**Wrapper styling:** Use `ThemeSupa` as the base theme with custom variable overrides:
 ```jsx
-<SignIn appearance={{
-  baseTheme: dark, // import { dark } from '@clerk/themes'
-  variables: {
-    colorBackground:     '#0D1117',
-    colorInputBackground:'#161B22',
-    colorText:           '#E6EDF3',
-    colorPrimary:        '#388BFD',
-    borderRadius:        '8px',
-  }
-}} />
+import { Auth } from '@supabase/auth-ui-react'
+import { ThemeSupa } from '@supabase/auth-ui-shared'
+
+<Auth
+  supabaseClient={supabase}
+  view="sign_in"
+  redirectTo="/dashboard"
+  appearance={{
+    theme: ThemeSupa,
+    variables: {
+      default: {
+        colors: {
+          brand:            '#388BFD',
+          brandAccent:      '#1F6FEB',
+          inputBackground:  '#161B22',
+          inputText:        '#E6EDF3',
+          inputBorder:      '#21262D',
+          backgroundDefault:'#0D1117',
+        },
+        radii: { borderRadiusButton: '6px', inputBorderRadius: '8px' },
+        fonts: { bodyFontFamily: 'Geist, sans-serif' },
+      }
+    }
+  }}
+/>
 ```
 
 **Post-auth redirect:** `/dashboard`
 
-**Protected routes:** Wrap all `/dashboard/*` routes with Clerk's `<SignedIn>` or middleware. Unauthenticated users hitting `/dashboard` redirect to `/sign-in`.
+**Protected routes:** Build a `<RequireAuth />` wrapper that checks `supabase.auth.getSession()` on mount and listens to `supabase.auth.onAuthStateChange()`. Unauthenticated users hitting `/dashboard` redirect to `/sign-in`:
+
+```jsx
+function RequireAuth({ children }) {
+  const [session, setSession] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+      setLoading(false)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  if (loading) return <LoadingScreen />
+  if (!session) return <Navigate to="/sign-in" replace />
+  return children
+}
+```
+
+Use `supabase.auth.getUser()` to access the current user anywhere in the app. Use `supabase.auth.signOut()` for the sidebar sign-out action.
 
 ---
 
@@ -678,7 +722,7 @@ Bottom strip: `© 2025 Glass Box Trading Engine. Not financial advice. Trading f
 **`<TopBar />`:**
 - Left: Hamburger (mobile only) + current page title
 - Center: Engine status pill → `● ENGINE RUNNING` in bull-green or `● HALTED` in bear-red or `● PAUSED` in amber — pulse animation on the dot
-- Right: Notifications bell + Clerk `<UserButton />`
+- Right: Notifications bell + user avatar button (shows `supabase.auth.getUser()` email initial; clicking opens a dropdown with profile link and sign-out)
 
 **`<Sidebar />`:**
 ```
@@ -825,7 +869,9 @@ error:    "ERROR: {message} · Account {id}"
 
 **Purpose:** The centerpiece product feature. A TradingView-style chart with ICT logic overlays. Users can click any historical signal and see the exact chart state at the moment of the Verdict.
 
-**Library:** Use `lightweight-charts` (npm: `lightweight-charts`) by TradingView. It is free, MIT-licensed, and renders professional-grade candlestick charts in React.
+**Library:** Use `lightweight-charts` v5 (npm: `lightweight-charts`) by TradingView. It is free, MIT-licensed, and renders professional-grade candlestick charts in React.
+
+> **v5 breaking change:** Series are now created with `chart.addSeries(SeriesType, options)` using named imports. Price lines belong on the **series**, not the chart. See examples below.
 
 **Layout:** Full-width main content area.
 ```
@@ -849,6 +895,8 @@ error:    "ERROR: {message} · Account {id}"
 
 **Chart configuration:**
 ```js
+import { createChart, CandlestickSeries, CrosshairMode, LineStyle } from 'lightweight-charts'
+
 const chart = createChart(containerRef.current, {
   layout: {
     background: { color: '#0D1117' },
@@ -862,33 +910,43 @@ const chart = createChart(containerRef.current, {
   rightPriceScale: { borderColor: '#21262D' },
   timeScale: { borderColor: '#21262D', timeVisible: true },
 });
+
+// v5: series created via addSeries(SeriesType, options)
+const candleSeries = chart.addSeries(CandlestickSeries, {
+  upColor:   '#3FB950',
+  downColor: '#F85149',
+  borderUpColor:   '#3FB950',
+  borderDownColor: '#F85149',
+  wickUpColor:   '#3FB950',
+  wickDownColor: '#F85149',
+});
 ```
 
 **ICT Overlays — implementation:**
 
 ```js
-// FVG Rectangle (bearish)
-// Use ISeriesApi<'Line'> trick or custom primitives
-// Render as a semi-transparent rectangle between fvg_bottom and fvg_top
-// over the time range of detection
-chart.addPriceLine({
+// All price lines attach to the candleSeries, not the chart (v5 requirement)
+
+// FVG Zone — two boundary lines (for a shaded fill, use a custom series primitive)
+candleSeries.createPriceLine({
   price: signal.fvg_top,
-  color: '#F8514980',    // bear-red at 50% opacity
+  color: '#F8514980',
   lineWidth: 1,
   lineStyle: LineStyle.Solid,
   title: 'FVG Top',
 });
-chart.addPriceLine({
+candleSeries.createPriceLine({
   price: signal.fvg_bottom,
   color: '#F8514980',
   lineWidth: 1,
   lineStyle: LineStyle.Dashed,
   title: 'FVG Bottom',
 });
-// For shaded FVG area: use a custom series or overlay canvas element
+// For a shaded FVG rectangle: implement a custom series primitive (ISeriesPrimitive)
+// or render a positioned <div> over the chart container using the chart's priceToCoordinate() + timeToCoordinate() methods.
 
 // MSS Level
-chart.addPriceLine({
+candleSeries.createPriceLine({
   price: signal.mss_level,
   color: '#D29922',
   lineWidth: 1,
@@ -897,7 +955,7 @@ chart.addPriceLine({
 });
 
 // Sweep Point
-chart.addPriceLine({
+candleSeries.createPriceLine({
   price: signal.sweep_point,
   color: '#388BFD',
   lineWidth: 1,
@@ -906,8 +964,8 @@ chart.addPriceLine({
 });
 
 // SL and TP
-chart.addPriceLine({ price: signal.sl_price, color: '#F85149', title: 'SL' });
-chart.addPriceLine({ price: signal.tp_price, color: '#3FB950', title: 'TP' });
+candleSeries.createPriceLine({ price: signal.sl_price, color: '#F85149', title: 'SL' });
+candleSeries.createPriceLine({ price: signal.tp_price, color: '#3FB950', title: 'TP' });
 ```
 
 **Trade Replay Slider:**
@@ -1065,8 +1123,8 @@ Expand the card into a full page with:
 - Explanation tooltip on each field, in plain English (see §7 for copy)
 
 **Tab 3: Profile & Security**
-- Clerk's `<UserProfile />` component for email, password, 2FA
-- No custom fields needed here — delegate fully to Clerk
+- Supabase `<Auth />` component in `view="update_password"` for password changes; email and 2FA managed via `supabase.auth.updateUser()` and `supabase.auth.mfa.*` APIs
+- Use `supabase.auth.getUser()` to display current email; `supabase.auth.updateUser({ email })` to update it
 
 ---
 
@@ -1123,7 +1181,7 @@ Expand the card into a full page with:
 Set up a single `RealtimeProvider` context at the app root that manages all subscriptions:
 
 ```js
-// subscriptions to set up after Clerk auth is confirmed:
+// subscriptions to set up after Supabase auth session is confirmed:
 
 // 1. New signals (Verdict broadcast)
 supabase.channel('signals')
@@ -1192,7 +1250,7 @@ useExecutionEvents()  → <LiveLogicFeed />
 | Tablet (768–1280px) | 2-column grids. Sidebar overlays (hamburger). Chart + Verdict in stacked layout. |
 | Desktop (>1280px) | Full layout as specified. Fixed sidebar. Chart + Verdict side-by-side. |
 
-Mobile alert optimization: On mobile, push notifications (via browser Push API or Clerk webhooks to email/SMS) for:
+Mobile alert optimization: On mobile, push notifications (via browser Push API or Supabase Edge Functions triggering email/SMS) for:
 - New Verdict broadcast
 - Drawdown Halt triggered
 - Worker down (heartbeat expired)
@@ -1203,8 +1261,8 @@ Mobile alert optimization: On mobile, push notifications (via browser Push API o
 
 ```
 /                          → Landing page (public)
-/sign-in                   → Clerk SignIn (public)
-/sign-up                   → Clerk SignUp (public)
+/sign-in                   → Supabase Auth UI — sign_in view (public)
+/sign-up                   → Supabase Auth UI — sign_up view (public)
 /dashboard                 → Overview (protected)
 /dashboard/feed            → Live Logic Feed — expanded (protected)
 /dashboard/chart           → Visual Debugger + Trade Replay (protected)
@@ -1222,7 +1280,7 @@ Mobile alert optimization: On mobile, push notifications (via browser Push API o
 **Phase 1 — Foundation:**
 1. `tailwind.config.js` — full color system and font config
 2. `globals.css` — CSS variables, keyframes, base typography
-3. `<Layout />` — sidebar + topbar shell with Clerk auth
+3. `<Layout />` — sidebar + topbar shell with Supabase `RequireAuth` guard
 4. `<StatCard />` — reusable stat card with flash animation
 5. `<Badge />` — status badge (extends shadcn Badge) with shape variants
 
@@ -1251,7 +1309,7 @@ Mobile alert optimization: On mobile, push notifications (via browser Push API o
 23. `<TradeHistoryTable />` — full trade log with filters
 
 **Phase 5 — Settings & Polish:**
-24. `<AccountSettingsPage />` — three-tab settings with Clerk profile
+24. `<AccountSettingsPage />` — three-tab settings with Supabase auth profile
 25. `<AddAccountModal />` — broker account form with all fields
 26. Error states, empty states, loading skeletons for all pages
 27. Mobile responsive pass — bottom nav, collapsed layouts
@@ -1304,4 +1362,4 @@ Body:  "Check your connection or try refreshing. If this persists, contact suppo
 ---
 
 *Glass Box Frontend Design Guide · v1.0 · For AI Agent Execution*
-*Stack: React · Tailwind CSS · shadcn/ui · lightweight-charts · Clerk · Supabase Realtime*
+*Stack: React · Tailwind CSS v4 · shadcn/ui · lightweight-charts v5 · Supabase Auth · Supabase Realtime*
