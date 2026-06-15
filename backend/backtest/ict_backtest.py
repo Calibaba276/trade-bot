@@ -155,24 +155,14 @@ class Sim:
         return self.df.iloc[lo:i + 1]
 
     def _emit(self, dt, direction, entry, sl, liquidity, scenario):
-        """ICT target = opposing liquidity pool; require >= RR_RATIO (min 1:3),
-        else skip the trade."""
-        risk = abs(entry - sl)
-        if risk <= 0 or liquidity is None:
-            return False
-        if direction == "buy":
-            if liquidity <= entry:
-                return False
-            rr = (liquidity - entry) / risk
-        else:
-            if liquidity >= entry:
-                return False
-            rr = (entry - liquidity) / risk
-        if rr < RR_RATIO:
+        """Fixed-RR target: TP = entry +/- risk * RR_RATIO (the `liquidity`
+        argument is accepted for call-site compatibility but unused here)."""
+        tp_calc = calc_tp(entry, sl, direction, RR_RATIO)
+        if tp_calc is None:
             return False
         self.signals.append(Signal(dt=dt, direction=direction, entry=float(entry),
-                                   sl=float(sl), tp=float(liquidity), scenario=scenario,
-                                   rr=float(rr)))
+                                   sl=float(sl), tp=float(tp_calc), scenario=scenario,
+                                   rr=RR_RATIO))
         return True
 
     def run(self):
@@ -511,7 +501,7 @@ def report(signals, pair="EUR_USD"):
     avg_rr = (sum(s.rr for s in resolved) / len(resolved)) if resolved else 0.0
 
     print("=" * 68)
-    print(" ICT MODEL BACKTEST — {} 1m (Oanda) — target=opposing liquidity, min RR {:.1f}, ${:.0f}/trade".format(pair.replace("_", "/"), RR_RATIO, RISK))
+    print(" ICT MODEL BACKTEST — {} 1m (Oanda) — fixed RR {:.1f}, ${:.0f}/trade".format(pair.replace("_", "/"), RR_RATIO, RISK))
     print("=" * 68)
     print(f" Signals generated      : {total}")
     print(f" Signals filled (limit) : {len(filled)}  ({len(filled)/total*100:.1f}% fill rate)" if total else " no signals")
