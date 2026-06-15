@@ -44,12 +44,23 @@ export function Login() {
       setLoading(false);
       return;
     }
-    navigate("/");
+    navigate("/dashboard");
   };
 
   return (
     <div className="min-h-screen bg-[#0f1419] flex items-center justify-center px-4">
       <div className="w-full max-w-[360px]">
+        {/* Back to landing */}
+        <Link
+          to="/"
+          className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-[#4b5563] hover:text-[#9ca3af] transition-colors mb-4"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
+            <path d="M8 2L4 6L8 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Back to home
+        </Link>
+
         {/* Card */}
         <div
           className="bg-[#141921] p-8"
@@ -157,7 +168,7 @@ export function Login() {
           >
             No account?{" "}
             <Link
-              to="/signup"
+              to="/sign-up"
               className="text-[#9ca3af] hover:text-[#f3f4f6] underline transition-colors"
             >
               Create one
