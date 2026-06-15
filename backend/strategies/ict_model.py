@@ -32,6 +32,11 @@ class ICTModel(Strategy):
         self.asset = Asset(symbol=self.symbol, asset_type="forex")
         self.buffer = 0.0002
 
+        # Higher-timeframe directional bias filter. Only setups aligned with the
+        # daily trend are taken (bull bias -> longs only, bear bias -> shorts only).
+        self.htf_bias_period = int(self.parameters.get("htf_bias_period", 20) or 20)
+        self.daily_bias = None  # "bull" | "bear" | None, recomputed each day
+
         self.traded_london = False
         self.traded_ny = False
         self.last_range_date = None
@@ -149,6 +154,52 @@ class ICTModel(Strategy):
             },
         )
 
+    # ──────────────────────────────────────────────────────────────────────────
+    # ICT enhancements: HTF bias filter + wick-based liquidity sweep detection
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def _compute_daily_bias(self, current_date):
+        """ICT daily bias from the previous completed daily candle (draw on
+        liquidity proxy): bullish if it closed in the upper half of its range
+        (closing above the midpoint => buyside is the likely draw), else bearish.
+        Only the side aligned with the bias is traded."""
+        try:
+            ddf = self.get_historical_prices(self.asset, 5, "day")
+        except Exception:
+            return None
+        if ddf is None or ddf.empty or "close" not in ddf.columns:
+            return None
+        # use the last daily candle strictly before today (no look-ahead)
+        try:
+            prev = ddf[ddf.index.date < current_date]
+        except Exception:
+            prev = ddf.iloc[:-1]
+        if prev is None or prev.empty:
+            prev = ddf.iloc[:-1] if len(ddf) > 1 else ddf
+        if prev.empty:
+            return None
+        row = prev.iloc[-1]
+        hi, lo, close = float(row["high"]), float(row["low"]), float(row["close"])
+        mid = (hi + lo) / 2.0
+        return "bull" if close >= mid else "bear"
+
+    def _bias_allows(self, direction):
+        """True only when the trade direction agrees with the daily bias."""
+        if self.daily_bias is None:
+            return False
+        return self.daily_bias == ("bull" if direction == "buy" else "bear")
+
+    def _current_bar_hl(self):
+        """High/low of the latest 1m bar — used for wick-based sweep detection so
+        a liquidity grab that pierces a level and snaps back is not missed."""
+        try:
+            df = self.get_historical_prices(self.asset, 1, "minute")
+        except Exception:
+            return None, None
+        if df is None or df.empty:
+            return None, None
+        return float(df.iloc[-1]["high"]), float(df.iloc[-1]["low"])
+
     def before_market_opens(self):
         self.traded_london = False
         self.traded_ny = False
@@ -172,6 +223,7 @@ class ICTModel(Strategy):
         self.pre_ny_high = None
         self.ny_ote_hit_bullish = None
         self.ny_ote_hit_bearish = False
+        self.daily_bias = None
 
         # --- SCENARIO B: RANGE VARIABLES ---
         self.session_scenario = None
@@ -210,7 +262,8 @@ class ICTModel(Strategy):
                 self.pdh = float(morning_data["high"].max())
                 self.pdl = float(morning_data["low"].min())
                 self.last_range_date = current_date
-                logger.info(f"--- {current_date} - {current_time} From 6:00 - 8:59am: High={self.pdh}, Low={self.pdl} ---")
+                self.daily_bias = self._compute_daily_bias(current_date)
+                logger.info(f"--- {current_date} - {current_time} From 6:00 - 8:59am: High={self.pdh}, Low={self.pdl} | Daily bias: {self.daily_bias} ---")
             else:
                 logger.warning(f" --- {current_date} Market is Closed (No Data) --- ")
                 return
@@ -226,15 +279,17 @@ class ICTModel(Strategy):
 
                 # -- BEARISH --
 
+                bar_high, bar_low = self._current_bar_hl()
+
                 # BEARISH MSS
-                # Step 1: Detect sweep above the high
-                if last_price > self.pdh:
+                # Step 1: Detect sweep above the high (wick-based)
+                if bar_high is not None and bar_high > self.pdh:
                     self.swept_high = True
 
-                    if self.highest_sweep_point is None or last_price > self.highest_sweep_point:
-                        self.highest_sweep_point = last_price
+                    if self.highest_sweep_point is None or bar_high > self.highest_sweep_point:
+                        self.highest_sweep_point = bar_high
 
-                    logger.info(f" --- {current_time} - [BEARISH BIAS] -- Current Price has Surpassed the Highest Point ---")
+                    logger.info(f" --- {current_time} - [BEARISH BIAS] -- Price wick swept the High ---")
 
                 # Step 2: Price reverses below high — scan for swing low
                 if self.swept_high and last_price < self.pdh and self.mss_swing_low is None:
@@ -290,7 +345,7 @@ class ICTModel(Strategy):
                         return
 
                 # Trade Execution (BEARISH)
-                if self.bearish_fvg_confirmed and self.highest_sweep_point is not None:
+                if self.bearish_fvg_confirmed and self.highest_sweep_point is not None and self._bias_allows("sell"):
                     entry_price = self.fvg_bottom
                     sl = self.highest_sweep_point + self.buffer
                     tp = _calculate_take_profit(entry_price, sl, "sell", self.rr_ratio)
@@ -317,14 +372,14 @@ class ICTModel(Strategy):
                 # -- BULLISH --
 
                 # BULLISH MSS
-                # Step 1: Detect sweep below the low
-                elif last_price < self.pdl:
+                # Step 1: Detect sweep below the low (wick-based)
+                elif bar_low is not None and bar_low < self.pdl:
                     self.swept_low = True
 
-                    if self.lowest_sweep_point is None or last_price < self.lowest_sweep_point:
-                        self.lowest_sweep_point = last_price
+                    if self.lowest_sweep_point is None or bar_low < self.lowest_sweep_point:
+                        self.lowest_sweep_point = bar_low
 
-                    logger.info(f" --- {current_time} [BULLISH BIAS] Current Price has Surpassed the Lowest Point ---")
+                    logger.info(f" --- {current_time} [BULLISH BIAS] Price wick swept the Low ---")
 
                 # Step 2: Price reverses above low — scan for swing high
                 if self.swept_low and last_price > self.pdl and self.mss_swing_high is None:
@@ -380,7 +435,7 @@ class ICTModel(Strategy):
                         return
 
                 # Trade Execution (BULLISH)
-                elif self.bullish_fvg_confirmed and self.lowest_sweep_point is not None:
+                elif self.bullish_fvg_confirmed and self.lowest_sweep_point is not None and self._bias_allows("buy"):
                     entry_price = self.fvg_top
                     sl = self.lowest_sweep_point - self.buffer
                     risk = entry_price - sl
@@ -412,16 +467,17 @@ class ICTModel(Strategy):
                     self.london_high = last_price
                     logger.info(f" --- LONDON HIGH: {self.london_high} [LONDON REMAINED IN RANGE] --- ")
 
-                if last_price > self.pdh:
+                track_high, track_low = self._current_bar_hl()
+                if track_high is not None and track_high > self.pdh:
                     self.swept_high = True
-                    if self.highest_sweep_point is None or last_price > self.highest_sweep_point:
-                        self.highest_sweep_point = last_price
+                    if self.highest_sweep_point is None or track_high > self.highest_sweep_point:
+                        self.highest_sweep_point = track_high
                         logger.info(f" --- HIGHEST SWEEP POINT: {self.highest_sweep_point} [LIQUIDITY SWEPT DURING LONDON] ")
 
-                if last_price < self.pdl:
+                if track_low is not None and track_low < self.pdl:
                     self.swept_low = True
-                    if self.lowest_sweep_point is None or last_price < self.lowest_sweep_point:
-                        self.lowest_sweep_point = last_price
+                    if self.lowest_sweep_point is None or track_low < self.lowest_sweep_point:
+                        self.lowest_sweep_point = track_low
                         logger.info(f" --- LOWEST SWEEP POINT: {self.lowest_sweep_point} [LIQUIDITY SWEPT DURING LONDON] ")
 
             # --- NEW YORK SESSION RESET ---
@@ -503,7 +559,7 @@ class ICTModel(Strategy):
                                     break
 
                         # Entry on MSS confirmation
-                        if self.mss_swing_low and last_price < self.mss_swing_low:
+                        if self.mss_swing_low and last_price < self.mss_swing_low and self._bias_allows("sell"):
                             entry_price = self.mss_swing_low
                             sl = self.highest_sweep_point + self.buffer
                             risk = sl - entry_price
@@ -564,7 +620,7 @@ class ICTModel(Strategy):
                             return
 
                         # Entry on MSS confirmation
-                        if self.mss_swing_high and last_price > self.mss_swing_high and not self.traded_ny:
+                        if self.mss_swing_high and last_price > self.mss_swing_high and not self.traded_ny and self._bias_allows("buy"):
                             entry_price = self.mss_swing_high
                             sl = self.lowest_sweep_point - self.buffer
                             risk = entry_price - sl
@@ -609,13 +665,14 @@ class ICTModel(Strategy):
                             logger.warning("NY Scenario B Range: NOT FOUND")
                             return
 
-                    # Wait for sweep of the absolute 06:00-14:00 range high or low
-                    if last_price > self.ny_range_high:
+                    # Wait for sweep of the absolute 06:00-14:00 range high or low (wick-based)
+                    nb_high, nb_low = self._current_bar_hl()
+                    if nb_high is not None and nb_high > self.ny_range_high:
                         self.ny_sweep_high = True
-                        self.sweep_peak = max(self.sweep_peak if self.sweep_peak else 0, last_price)
-                    elif last_price < self.ny_range_low:
+                        self.sweep_peak = max(self.sweep_peak if self.sweep_peak else 0, nb_high)
+                    elif nb_low is not None and nb_low < self.ny_range_low:
                         self.ny_sweep_low = True
-                        self.sweep_trough = min(self.sweep_trough if self.sweep_trough else float("inf"), last_price)
+                        self.sweep_trough = min(self.sweep_trough if self.sweep_trough else float("inf"), nb_low)
 
                     # BEARISH
                     # Observe MSS and Identify FVG (BULLISH)
@@ -672,7 +729,7 @@ class ICTModel(Strategy):
                                 logger.warning("Price broke swing low but no displacement (FVG) found. Skipping entry.")
                                 return
 
-                        if self.bearish_fvg_confirmed:
+                        if self.bearish_fvg_confirmed and self._bias_allows("sell"):
                             entry_price = self.mss_swing_low
                             sl = self.sweep_peak + self.buffer
                             risk = sl - entry_price
@@ -735,7 +792,7 @@ class ICTModel(Strategy):
                                     # If no FVG is formed, ICT traders usually wait for a secondary break
                                     logger.warning("Price broke swing low but no displacement (FVG) found. Skipping entry.")
                                     return
-                            if self.bullish_fvg_confirmed:
+                            if self.bullish_fvg_confirmed and self._bias_allows("buy"):
                                 entry_price = self.mss_swing_high
                                 sl = self.sweep_trough - self.buffer  # SL below OB/Sweep Low
                                 risk = entry_price - sl
