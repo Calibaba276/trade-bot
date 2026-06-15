@@ -8,3 +8,6 @@ venv/
 logs/
 /.agents
 !frontend/**/*.json
+
+# Local backtest data (large, fetched on demand)
+_fxdata/
