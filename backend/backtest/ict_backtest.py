@@ -40,23 +40,21 @@ BUFFER = 0.0002        # self.buffer in the strategy
 MAX_HOLD_MIN = 3 * 24 * 60  # cap how long an open position is tracked (3 days)
 HTF_BIAS_PERIOD = 20   # daily SMA lookback for the directional bias filter
 
-DATA_GLOB = os.path.join(
-    os.path.dirname(__file__),
-    "..", "..", "_fxdata", "EUR_USD", "*", "oanda-EUR_USD-*.csv",
-)
+DATA_ROOT = os.path.join(os.path.dirname(__file__), "..", "..", "_fxdata")
 
 
 # ── Data loading ──────────────────────────────────────────────────────────────
-def load_data(years) -> pd.DataFrame:
-    paths = sorted(glob.glob(DATA_GLOB))
+def load_data(pair, years) -> pd.DataFrame:
+    pattern = os.path.join(DATA_ROOT, pair, "*", f"oanda-{pair}-*.csv")
+    paths = sorted(glob.glob(pattern))
     frames = []
     for p in paths:
-        # filename: oanda-EUR_USD-<year>-<month>.csv
+        # filename: oanda-<PAIR>-<year>-<month>.csv  (pair contains an underscore)
         yr = int(os.path.basename(p).split("-")[2])
         if yr in years:
             frames.append(pd.read_csv(p))
     if not frames:
-        raise SystemExit(f"No data files matched {DATA_GLOB} for years {years}")
+        raise SystemExit(f"No data files matched {pattern} for years {years}")
     df = pd.concat(frames, ignore_index=True)
     df["time"] = pd.to_datetime(df["time"])
     df = df.drop_duplicates("time").sort_values("time").reset_index(drop=True)
@@ -109,6 +107,7 @@ class Signal:
     sl: float
     tp: float
     scenario: str
+    rr: float = RR_RATIO
     # resolution (filled later)
     filled: bool = False
     fill_dt: object = None
@@ -155,12 +154,25 @@ class Sim:
         lo = max(0, i - N + 1)
         return self.df.iloc[lo:i + 1]
 
-    def _emit(self, dt, direction, entry, sl, tp, scenario):
-        tp_calc = calc_tp(entry, sl, direction, RR_RATIO)
-        if tp_calc is None:
+    def _emit(self, dt, direction, entry, sl, liquidity, scenario):
+        """ICT target = opposing liquidity pool; require >= RR_RATIO (min 1:3),
+        else skip the trade."""
+        risk = abs(entry - sl)
+        if risk <= 0 or liquidity is None:
+            return False
+        if direction == "buy":
+            if liquidity <= entry:
+                return False
+            rr = (liquidity - entry) / risk
+        else:
+            if liquidity >= entry:
+                return False
+            rr = (entry - liquidity) / risk
+        if rr < RR_RATIO:
             return False
         self.signals.append(Signal(dt=dt, direction=direction, entry=float(entry),
-                                   sl=float(sl), tp=float(tp_calc), scenario=scenario))
+                                   sl=float(sl), tp=float(liquidity), scenario=scenario,
+                                   rr=float(rr)))
         return True
 
     def run(self):
@@ -241,7 +253,7 @@ class Sim:
             if s.bearish_fvg_confirmed and s.highest_sweep_point is not None and self._bias_allows("sell"):
                 entry = s.fvg_bottom
                 sl = s.highest_sweep_point + BUFFER
-                if self._emit(dt, "sell", entry, sl, None, "london_bearish"):
+                if self._emit(dt, "sell", entry, sl, s.pdl, "london_bearish"):
                     s.traded_london = True
 
             # BULLISH: step1 sweep below low (wick-based, elif chained as in source)
@@ -279,7 +291,7 @@ class Sim:
             elif s.bullish_fvg_confirmed and s.lowest_sweep_point is not None and self._bias_allows("buy"):
                 entry = s.fvg_top
                 sl = s.lowest_sweep_point - BUFFER
-                if self._emit(dt, "buy", entry, sl, None, "london_bullish"):
+                if self._emit(dt, "buy", entry, sl, s.pdh, "london_bullish"):
                     s.traded_london = True
 
         # Keep tracking London sweep state 11:00-13:30 (wick-based sweeps)
@@ -347,7 +359,7 @@ class Sim:
                     if s.mss_swing_low and last_price < s.mss_swing_low and self._bias_allows("sell"):
                         entry = s.mss_swing_low
                         sl = s.highest_sweep_point + BUFFER
-                        if self._emit(dt, "sell", entry, sl, None, "ny_continuation_bearish"):
+                        if self._emit(dt, "sell", entry, sl, s.pre_ny_low, "ny_continuation_bearish"):
                             s.traded_ny = True
 
                 elif s.swept_low:
@@ -371,7 +383,7 @@ class Sim:
                     if s.mss_swing_high and last_price > s.mss_swing_high and not s.traded_ny and self._bias_allows("buy"):
                         entry = s.mss_swing_high
                         sl = s.lowest_sweep_point - BUFFER
-                        if self._emit(dt, "buy", entry, sl, None, "ny_continuation_bullish"):
+                        if self._emit(dt, "buy", entry, sl, s.pre_ny_high, "ny_continuation_bullish"):
                             s.traded_ny = True
 
             # SCENARIO B: london ranged
@@ -417,7 +429,7 @@ class Sim:
                     if s.bearish_fvg_confirmed and self._bias_allows("sell"):
                         entry = s.mss_swing_low
                         sl = s.sweep_peak + BUFFER
-                        if self._emit(dt, "sell", entry, sl, None, "ny_range_bearish"):
+                        if self._emit(dt, "sell", entry, sl, s.ny_range_low, "ny_range_bearish"):
                             s.traded_ny = True
 
                 elif s.ny_sweep_low and last_price > s.ny_range_low and not s.traded_ny:
@@ -441,7 +453,7 @@ class Sim:
                         if s.bullish_fvg_confirmed and self._bias_allows("buy"):
                             entry = s.mss_swing_high
                             sl = s.sweep_trough - BUFFER
-                            if self._emit(dt, "buy", entry, sl, None, "ny_range_bullish"):
+                            if self._emit(dt, "buy", entry, sl, s.ny_range_high, "ny_range_bullish"):
                                 s.traded_ny = True
 
     # ── Resolve each limit signal against future price ────────────────────────
@@ -480,14 +492,14 @@ class Sim:
                     sig.outcome, sig.pnl = "loss", -RISK
                     break
                 if hit_tp:
-                    sig.outcome, sig.pnl = "win", RISK * RR_RATIO
+                    sig.outcome, sig.pnl = "win", RISK * sig.rr
                     break
             else:
                 sig.outcome = "open"
 
 
 # ── Reporting ─────────────────────────────────────────────────────────────────
-def report(signals):
+def report(signals, pair="EUR_USD"):
     total = len(signals)
     filled = [s for s in signals if s.filled]
     wins = [s for s in filled if s.outcome == "win"]
@@ -496,9 +508,10 @@ def report(signals):
     resolved = wins + losses
     net = sum(s.pnl for s in filled)
     wr = (len(wins) / len(resolved) * 100) if resolved else 0.0
+    avg_rr = (sum(s.rr for s in resolved) / len(resolved)) if resolved else 0.0
 
     print("=" * 68)
-    print(" ICT MODEL BACKTEST — EUR/USD 1m (Oanda) — RR {:.1f}, ${:.0f}/trade".format(RR_RATIO, RISK))
+    print(" ICT MODEL BACKTEST — {} 1m (Oanda) — target=opposing liquidity, min RR {:.1f}, ${:.0f}/trade".format(pair.replace("_", "/"), RR_RATIO, RISK))
     print("=" * 68)
     print(f" Signals generated      : {total}")
     print(f" Signals filled (limit) : {len(filled)}  ({len(filled)/total*100:.1f}% fill rate)" if total else " no signals")
@@ -507,7 +520,7 @@ def report(signals):
     print("-" * 68)
     print(f" Wins                   : {len(wins)}")
     print(f" Losses                 : {len(losses)}")
-    print(f" Win rate (resolved)    : {wr:.1f}%   (breakeven at RR {RR_RATIO:.0f} = {100/(1+RR_RATIO):.1f}%)")
+    print(f" Win rate (resolved)    : {wr:.1f}%   (avg RR={avg_rr:.2f}; breakeven win% = {100/(1+avg_rr):.1f}%)" if resolved else " Win rate: n/a")
     print(f" Expectancy / trade     : ${ (net/len(resolved)) if resolved else 0:.2f}")
     print(f" Net P&L                : ${net:,.0f}")
     print("=" * 68)
@@ -559,12 +572,14 @@ def report(signals):
 
 def main():
     years = {2018, 2019, 2020}
-    print(f"Loading EUR/USD 1m data for {sorted(years)} ...")
-    df = load_data(years)
-    print(f"Loaded {len(df):,} bars  {df.index[0]} -> {df.index[-1]} (UTC+1)")
-    sim = Sim(df)
-    signals = sim.run()
-    report(signals)
+    pairs = ["EUR_USD", "GBP_USD"]
+    for pair in pairs:
+        print(f"\nLoading {pair} 1m data for {sorted(years)} ...")
+        df = load_data(pair, years)
+        print(f"Loaded {len(df):,} bars  {df.index[0]} -> {df.index[-1]} (UTC+1)")
+        sim = Sim(df)
+        signals = sim.run()
+        report(signals, pair)
 
 
 if __name__ == "__main__":
