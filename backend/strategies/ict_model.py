@@ -158,22 +158,30 @@ class ICTModel(Strategy):
     # ICT enhancements: HTF bias filter + wick-based liquidity sweep detection
     # ──────────────────────────────────────────────────────────────────────────
 
-    def _compute_daily_bias(self, last_price):
-        """Daily draw-on-liquidity proxy: price vs a daily SMA. Above = bullish
-        bias (longs only), below = bearish bias (shorts only)."""
-        if last_price is None:
-            return None
+    def _compute_daily_bias(self, current_date):
+        """ICT daily bias from the previous completed daily candle (draw on
+        liquidity proxy): bullish if it closed in the upper half of its range
+        (closing above the midpoint => buyside is the likely draw), else bearish.
+        Only the side aligned with the bias is traded."""
         try:
-            ddf = self.get_historical_prices(self.asset, self.htf_bias_period + 5, "day")
+            ddf = self.get_historical_prices(self.asset, 5, "day")
         except Exception:
             return None
         if ddf is None or ddf.empty or "close" not in ddf.columns:
             return None
-        closes = ddf["close"].dropna()
-        if len(closes) < self.htf_bias_period:
+        # use the last daily candle strictly before today (no look-ahead)
+        try:
+            prev = ddf[ddf.index.date < current_date]
+        except Exception:
+            prev = ddf.iloc[:-1]
+        if prev is None or prev.empty:
+            prev = ddf.iloc[:-1] if len(ddf) > 1 else ddf
+        if prev.empty:
             return None
-        sma = float(closes.iloc[-self.htf_bias_period:].mean())
-        return "bull" if last_price >= sma else "bear"
+        row = prev.iloc[-1]
+        hi, lo, close = float(row["high"]), float(row["low"]), float(row["close"])
+        mid = (hi + lo) / 2.0
+        return "bull" if close >= mid else "bear"
 
     def _bias_allows(self, direction):
         """True only when the trade direction agrees with the daily bias."""
@@ -254,7 +262,7 @@ class ICTModel(Strategy):
                 self.pdh = float(morning_data["high"].max())
                 self.pdl = float(morning_data["low"].min())
                 self.last_range_date = current_date
-                self.daily_bias = self._compute_daily_bias(self.get_last_price(self.asset))
+                self.daily_bias = self._compute_daily_bias(current_date)
                 logger.info(f"--- {current_date} - {current_time} From 6:00 - 8:59am: High={self.pdh}, Low={self.pdl} | Daily bias: {self.daily_bias} ---")
             else:
                 logger.warning(f" --- {current_date} Market is Closed (No Data) --- ")

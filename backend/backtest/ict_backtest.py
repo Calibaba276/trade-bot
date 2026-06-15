@@ -135,11 +135,15 @@ class Sim:
         self.s = State()
         self.signals: list[Signal] = []
 
-        # Daily-bias reference: SMA of the prior `HTF_BIAS_PERIOD` completed daily
-        # closes (shift(1) avoids using the in-progress day -> no look-ahead).
-        daily_close = df["close"].resample("1D").last().dropna()
-        sma_prev = daily_close.rolling(HTF_BIAS_PERIOD).mean().shift(1)
-        self.bias_sma = {ts.date(): v for ts, v in sma_prev.items()}
+        # ICT daily bias: previous completed daily candle's close vs its range
+        # midpoint. shift(1) => yesterday's candle decides today's bias (no
+        # look-ahead). bull if close >= midpoint else bear.
+        daily = df.resample("1D").agg(high=("high", "max"), low=("low", "min"),
+                                      close=("close", "last")).dropna()
+        mid = (daily["high"] + daily["low"]) / 2.0
+        bias_today = (daily["close"] >= mid).map({True: "bull", False: "bear"})
+        bias_prev = bias_today.shift(1)
+        self.bias_for_date = {ts.date(): v for ts, v in bias_prev.items()}
 
     def _bias_allows(self, direction):
         if self.s.daily_bias is None:
@@ -184,9 +188,9 @@ class Sim:
                 s.pdh = float(morning["high"].max())
                 s.pdl = float(morning["low"].min())
                 s.last_range_date = current_date
-                sma = self.bias_sma.get(current_date)
-                if sma is not None and not pd.isna(sma):
-                    s.daily_bias = "bull" if last_price >= float(sma) else "bear"
+                b = self.bias_for_date.get(current_date)
+                if b is not None and not (isinstance(b, float) and pd.isna(b)):
+                    s.daily_bias = b
             else:
                 return
 
