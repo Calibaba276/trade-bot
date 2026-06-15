@@ -38,6 +38,7 @@ RR_RATIO = 3.0
 RISK = 500.0           # $ risked per trade
 BUFFER = 0.0002        # self.buffer in the strategy
 MAX_HOLD_MIN = 3 * 24 * 60  # cap how long an open position is tracked (3 days)
+HTF_BIAS_PERIOD = 20   # daily SMA lookback for the directional bias filter
 
 DATA_GLOB = os.path.join(
     os.path.dirname(__file__),
@@ -90,6 +91,7 @@ class State:
     pre_ny_high=None
     ny_ote_hit_bullish=None
     ny_ote_hit_bearish=False
+    daily_bias=None        # "bull" | "bear" | None
     session_scenario=None
     ny_range_high=None
     ny_range_low=None
@@ -133,6 +135,17 @@ class Sim:
         self.s = State()
         self.signals: list[Signal] = []
 
+        # Daily-bias reference: SMA of the prior `HTF_BIAS_PERIOD` completed daily
+        # closes (shift(1) avoids using the in-progress day -> no look-ahead).
+        daily_close = df["close"].resample("1D").last().dropna()
+        sma_prev = daily_close.rolling(HTF_BIAS_PERIOD).mean().shift(1)
+        self.bias_sma = {ts.date(): v for ts, v in sma_prev.items()}
+
+    def _bias_allows(self, direction):
+        if self.s.daily_bias is None:
+            return False
+        return self.s.daily_bias == ("bull" if direction == "buy" else "bear")
+
     def hist(self, i, N):
         """Last N completed bars up to and including bar i (like get_historical_prices)."""
         lo = max(0, i - N + 1)
@@ -171,6 +184,9 @@ class Sim:
                 s.pdh = float(morning["high"].max())
                 s.pdl = float(morning["low"].min())
                 s.last_range_date = current_date
+                sma = self.bias_sma.get(current_date)
+                if sma is not None and not pd.isna(sma):
+                    s.daily_bias = "bull" if last_price >= float(sma) else "bear"
             else:
                 return
 
@@ -184,11 +200,13 @@ class Sim:
             if s.london_high is None or last_price > s.london_high:
                 s.london_high = last_price
 
-            # BEARISH: step1 sweep above high
-            if last_price > s.pdh:
+            bar_high, bar_low = self.high[i], self.low[i]
+
+            # BEARISH: step1 sweep above high (wick-based)
+            if bar_high > s.pdh:
                 s.swept_high = True
-                if s.highest_sweep_point is None or last_price > s.highest_sweep_point:
-                    s.highest_sweep_point = last_price
+                if s.highest_sweep_point is None or bar_high > s.highest_sweep_point:
+                    s.highest_sweep_point = bar_high
 
             # step2 reverse below high, scan swing low
             if s.swept_high and last_price < s.pdh and s.mss_swing_low is None:
@@ -216,17 +234,17 @@ class Sim:
                     return
 
             # bearish execution
-            if s.bearish_fvg_confirmed and s.highest_sweep_point is not None:
+            if s.bearish_fvg_confirmed and s.highest_sweep_point is not None and self._bias_allows("sell"):
                 entry = s.fvg_bottom
                 sl = s.highest_sweep_point + BUFFER
                 if self._emit(dt, "sell", entry, sl, None, "london_bearish"):
                     s.traded_london = True
 
-            # BULLISH: step1 sweep below low (elif chained as in source)
-            elif last_price < s.pdl:
+            # BULLISH: step1 sweep below low (wick-based, elif chained as in source)
+            elif bar_low < s.pdl:
                 s.swept_low = True
-                if s.lowest_sweep_point is None or last_price < s.lowest_sweep_point:
-                    s.lowest_sweep_point = last_price
+                if s.lowest_sweep_point is None or bar_low < s.lowest_sweep_point:
+                    s.lowest_sweep_point = bar_low
 
             # step2 reverse above low, scan swing high
             if s.swept_low and last_price > s.pdl and s.mss_swing_high is None:
@@ -254,26 +272,26 @@ class Sim:
                     return
 
             # bullish execution (elif as in source)
-            elif s.bullish_fvg_confirmed and s.lowest_sweep_point is not None:
+            elif s.bullish_fvg_confirmed and s.lowest_sweep_point is not None and self._bias_allows("buy"):
                 entry = s.fvg_top
                 sl = s.lowest_sweep_point - BUFFER
                 if self._emit(dt, "buy", entry, sl, None, "london_bullish"):
                     s.traded_london = True
 
-        # Keep tracking London sweep state 11:00-13:30
+        # Keep tracking London sweep state 11:00-13:30 (wick-based sweeps)
         if time(11, 0) <= current_time < time(13, 30):
             if s.london_low is None or last_price < s.london_low:
                 s.london_low = last_price
             if s.london_high is None or last_price > s.london_high:
                 s.london_high = last_price
-            if last_price > s.pdh:
+            if self.high[i] > s.pdh:
                 s.swept_high = True
-                if s.highest_sweep_point is None or last_price > s.highest_sweep_point:
-                    s.highest_sweep_point = last_price
-            if last_price < s.pdl:
+                if s.highest_sweep_point is None or self.high[i] > s.highest_sweep_point:
+                    s.highest_sweep_point = self.high[i]
+            if self.low[i] < s.pdl:
                 s.swept_low = True
-                if s.lowest_sweep_point is None or last_price < s.lowest_sweep_point:
-                    s.lowest_sweep_point = last_price
+                if s.lowest_sweep_point is None or self.low[i] < s.lowest_sweep_point:
+                    s.lowest_sweep_point = self.low[i]
 
         # NY reset at 13:30
         if current_time == time(13, 30):
@@ -322,7 +340,7 @@ class Sim:
                             if lows[k] < lows[k - 1] and lows[k] < lows[k + 1]:
                                 s.mss_swing_low = float(lows[k])
                                 break
-                    if s.mss_swing_low and last_price < s.mss_swing_low:
+                    if s.mss_swing_low and last_price < s.mss_swing_low and self._bias_allows("sell"):
                         entry = s.mss_swing_low
                         sl = s.highest_sweep_point + BUFFER
                         if self._emit(dt, "sell", entry, sl, None, "ny_continuation_bearish"):
@@ -346,7 +364,7 @@ class Sim:
                                 break
                     if s.mss_swing_high is None:
                         return
-                    if s.mss_swing_high and last_price > s.mss_swing_high and not s.traded_ny:
+                    if s.mss_swing_high and last_price > s.mss_swing_high and not s.traded_ny and self._bias_allows("buy"):
                         entry = s.mss_swing_high
                         sl = s.lowest_sweep_point - BUFFER
                         if self._emit(dt, "buy", entry, sl, None, "ny_continuation_bullish"):
@@ -364,12 +382,12 @@ class Sim:
                     if s.ny_range_high is None or s.ny_range_low is None:
                         return
 
-                if last_price > s.ny_range_high:
+                if self.high[i] > s.ny_range_high:
                     s.ny_sweep_high = True
-                    s.sweep_peak = max(s.sweep_peak if s.sweep_peak else 0, last_price)
-                elif last_price < s.ny_range_low:
+                    s.sweep_peak = max(s.sweep_peak if s.sweep_peak else 0, self.high[i])
+                elif self.low[i] < s.ny_range_low:
                     s.ny_sweep_low = True
-                    s.sweep_trough = min(s.sweep_trough if s.sweep_trough else float("inf"), last_price)
+                    s.sweep_trough = min(s.sweep_trough if s.sweep_trough else float("inf"), self.low[i])
 
                 if s.ny_sweep_high and last_price < s.ny_range_high and not s.traded_ny:
                     lows = self.hist(i, 20)["low"].values
@@ -392,7 +410,7 @@ class Sim:
                             s.bullish_fvg_confirmed = False
                         else:
                             return
-                    if s.bearish_fvg_confirmed:
+                    if s.bearish_fvg_confirmed and self._bias_allows("sell"):
                         entry = s.mss_swing_low
                         sl = s.sweep_peak + BUFFER
                         if self._emit(dt, "sell", entry, sl, None, "ny_range_bearish"):
@@ -416,7 +434,7 @@ class Sim:
                                 s.bearish_fvg_confirmed = False
                             else:
                                 return
-                        if s.bullish_fvg_confirmed:
+                        if s.bullish_fvg_confirmed and self._bias_allows("buy"):
                             entry = s.mss_swing_high
                             sl = s.sweep_trough - BUFFER
                             if self._emit(dt, "buy", entry, sl, None, "ny_range_bullish"):
