@@ -46,5 +46,9 @@ python -m backend.backtest.ict_backtest
 | historical data | last N completed bars up to & incl. current |
 | entry           | **limit** at the strategy's entry price; filled only if price touches it before the signal day ends (else discarded) |
 | outcome         | from the fill bar, first of SL/TP touched intrabar wins; a bar straddling both counts as a **loss** (conservative); unresolved within 3 days = `open` |
-| risk            | $500/trade, reward = $1,500 on a win (RR 3:1) — production defaults |
+| target          | **opposing liquidity pool** (PDL/PDH for London, pre-NY low/high for NY continuation, NY range low/high for range), enforced to be at least 3R away — else the trade is skipped (canonical ICT min 1:3 to liquidity) |
+| risk            | $500/trade; reward = $500 × (actual RR to liquidity, ≥3) on a win |
 | costs           | zero in the headline; a spread-sensitivity table is printed separately |
+
+Runs both `EUR_USD` and `GBP_USD` for 2018–2020. Stage GBP data the same way as
+EUR (sparse-checkout `.../oanda/GBP_USD`).
