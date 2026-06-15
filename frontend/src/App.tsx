@@ -1,28 +1,51 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./hooks/useAuth";
+import { Landing } from "./pages/Landing";
 import { Login } from "./components/Auth/Login";
 import { SignUp } from "./components/Auth/SignUp";
-import { Dashboard } from "./pages/Dashboard";
+import { DashboardLayout } from "./components/dashboard/DashboardLayout";
+import { Overview } from "./pages/dashboard/Overview";
+import { FeedPage } from "./pages/dashboard/FeedPage";
+import { ChartPage } from "./pages/dashboard/ChartPage";
+import { TradesPage } from "./pages/dashboard/TradesPage";
+import { PropFirmPage } from "./pages/dashboard/PropFirmPage";
+import { SettingsPage } from "./pages/dashboard/SettingsPage";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="min-h-screen bg-[#0f1419]" />;
-  return user ? <>{children}</> : <Navigate to="/login" replace />;
+  if (loading) return <div className="min-h-screen bg-bg-base" />;
+  return user ? <>{children}</> : <Navigate to="/sign-in" replace />;
 }
 
 export default function App() {
   return (
     <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/signup" element={<SignUp />} />
+      {/* Public marketing */}
+      <Route path="/" element={<Landing />} />
+
+      {/* Auth (spec routes + legacy aliases) */}
+      <Route path="/sign-in" element={<Login />} />
+      <Route path="/sign-up" element={<SignUp />} />
+      <Route path="/login" element={<Navigate to="/sign-in" replace />} />
+      <Route path="/signup" element={<Navigate to="/sign-up" replace />} />
+
+      {/* Protected dashboard app */}
       <Route
-        path="/"
+        path="/dashboard"
         element={
           <PrivateRoute>
-            <Dashboard />
+            <DashboardLayout />
           </PrivateRoute>
         }
-      />
+      >
+        <Route index element={<Overview />} />
+        <Route path="feed" element={<FeedPage />} />
+        <Route path="chart" element={<ChartPage />} />
+        <Route path="trades" element={<TradesPage />} />
+        <Route path="propfirm" element={<PropFirmPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+      </Route>
+
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
