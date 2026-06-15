@@ -189,24 +189,6 @@ class ICTModel(Strategy):
             return False
         return self.daily_bias == ("bull" if direction == "buy" else "bear")
 
-    def _liquidity_tp(self, entry_price, sl, direction, liquidity):
-        """ICT target = opposing liquidity pool. Returns (tp, rr) when the pool is
-        at least self.rr_ratio away (min 1:3), else None so the trade is skipped."""
-        risk = abs(entry_price - sl)
-        if risk <= 0 or liquidity is None:
-            return None
-        if direction == "buy":
-            if liquidity <= entry_price:
-                return None
-            rr = (liquidity - entry_price) / risk
-        else:
-            if liquidity >= entry_price:
-                return None
-            rr = (entry_price - liquidity) / risk
-        if rr < self.rr_ratio:
-            return None
-        return float(liquidity), float(rr)
-
     def _current_bar_hl(self):
         """High/low of the latest 1m bar — used for wick-based sweep detection so
         a liquidity grab that pierces a level and snaps back is not missed."""
@@ -366,16 +348,15 @@ class ICTModel(Strategy):
                 if self.bearish_fvg_confirmed and self.highest_sweep_point is not None and self._bias_allows("sell"):
                     entry_price = self.fvg_bottom
                     sl = self.highest_sweep_point + self.buffer
+                    tp = _calculate_take_profit(entry_price, sl, "sell", self.rr_ratio)
                     risk = sl - entry_price
-                    target = self._liquidity_tp(entry_price, sl, "sell", self.pdl)
 
-                    if target is None:
-                        logger.warning(f" --- {current_time} [BEARISH TRADE SKIPPED] Opposing liquidity (PDL) closer than {self.rr_ratio:.1f}R ---")
+                    if tp is None:
+                        logger.warning(f" --- {current_time} [BEARISH TRADE SKIPPED] Invalid TP calculation ---")
                         return
-                    tp, rr = target
 
                     verdict = build_verdict(
-                        symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="london_bearish"
+                        symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="london_bearish"
                     )
                     try:
                         payload = save_verdict(verdict)
@@ -386,7 +367,7 @@ class ICTModel(Strategy):
                         return
 
                     self.traded_london = True
-                    logger.info(f" --- {current_time} [SELL ORDER] Price: {entry_price} | SL: {sl} | TP: {tp} | RR: {rr:.2f} ---")
+                    logger.info(f" --- {current_time} [SELL ORDER] Price: {entry_price} | SL: {sl} | TP: {tp} | RR: {self.rr_ratio:.2f} ---")
 
                 # -- BULLISH --
 
@@ -458,14 +439,13 @@ class ICTModel(Strategy):
                     entry_price = self.fvg_top
                     sl = self.lowest_sweep_point - self.buffer
                     risk = entry_price - sl
-                    target = self._liquidity_tp(entry_price, sl, "buy", self.pdh)
-                    if target is None:
-                        logger.warning(f" --- {current_time} [BULLISH TRADE SKIPPED] Opposing liquidity (PDH) closer than {self.rr_ratio:.1f}R ---")
+                    tp = _calculate_take_profit(entry_price, sl, "buy", self.rr_ratio)
+                    if tp is None:
+                        logger.warning(f" --- {current_time} [BULLISH TRADE SKIPPED] Invalid TP calculation ---")
                         return
-                    tp, rr = target
 
                     verdict = build_verdict(
-                        symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="london_bullish"
+                        symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="london_bullish"
                     )
                     try:
                         payload = save_verdict(verdict)
@@ -583,15 +563,14 @@ class ICTModel(Strategy):
                             entry_price = self.mss_swing_low
                             sl = self.highest_sweep_point + self.buffer
                             risk = sl - entry_price
-                            target = self._liquidity_tp(entry_price, sl, "sell", self.pre_ny_low)
+                            tp = _calculate_take_profit(entry_price, sl, "sell", self.rr_ratio)
 
-                            if target is None:
-                                logger.warning(f"{current_time} --- [BEARISH NY CONTINUATION TRADE SKIPPED] Opposing liquidity (pre-NY low) closer than {self.rr_ratio:.1f}R --- ")
+                            if tp is None:
+                                logger.warning(f"{current_time} --- [BEARISH NY CONTINUATION TRADE SKIPPED] Invalid TP calculation --- ")
                                 return
-                            tp, rr = target
 
                             verdict = build_verdict(
-                                symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="ny_continuation_bearish"
+                                symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bearish"
                             )
                             try:
                                 payload = save_verdict(verdict)
@@ -602,7 +581,7 @@ class ICTModel(Strategy):
                                 return
 
                             self.traded_ny = True
-                            logger.info(f"{current_time} --- [SELL ORDER - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} | RR: {rr:.2f} --- ")
+                            logger.info(f"{current_time} --- [SELL ORDER - NY CONTINUATION] Price: {entry_price} | SL: {sl} | TP: {tp} | RR: {self.rr_ratio:.2f} --- ")
                             
                     elif self.swept_low:
                         if self.lowest_sweep_point is None:
@@ -645,15 +624,14 @@ class ICTModel(Strategy):
                             entry_price = self.mss_swing_high
                             sl = self.lowest_sweep_point - self.buffer
                             risk = entry_price - sl
-                            target = self._liquidity_tp(entry_price, sl, "buy", self.pre_ny_high)
+                            tp = _calculate_take_profit(entry_price, sl, "buy", self.rr_ratio)
 
-                            if target is None:
-                                logger.warning(f"{current_time} --- [BULLISH NY CONTINUATION TRADE SKIPPED] Opposing liquidity (pre-NY high) closer than {self.rr_ratio:.1f}R ---")
+                            if tp is None:
+                                logger.warning(f"{current_time} --- [BULLISH NY CONTINUATION TRADE SKIPPED] Invalid TP calculation ---")
                                 return
-                            tp, rr = target
 
                             verdict = build_verdict(
-                                symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="ny_continuation_bullish"
+                                symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bullish"
                             )
                             try:
                                 payload = save_verdict(verdict)
@@ -755,15 +733,14 @@ class ICTModel(Strategy):
                             entry_price = self.mss_swing_low
                             sl = self.sweep_peak + self.buffer
                             risk = sl - entry_price
-                            target = self._liquidity_tp(entry_price, sl, "sell", self.ny_range_low)
+                            tp = _calculate_take_profit(entry_price, sl, "sell", self.rr_ratio)
 
-                            if target is None:
-                                logger.warning(f"{current_time} -- [BEARISH TRADE SKIPPED] Opposing liquidity (NY range low) closer than {self.rr_ratio:.1f}R")
+                            if tp is None:
+                                logger.warning(f"{current_time} -- [BEARISH TRADE SKIPPED] Invalid TP calculation")
                                 return
-                            tp, rr = target
 
                             verdict = build_verdict(
-                                symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="ny_range_bearish"
+                                symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bearish"
                             )
                             try:
                                 payload = save_verdict(verdict)
@@ -774,7 +751,7 @@ class ICTModel(Strategy):
                                 return
 
                             self.traded_ny = True
-                            logger.info(f"{current_time} --- [SELL ORDER - SCENARIO B] Price: {entry_price} | RR: {rr:.2f} ---")
+                            logger.info(f"{current_time} --- [SELL ORDER - SCENARIO B] Price: {entry_price} | RR: {self.rr_ratio:.2f} ---")
 
                     # --- 2. OBSERVE MSS & 3. IDENTIFY PD ARRAY (BULLISH REVERSAL) ---
                     elif self.ny_sweep_low and last_price > self.ny_range_low and not self.traded_ny:
@@ -819,15 +796,14 @@ class ICTModel(Strategy):
                                 entry_price = self.mss_swing_high
                                 sl = self.sweep_trough - self.buffer  # SL below OB/Sweep Low
                                 risk = entry_price - sl
-                                target = self._liquidity_tp(entry_price, sl, "buy", self.ny_range_high)
+                                tp = _calculate_take_profit(entry_price, sl, "buy", self.rr_ratio)
 
-                                if target is None:
-                                    logger.warning(f"{current_time} --- [BULLISH TRADE SKIPPED] Opposing liquidity (NY range high) closer than {self.rr_ratio:.1f}R --- ")
+                                if tp is None:
+                                    logger.warning(f"{current_time} --- [BULLISH TRADE SKIPPED] Invalid TP calculation --- ")
                                     return
-                                tp, rr = target
 
                                 verdict = build_verdict(
-                                    symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=rr, scenario="ny_range_bullish"
+                                    symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bullish"
                                 )
                                 try:
                                     payload = save_verdict(verdict)
@@ -838,7 +814,7 @@ class ICTModel(Strategy):
                                     return
 
                                 self.traded_ny = True
-                                logger.info(f"{current_time} --- [BUY ORDER - SCENARIO B] Price: {entry_price} | RR: {rr:.2f} --- ")
+                                logger.info(f"{current_time} --- [BUY ORDER - SCENARIO B] Price: {entry_price} | RR: {self.rr_ratio:.2f} --- ")
                                 
         if current_time >= time(16, 0):
             logger.info(f" --- {current_date} - Market is closed for the day --- ")
