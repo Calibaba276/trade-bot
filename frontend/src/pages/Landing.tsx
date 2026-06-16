@@ -661,7 +661,7 @@ function PricingSection() {
           ))}
         </div>
         <p className="text-center text-sm text-text-muted mt-8 max-w-xl mx-auto">
-          All plans include a 14-day free trial. No credit card required. Cancel anytime. FTMO-ready
+          All plans include a 30-day free trial. No credit card required. Cancel anytime. FTMO-ready
           configuration guide included with every plan.
         </p>
       </div>

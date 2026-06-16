@@ -557,7 +557,7 @@ Bullet points:
 ┌──────────────────┐  ┌──────────────────────────┐  ┌──────────────────┐
 │    STARTER       │  │       PRO  ← POPULAR      │  │   ENTERPRISE     │
 │                  │  │  (border: brand-blue)      │  │                  │
-│  $49 / month     │  │       $99 / month          │  │  Contact Us      │
+│  $20 / month     │  │       $49 / month          │  │  Contact Us      │
 │                  │  │                            │  │                  │
 │  1 broker acct   │  │  Up to 10 broker accounts  │  │  50+ accounts    │
 │  Live signals    │  │  Live signals              │  │  Custom config   │
@@ -574,7 +574,7 @@ The PRO card should have: `border-brand-blue bg-bg-elevated` + a `MOST POPULAR` 
 
 Below the cards:
 ```
-"All plans include a 14-day free trial. No credit card required.
+"All plans include a 30-day free trial. No credit card required.
  Cancel anytime. FTMO-ready configuration guide included with every plan."
 ```
 
