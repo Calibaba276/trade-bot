@@ -76,6 +76,18 @@ class ICTModel(Strategy):
         self.daily_equity_start = None
         self.last_trade_date = None
 
+        # One-shot log guards — each flips True after the first log so the
+        # message never repeats on subsequent 1-minute ticks.
+        self._logged_swept_high = False
+        self._logged_swept_low = False
+        self._logged_market_closed = False
+        self._logged_ny_ote_zone_bearish = False
+        self._logged_ny_ote_zone_bullish = False
+        self._logged_ny_ote_hit_bearish = False
+        self._logged_ny_ote_hit_bullish = False
+        self._logged_ny_ote_miss_bearish = False
+        self._logged_ny_ote_miss_bullish = False
+
         # Frontend emitter identifiers — None in backtest or when account has no user yet
         self.user_id: str | None = self.parameters.get("user_id")
         self.account_id: str | None = self.parameters.get("account_id")
@@ -263,9 +275,21 @@ class ICTModel(Strategy):
                 self.pdl = float(morning_data["low"].min())
                 self.last_range_date = current_date
                 self.daily_bias = self._compute_daily_bias(current_date)
+                # Reset all one-shot log guards for the new trading day
+                self._logged_swept_high = False
+                self._logged_swept_low = False
+                self._logged_market_closed = False
+                self._logged_ny_ote_zone_bearish = False
+                self._logged_ny_ote_zone_bullish = False
+                self._logged_ny_ote_hit_bearish = False
+                self._logged_ny_ote_hit_bullish = False
+                self._logged_ny_ote_miss_bearish = False
+                self._logged_ny_ote_miss_bullish = False
                 logger.info(f"--- {current_date} - {current_time} From 6:00 - 8:59am: High={self.pdh}, Low={self.pdl} | Daily bias: {self.daily_bias} ---")
             else:
-                logger.warning(f" --- {current_date} Market is Closed (No Data) --- ")
+                if not self._logged_market_closed:
+                    logger.warning(f" --- {current_date} Market is Closed (No Data) --- ")
+                    self._logged_market_closed = True
                 return
 
         if self.pdh and self.pdl:
@@ -289,7 +313,9 @@ class ICTModel(Strategy):
                     if self.highest_sweep_point is None or bar_high > self.highest_sweep_point:
                         self.highest_sweep_point = bar_high
 
-                    logger.info(f" --- {current_time} - [BEARISH BIAS] -- Price wick swept the High ---")
+                    if not self._logged_swept_high:
+                        logger.info(f" --- {current_time} - [BEARISH BIAS] -- Price wick swept the High ---")
+                        self._logged_swept_high = True
 
                 # Step 2: Price reverses below high — scan for swing low
                 if self.swept_high and last_price < self.pdh and self.mss_swing_low is None:
@@ -379,7 +405,9 @@ class ICTModel(Strategy):
                     if self.lowest_sweep_point is None or bar_low < self.lowest_sweep_point:
                         self.lowest_sweep_point = bar_low
 
-                    logger.info(f" --- {current_time} [BULLISH BIAS] Price wick swept the Low ---")
+                    if not self._logged_swept_low:
+                        logger.info(f" --- {current_time} [BULLISH BIAS] Price wick swept the Low ---")
+                        self._logged_swept_low = True
 
                 # Step 2: Price reverses above low — scan for swing high
                 if self.swept_low and last_price > self.pdl and self.mss_swing_high is None:
@@ -537,14 +565,20 @@ class ICTModel(Strategy):
                         ote_62 = self.pre_ny_high - (range_dist * 0.62)
                         ote_79 = self.pre_ny_high - (range_dist * 0.79)
 
-                        logger.info(f"NY Continuation Zone (OTE): {round(ote_79, 5)} - {round(ote_62, 5)}")
+                        if not self._logged_ny_ote_zone_bearish:
+                            logger.info(f"NY Continuation Zone (OTE): {round(ote_79, 5)} - {round(ote_62, 5)}")
+                            self._logged_ny_ote_zone_bearish = True
 
                         # Wait for price to reach the OTE Zone
                         if ote_79 <= last_price <= ote_62:
                             self.ny_ote_hit_bearish = True
-                            logger.info(f"{current_time} -- NY Scenario A Bearish: Price entered Premium OTE Zone ({round(ote_62, 5)} - {round(ote_79, 5)}) --")
+                            if not self._logged_ny_ote_hit_bearish:
+                                logger.info(f"{current_time} -- NY Scenario A Bearish: Price entered Premium OTE Zone ({round(ote_62, 5)} - {round(ote_79, 5)}) --")
+                                self._logged_ny_ote_hit_bearish = True
                         else:
-                            logger.warning(f"{current_time} -- NY Scenario A Bearish: Price never enter Premium OTE Zone ({round(ote_62, 5)} - {round(ote_79, 5)}) --")
+                            if not self._logged_ny_ote_miss_bearish:
+                                logger.warning(f"{current_time} -- NY Scenario A Bearish: Price never enter Premium OTE Zone ({round(ote_62, 5)} - {round(ote_79, 5)}) --")
+                                self._logged_ny_ote_miss_bearish = True
                             return
 
                         # Confirm MSS in Lower Timeframe (M1)
@@ -597,12 +631,16 @@ class ICTModel(Strategy):
                         ote_62 = self.pre_ny_low + (range_dist * 0.62)
                         ote_79 = self.pre_ny_low + (range_dist * 0.79)
 
-                        logger.info(f"NY Continuation Zone (OTE): {round(ote_62, 5)} - {round(ote_79, 5)}")
+                        if not self._logged_ny_ote_zone_bullish:
+                            logger.info(f"NY Continuation Zone (OTE): {round(ote_62, 5)} - {round(ote_79, 5)}")
+                            self._logged_ny_ote_zone_bullish = True
 
                         # Wait for price to reach the OTE Zone
                         if ote_62 <= last_price <= ote_79:
                             self.ny_ote_hit_bullish = True
-                            logger.info(f"{current_time} -- NY Scenario A Bullish: Price entered Premium OTE Zone ({round(ote_62, 5)} - {round(ote_79, 5)}) --")
+                            if not self._logged_ny_ote_hit_bullish:
+                                logger.info(f"{current_time} -- NY Scenario A Bullish: Price entered Premium OTE Zone ({round(ote_62, 5)} - {round(ote_79, 5)}) --")
+                                self._logged_ny_ote_hit_bullish = True
 
                         # Confirm MSS in Lower Timeframe (M1)
                         if self.ny_ote_hit_bullish and self.mss_swing_high is None:

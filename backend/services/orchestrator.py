@@ -29,7 +29,7 @@ from typing import Dict, Optional
 from backend.config.logger import setup_logger
 from backend.config.supaclient import supabase
 
-logger = setup_logger(__name__)
+logger = setup_logger("orchestrator")
 
 # ---------------------------------------------------------------------------
 # Constants
