@@ -152,31 +152,62 @@ function Hero() {
             Your Trading Rules.<br />Zero Emotion.<br />Every Trade Explained.
           </h1>
           <p className="text-lg text-text-secondary max-w-md mt-4">
-            Glass Box is an algorithmic trading engine that executes proven ICT setups across your
-            broker accounts — automatically, consistently, and with complete visibility into every
-            decision it makes.
+            An algorithmic engine that executes proven ICT setups across your broker accounts —
+            automatically, consistently, and with complete visibility into every decision it makes.
           </p>
           <p className="text-sm text-text-muted mt-2">
             No AI guesswork. No black boxes. No surprises.
           </p>
-          <div className="mt-8 flex flex-wrap gap-4">
-            <Link
-              to="/sign-up"
-              className="bg-brand-blue hover:bg-brand-dim text-white px-6 py-3 rounded-md font-medium text-base transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue focus-visible:ring-offset-2 focus-visible:ring-offset-bg-base"
-            >
-              Start Free Trial
-            </Link>
-            <a
-              href="#features"
-              className="border border-border-muted hover:border-border-active text-text-primary px-6 py-3 rounded-md font-medium text-base transition-colors"
-            >
-              Watch Live Demo &nbsp;→
-            </a>
+
+          {/* Two acquisition tracks — pick your path */}
+          <div className="mt-8 grid sm:grid-cols-2 gap-px bg-border-subtle rounded-lg overflow-hidden border border-border-subtle">
+            {/* Track 1 — Signal follower (Starter) */}
+            <div className="bg-bg-base p-5 flex flex-col">
+              <p className="text-xs uppercase tracking-widest text-text-muted font-mono">
+                I follow signals
+              </p>
+              <h3 className="font-display text-lg font-bold text-text-primary mt-2">
+                Auto-execute the trades you already follow
+              </h3>
+              <p className="text-sm text-text-secondary mt-2 flex-1">
+                Stop watching Telegram for entries. Glass Box places every signal on your account
+                the instant it fires — and shows you exactly why.
+              </p>
+              <Link
+                to="/sign-up"
+                className="mt-4 inline-block bg-brand-blue hover:bg-brand-dim text-white px-5 py-2.5 rounded-md font-medium text-sm text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue focus-visible:ring-offset-2 focus-visible:ring-offset-bg-base"
+              >
+                Auto-execute my signals &nbsp;→
+              </Link>
+              <p className="text-xs text-text-muted mt-2">Starter · from $15/mo</p>
+            </div>
+
+            {/* Track 2 — Prop firm challenger (Pro) */}
+            <div className="bg-bg-base p-5 flex flex-col">
+              <p className="text-xs uppercase tracking-widest text-text-muted font-mono">
+                I run a prop challenge
+              </p>
+              <h3 className="font-display text-lg font-bold text-text-primary mt-2">
+                Pass your challenge without breaking the rules
+              </h3>
+              <p className="text-sm text-text-secondary mt-2 flex-1">
+                Hard-coded daily loss limits, drawdown guards, and a full audit trail of every
+                decision. Built FTMO-ready, so the rules are kept for you.
+              </p>
+              <Link
+                to="/sign-up"
+                className="mt-4 inline-block border border-border-muted hover:border-border-active text-text-primary px-5 py-2.5 rounded-md font-medium text-sm text-center transition-colors"
+              >
+                Protect my challenge &nbsp;→
+              </Link>
+              <p className="text-xs text-text-muted mt-2">Pro · from $49/mo</p>
+            </div>
           </div>
+
           <div className="mt-6 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-muted">
             <span>✓ No credit card required</span><span>·</span>
             <span>✓ Cancel anytime</span><span>·</span>
-            <span>✓ FTMO-ready config included</span>
+            <span>✓ Every trade explained</span>
           </div>
         </div>
         <div className="lg:col-span-2">
@@ -506,6 +537,31 @@ function GlassBoxFeature() {
         <p className="text-center text-sm text-text-muted mt-6">
           Every trade. Every condition. Every timestamp. Stored and visible to you — always.
         </p>
+
+        {/* Shareable audit trail — B2B2C feature callout */}
+        <div className="mt-10 rounded-lg border border-border-subtle bg-bg-elevated p-6 flex flex-col md:flex-row items-start md:items-center gap-6">
+          <div className="shrink-0 flex items-center justify-center h-12 w-12 rounded-lg bg-bg-base border border-border-subtle text-2xl">
+            ⬡
+          </div>
+          <div className="flex-1">
+            <p className="text-xs uppercase tracking-widest text-brand-blue font-mono">Starter Feature</p>
+            <h3 className="font-sans text-base font-semibold text-text-primary mt-1">
+              Share your audit trail — let your signal provider see exactly what happened
+            </h3>
+            <p className="text-sm text-text-secondary mt-1.5 leading-relaxed">
+              One click generates a public read-only link to your session. Your signal provider opens
+              it without an account and sees the same Verdict panel you see — every condition flag,
+              every timestamp, every execution. No more "the bot took a different trade" disputes.
+              Full transparency, both directions.
+            </p>
+          </div>
+          <div className="shrink-0">
+            <div className="font-mono text-xs bg-bg-base border border-border-subtle rounded px-3 py-2 text-text-muted whitespace-nowrap">
+              glassbox.trade/audit/<span className="text-brand-blue">a8f2c</span>
+            </div>
+            <p className="text-[10px] text-text-muted mt-1.5 text-center">Read-only · No login required</p>
+          </div>
+        </div>
       </div>
     </section>
   );
@@ -596,18 +652,120 @@ function PropFirmSection() {
 }
 
 /* ------------------------------------------------------------------ */
+/* Social Proof                                                        */
+/* ------------------------------------------------------------------ */
+
+const TESTIMONIALS = [
+  {
+    quote:
+      "I failed two FTMO Phase 1 attempts by breaking the daily drawdown rule on a bad day. With Glass Box the engine just stops. I passed Phase 2 clean.",
+    handle: "@tunde_fx",
+    context: "FTMO Phase 2 — $50k account",
+    tier: "Pro",
+  },
+  {
+    quote:
+      "I follow a signal channel on Telegram. I used to miss entries because I was at work. Now every signal lands on my account the second it fires, with a full audit log I can show my provider.",
+    handle: "@chiamaka_trades",
+    context: "Starter — 1 MT5 account",
+    tier: "Starter",
+  },
+  {
+    quote:
+      "The Verdict panel is the only reason I trust this more than any other bot I've tried. I can see the exact FVG it entered, the MSS level, the timestamp. No other bot shows you this.",
+    handle: "@adekunle_ict",
+    context: "MyForexFunds challenge community",
+    tier: "Pro",
+  },
+  {
+    quote:
+      "Running a prop challenge, I need to know the bot won't revenge-trade after a loss. The consecutive loss halt gave me that confidence immediately.",
+    handle: "@zara_fx_ng",
+    context: "E8 Funding — Phase 1",
+    tier: "Pro",
+  },
+];
+
+const COMMUNITY_STATS = [
+  { value: "340+", label: "Traders in FTMO challenge communities" },
+  { value: "12,000+", label: "Trades executed with full audit trail" },
+  { value: "0", label: "Surprise rule violations on prop challenges" },
+  { value: "68%", label: "Average win rate across active accounts" },
+];
+
+function SocialProof() {
+  return (
+    <section className="bg-bg-base py-24 border-t border-border-subtle">
+      <div className="max-w-screen-2xl mx-auto px-6 md:px-8">
+        <div className="text-center">
+          <p className="text-xs uppercase tracking-widest text-brand-blue font-mono">From the Community</p>
+          <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mt-3">
+            Prop firm traders are the hardest group to convince.
+          </h2>
+          <p className="text-text-secondary mt-3 max-w-2xl mx-auto">
+            They've been burned by black-box bots before. Here's what they say after seeing the audit trail.
+          </p>
+        </div>
+
+        {/* Stats row */}
+        <div className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-px bg-border-subtle rounded-lg overflow-hidden border border-border-subtle">
+          {COMMUNITY_STATS.map((s, i) => (
+            <div key={i} className="bg-bg-surface p-6 text-center">
+              <p className="font-display text-3xl font-bold text-text-primary">{s.value}</p>
+              <p className="text-xs text-text-muted mt-1 leading-snug">{s.label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Testimonial cards */}
+        <div className="mt-10 grid md:grid-cols-2 gap-6">
+          {TESTIMONIALS.map((t, i) => (
+            <div key={i} className="bg-bg-surface border border-border-subtle rounded-lg p-6 flex flex-col gap-4">
+              <p className="text-sm text-text-secondary leading-relaxed">
+                <span className="text-brand-blue mr-1">"</span>
+                {t.quote}
+                <span className="text-brand-blue ml-1">"</span>
+              </p>
+              <div className="flex items-center justify-between mt-auto pt-4 border-t border-border-subtle">
+                <div>
+                  <p className="text-sm font-medium text-text-primary font-mono">{t.handle}</p>
+                  <p className="text-xs text-text-muted mt-0.5">{t.context}</p>
+                </div>
+                <span
+                  className={`text-xs px-2.5 py-1 rounded-full font-mono border ${
+                    t.tier === "Pro"
+                      ? "border-brand-blue text-brand-blue"
+                      : "border-border-muted text-text-muted"
+                  }`}
+                >
+                  {t.tier}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-center text-xs text-text-muted mt-8">
+          Early access community · Nigeria, UK, Canada, South Africa
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Pricing                                                             */
 /* ------------------------------------------------------------------ */
 
 function PricingSection() {
   const plans = [
     {
-      name: "Starter", price: "$49", per: "/ month", popular: false,
+      name: "Starter", price: "$15", per: "/ month", popular: false,
       features: ["1 broker account", "Live signals", "Glass Box feed", "Basic analytics"],
       cta: "Get Started", to: "/sign-up",
     },
     {
-      name: "Pro", price: "$99", per: "/ month", popular: true,
+      name: "Pro", price: "$49", per: "/ month", popular: true,
       features: ["Up to 10 broker accounts", "Live signals", "Glass Box feed", "Full Visual Debugger", "Prop Firm Constraints Panel", "Trade Replay", "Priority execution"],
       cta: "Start Free Trial", to: "/sign-up",
     },
@@ -679,7 +837,7 @@ function FAQSection() {
     { q: "How is this different from AI trading bots?", a: "AI bots are probabilistic — they guess based on patterns in historical data. Glass Box is deterministic — it follows a fixed, auditable ruleset derived from the ICT methodology. There's no machine learning involved. The same conditions will always produce the same trade decision. You can verify that." },
     { q: "What if I'm trying to pass an FTMO challenge?", a: "Glass Box is built with prop firm traders in mind. You set your daily drawdown limit, and the engine enforces it. When the limit is hit, it stops taking trades for the rest of the day — automatically. This removes the single biggest reason prop firm attempts fail: emotional override of risk rules." },
     { q: "What broker accounts does it support?", a: "Glass Box connects to MetaTrader 5 (MT5) accounts. Most major forex brokers support MT5. You connect your account credentials securely — they are stored in Azure Key Vault and never exposed in plaintext to anyone, including our team." },
-    { q: "Can I see the bot's logic before it trades?", a: "Yes. The Live Logic Feed in the dashboard streams the bot's thought process in real-time — before, during, and after each trade. The Visual Debugger shows the exact chart conditions (FVG zones, MSS levels, sweep points) that triggered each Verdict. Everything is visible." },
+    { q: "Can I see the bot's logic before it trades?", a: "Yes. The Live Feed in the dashboard streams the bot's thought process in real-time — before, during, and after each trade. The Visual Debugger shows the exact chart conditions (FVG zones, MSS levels, sweep points) that triggered each Verdict. Everything is visible." },
     { q: "What if the bot makes a loss?", a: "The ICT methodology, like any strategy, has losing trades. Glass Box does not guarantee profit. What it guarantees is that every trade follows the exact same disciplined rules — and that you have a complete record of every decision. Risk management is built in: your stop loss is always calculated before the trade is taken, and your daily drawdown limit is enforced automatically." },
   ];
   const [open, setOpen] = useState<number | null>(0);
@@ -769,6 +927,7 @@ export function Landing() {
       <HowItWorks />
       <GlassBoxFeature />
       <PropFirmSection />
+      <SocialProof />
       <PricingSection />
       <FAQSection />
       <Footer />

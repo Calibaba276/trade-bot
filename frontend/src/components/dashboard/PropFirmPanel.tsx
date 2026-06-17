@@ -5,11 +5,15 @@ import { useMarketStatus } from "../../hooks/useMarketStatus";
 export interface PropFirmConfig {
   dailyLossLimit: number;       // dollars
   consecutiveLossLimit: number;
+  profitTarget: number;         // dollars — challenge profit target (e.g. 8% of $10k = $800)
+  accountSize: number;          // dollars — used to compute profit target %
 }
 
 const DEFAULT_CONFIG: PropFirmConfig = {
   dailyLossLimit: 1000,
   consecutiveLossLimit: 3,
+  profitTarget: 800,
+  accountSize: 10000,
 };
 
 function msUntilUtcMidnight(): string {
@@ -42,6 +46,11 @@ export function PropFirmPanel({
       .filter((t) => (t.pnl ?? 0) < 0)
       .reduce((sum, t) => sum + Math.abs(t.pnl ?? 0), 0);
 
+    // total net P&L across all closed trades (challenge progress)
+    const totalPnl = trades
+      .filter((t) => t.pnl !== null)
+      .reduce((sum, t) => sum + (t.pnl ?? 0), 0);
+
     // consecutive losses from most-recent closed trades backward
     let consec = 0;
     for (const t of todayClosed.slice().sort((a, b) => b.time - a.time)) {
@@ -53,8 +62,15 @@ export function PropFirmPanel({
     const losses = todayClosed.length - wins;
     const winRate = todayClosed.length ? (wins / todayClosed.length) * 100 : 0;
 
-    return { dailyLoss, consec, wins, losses, winRate, count: todayClosed.length };
+    return { dailyLoss, totalPnl, consec, wins, losses, winRate, count: todayClosed.length };
   }, [trades]);
+
+  const profitPct = Math.min(
+    100,
+    Math.max(0, (Math.max(0, stats.totalPnl) / config.profitTarget) * 100),
+  );
+  const profitBarColor =
+    profitPct >= 100 ? "bg-bull" : profitPct >= 50 ? "bg-brand-blue" : "bg-text-muted";
 
   const remainingPct = Math.max(
     0,
@@ -85,7 +101,28 @@ export function PropFirmPanel({
           </span>
           <span>{remainingPct.toFixed(0)}% remaining</span>
         </div>
-        <p className="text-[11px] text-text-muted font-mono mt-1">Resets in {msUntilUtcMidnight()}</p>
+        <p className="text-[11px] text-text-muted font-mono mt-1">Resets at midnight UTC (1:00 AM NGT) — in {msUntilUtcMidnight()}</p>
+      </div>
+
+      {/* Profit target progress */}
+      <div className="mt-4">
+        <p className="text-xs uppercase tracking-wide text-text-secondary">Profit Target Progress</p>
+        <div className="mt-2 h-2 rounded-full bg-bg-elevated overflow-hidden">
+          <div className={`h-full rounded-full transition-all ${profitBarColor}`} style={{ width: `${profitPct}%` }} />
+        </div>
+        <div className="flex justify-between mt-1.5 text-xs text-text-secondary font-mono">
+          <span>
+            ${Math.max(0, stats.totalPnl).toFixed(0)} of ${config.profitTarget.toFixed(0)} target
+          </span>
+          <span>
+            {profitPct >= 100
+              ? "✓ Target reached"
+              : `${(config.profitTarget - Math.max(0, stats.totalPnl)).toFixed(0)} remaining`}
+          </span>
+        </div>
+        <p className="text-[11px] text-text-muted font-mono mt-1">
+          Target = {((config.profitTarget / config.accountSize) * 100).toFixed(1)}% of ${config.accountSize.toLocaleString()} account
+        </p>
       </div>
 
       {/* Win rate today */}

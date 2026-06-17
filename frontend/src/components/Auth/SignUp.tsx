@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { signUp } from "../../lib/supaclient";
 
 function useNgtTime() {
@@ -15,6 +15,16 @@ function useNgtTime() {
   return time;
 }
 
+function getTradingSession(): string {
+  const ngtHour = (new Date().getUTCHours() + 1) % 24;
+  if (ngtHour >= 1 && ngtHour < 7) return "ASIAN SESSION";
+  if (ngtHour >= 7 && ngtHour < 9) return "PRE-LONDON";
+  if (ngtHour >= 9 && ngtHour < 11) return "LONDON SESSION";
+  if (ngtHour >= 11 && ngtHour < 13) return "OVERLAP";
+  if (ngtHour >= 13 && ngtHour < 17) return "NY SESSION";
+  return "OFF-HOURS";
+}
+
 export function SignUp() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -22,11 +32,14 @@ export function SignUp() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
   const ngtTime = useNgtTime();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters.");
+      return;
+    }
     if (password !== confirm) {
       setError("Passwords do not match.");
       return;
@@ -42,16 +55,15 @@ export function SignUp() {
     }
 
     setSuccess(true);
-    setTimeout(() => navigate("/sign-in"), 3000);
   };
 
   return (
-    <div className="min-h-screen bg-[#0f1419] flex items-center justify-center px-4">
+    <div className="min-h-screen bg-bg-base flex items-center justify-center px-4">
       <div className="w-full max-w-[360px]">
         {/* Back to landing */}
         <Link
           to="/"
-          className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-[#4b5563] hover:text-[#9ca3af] transition-colors mb-4"
+          className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-text-secondary transition-colors mb-4"
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
             <path d="M8 2L4 6L8 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -61,48 +73,50 @@ export function SignUp() {
 
         {/* Card */}
         <div
-          className="bg-[#141921] p-8"
-          style={{ border: "0.5px solid #2a3040" }}
+          className="bg-bg-surface p-8"
+          style={{ border: "0.5px solid var(--border-muted)" }}
         >
           {/* Signature: live system status */}
           <div
             className="font-mono text-[9px] uppercase tracking-wider pb-5 mb-6"
             style={{
-              color: "#34d399",
+              color: "var(--bull-green)",
               opacity: 0.55,
-              borderBottom: "0.5px solid #1e2530",
+              borderBottom: "0.5px solid var(--border-subtle)",
             }}
           >
-            GLASS BOX v2.1&nbsp;&nbsp;●&nbsp;&nbsp;ACCESS REQUEST&nbsp;&nbsp;●&nbsp;&nbsp;{ngtTime} NGT
+            GLASS BOX v2.1&nbsp;&nbsp;●&nbsp;&nbsp;{getTradingSession()}&nbsp;&nbsp;●&nbsp;&nbsp;{ngtTime} NGT
           </div>
 
           {/* Wordmark */}
           <div className="mb-7">
             <p
-              className="font-mono font-normal uppercase text-[#f3f4f6] mb-1"
+              className="font-mono font-normal uppercase text-text-primary mb-1"
               style={{ fontSize: "13px", letterSpacing: "0.3em" }}
             >
               GLASS BOX
             </p>
-            <p className="font-mono text-[10px] text-[#6b7280]">
+            <p className="font-mono text-[10px] text-text-secondary">
               Create your account
             </p>
           </div>
 
           {success ? (
             <div
-              className="py-4 px-3 font-mono text-[10px] text-[#34d399]"
-              style={{ border: "0.5px solid #34d399", background: "rgba(52,211,153,0.04)" }}
+              className="py-4 px-3 font-mono text-[10px] text-bull"
+              style={{ border: "0.5px solid var(--bull-green)", background: "rgba(63,185,80,0.04)" }}
             >
               ACCOUNT CREATED — check your email to confirm.
               <br />
-              <span className="text-[#6b7280]">Redirecting to login...</span>
+              <span className="text-text-secondary">
+                The confirmation link takes you straight to your dashboard.
+              </span>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               <div>
                 <label
-                  className="block font-mono uppercase text-[#6b7280] mb-1.5"
+                  className="block font-mono uppercase text-text-secondary mb-1.5"
                   style={{ fontSize: "9px", letterSpacing: "0.1em" }}
                 >
                   Email
@@ -114,16 +128,16 @@ export function SignUp() {
                   required
                   autoComplete="email"
                   placeholder="trader@firm.com"
-                  className="w-full bg-[#0f1419] font-mono text-[11px] text-[#f3f4f6] px-3 py-2.5 placeholder-[#4b5563] focus:outline-none transition-colors"
-                  style={{ border: "0.5px solid #2a3040", borderRadius: 0 }}
-                  onFocus={(e) => (e.target.style.borderColor = "#378add")}
-                  onBlur={(e) => (e.target.style.borderColor = "#2a3040")}
+                  className="w-full bg-bg-base font-mono text-[11px] text-text-primary px-3 py-2.5 placeholder-text-muted focus:outline-none transition-colors"
+                  style={{ border: "0.5px solid var(--border-muted)", borderRadius: 0 }}
+                  onFocus={(e) => (e.target.style.borderColor = "var(--border-active)")}
+                  onBlur={(e) => (e.target.style.borderColor = "var(--border-muted)")}
                 />
               </div>
 
               <div>
                 <label
-                  className="block font-mono uppercase text-[#6b7280] mb-1.5"
+                  className="block font-mono uppercase text-text-secondary mb-1.5"
                   style={{ fontSize: "9px", letterSpacing: "0.1em" }}
                 >
                   Password
@@ -135,16 +149,19 @@ export function SignUp() {
                   required
                   autoComplete="new-password"
                   placeholder="••••••••"
-                  className="w-full bg-[#0f1419] font-mono text-[11px] text-[#f3f4f6] px-3 py-2.5 placeholder-[#4b5563] focus:outline-none transition-colors"
-                  style={{ border: "0.5px solid #2a3040", borderRadius: 0 }}
-                  onFocus={(e) => (e.target.style.borderColor = "#378add")}
-                  onBlur={(e) => (e.target.style.borderColor = "#2a3040")}
+                  className="w-full bg-bg-base font-mono text-[11px] text-text-primary px-3 py-2.5 placeholder-text-muted focus:outline-none transition-colors"
+                  style={{ border: "0.5px solid var(--border-muted)", borderRadius: 0 }}
+                  onFocus={(e) => (e.target.style.borderColor = "var(--border-active)")}
+                  onBlur={(e) => (e.target.style.borderColor = "var(--border-muted)")}
                 />
+                <p className="mt-1.5 font-mono text-[9px] text-text-muted">
+                  At least 6 characters
+                </p>
               </div>
 
               <div>
                 <label
-                  className="block font-mono uppercase text-[#6b7280] mb-1.5"
+                  className="block font-mono uppercase text-text-secondary mb-1.5"
                   style={{ fontSize: "9px", letterSpacing: "0.1em" }}
                 >
                   Confirm Password
@@ -156,15 +173,15 @@ export function SignUp() {
                   required
                   autoComplete="new-password"
                   placeholder="••••••••"
-                  className="w-full bg-[#0f1419] font-mono text-[11px] text-[#f3f4f6] px-3 py-2.5 placeholder-[#4b5563] focus:outline-none transition-colors"
-                  style={{ border: "0.5px solid #2a3040", borderRadius: 0 }}
-                  onFocus={(e) => (e.target.style.borderColor = "#378add")}
-                  onBlur={(e) => (e.target.style.borderColor = "#2a3040")}
+                  className="w-full bg-bg-base font-mono text-[11px] text-text-primary px-3 py-2.5 placeholder-text-muted focus:outline-none transition-colors"
+                  style={{ border: "0.5px solid var(--border-muted)", borderRadius: 0 }}
+                  onFocus={(e) => (e.target.style.borderColor = "var(--border-active)")}
+                  onBlur={(e) => (e.target.style.borderColor = "var(--border-muted)")}
                 />
               </div>
 
               {error && (
-                <p className="font-mono text-[10px] text-[#f87171] -mt-1">
+                <p className="font-mono text-[10px] text-bear -mt-1">
                   {error}
                 </p>
               )}
@@ -172,7 +189,7 @@ export function SignUp() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-[#378add] hover:bg-[#2d74c8] font-mono text-[11px] uppercase text-white py-2.5 mt-1 transition-colors disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+                className="w-full bg-brand-blue hover:bg-brand-dim font-mono text-[11px] uppercase text-white py-2.5 mt-1 transition-colors disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
                 style={{ letterSpacing: "0.08em", borderRadius: 0, border: "none" }}
               >
                 {loading ? "CREATING ACCOUNT..." : "CREATE ACCOUNT"}
@@ -183,13 +200,13 @@ export function SignUp() {
           {/* Login link */}
           {!success && (
             <div
-              className="mt-5 pt-5 font-mono text-[10px] text-[#6b7280]"
-              style={{ borderTop: "0.5px solid #1e2530" }}
+              className="mt-5 pt-5 font-mono text-[10px] text-text-secondary"
+              style={{ borderTop: "0.5px solid var(--border-subtle)" }}
             >
               Already have an account?{" "}
               <Link
                 to="/sign-in"
-                className="text-[#9ca3af] hover:text-[#f3f4f6] underline transition-colors"
+                className="text-text-secondary hover:text-text-primary underline transition-colors"
               >
                 Sign in
               </Link>
@@ -198,7 +215,7 @@ export function SignUp() {
         </div>
 
         {/* Footer */}
-        <div className="mt-3 flex justify-between px-0.5 font-mono text-[9px] text-[#4b5563]">
+        <div className="mt-3 flex justify-between px-0.5 font-mono text-[9px] text-text-muted">
           <span>© 2026 Glass Box</span>
           <span>All sessions logged</span>
         </div>

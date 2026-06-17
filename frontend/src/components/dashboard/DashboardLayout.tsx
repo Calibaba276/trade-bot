@@ -1,30 +1,44 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { signOut } from "../../lib/supaclient";
 import { useReplayStore } from "../../store/replayStore";
 import { useLiveTradeEvents } from "../../hooks/useLiveTradeEvents";
+import { useTrades } from "../../hooks/useTrades";
 import { StatusBadge } from "./StatusBadge";
+import { ToastContainer } from "./ToastContainer";
 import { useMarketStatus } from "../../hooks/useMarketStatus";
+import { useTierStore, TIER_FEATURES } from "../../store/tierStore";
+import { useToastStore } from "../../store/toastStore";
 
 /* --- sidebar nav config (design guide §6.1) --- */
 const NAV = [
   { to: "/dashboard", label: "Overview", icon: "▦", end: true },
   { to: "/dashboard/feed", label: "Live Feed", icon: "≋" },
-  { to: "/dashboard/chart", label: "Chart Debugger", icon: "📈" },
+  { to: "/dashboard/chart", label: "Replay Mode", icon: "▷" },
   { to: "/dashboard/trades", label: "Trade History", icon: "≡" },
-  { to: "/dashboard/propfirm", label: "Prop Firm Panel", icon: "🛡" },
+  { to: "/dashboard/propfirm", label: "Prop Firm Panel", icon: "◈" },
   { to: "/dashboard/settings", label: "Account Settings", icon: "⚙" },
 ];
 
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Overview",
-  "/dashboard/feed": "Live Logic Feed",
-  "/dashboard/chart": "Chart Debugger",
+  "/dashboard/feed": "Live Feed",
+  "/dashboard/chart": "Replay Mode",
   "/dashboard/trades": "Trade History",
   "/dashboard/propfirm": "Prop Firm Panel",
   "/dashboard/settings": "Account Settings",
 };
+
+const PROPFIRM_CONFIG_KEY = "propfirm_config_v1";
+
+function readDailyLimit(): number {
+  try {
+    const raw = localStorage.getItem(PROPFIRM_CONFIG_KEY);
+    if (raw) return JSON.parse(raw)?.dailyLimit ?? 1000;
+  } catch { /* ignore */ }
+  return 1000;
+}
 
 export function DashboardLayout() {
   const { user } = useAuth();
@@ -33,6 +47,22 @@ export function DashboardLayout() {
   const [mobileNav, setMobileNav] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const marketOpen = useMarketStatus();
+  const push = useToastStore((s) => s.push);
+  const prevMarketOpen = useRef<boolean | null>(null);
+  const tier = useTierStore((s) => s.tier);
+  const toggleTier = useTierStore((s) => s.toggleTier);
+
+  // Compute engine halt state from today's trades vs the configured daily loss limit.
+  const trades = useTrades();
+  const engineHalted = useMemo(() => {
+    const limit = readDailyLimit();
+    const startOfDay = new Date();
+    startOfDay.setUTCHours(0, 0, 0, 0);
+    const dailyLoss = trades
+      .filter((t) => t.pnl !== null && (t.pnl ?? 0) < 0 && t.time >= startOfDay.getTime())
+      .reduce((sum, t) => sum + Math.abs(t.pnl ?? 0), 0);
+    return dailyLoss >= limit;
+  }, [trades]);
 
   const selectedPair = useReplayStore((s) => s.selectedPair);
   const dateRange = useReplayStore((s) => s.dateRange);
@@ -48,6 +78,21 @@ export function DashboardLayout() {
 
   // Live realtime subscription for the selected pair.
   useLiveTradeEvents(selectedPair, true);
+
+  // Notify when market open/close state transitions (skip initial mount).
+  useEffect(() => {
+    if (prevMarketOpen.current === null) {
+      prevMarketOpen.current = marketOpen;
+      return;
+    }
+    if (prevMarketOpen.current === marketOpen) return;
+    prevMarketOpen.current = marketOpen;
+    if (marketOpen) {
+      push({ variant: "success", title: "Engine running", body: "Forex market is now open.", durationMs: 6000 });
+    } else {
+      push({ variant: "critical", title: "Engine halted", body: "Forex market is now closed.", durationMs: 8000 });
+    }
+  }, [marketOpen, push]);
 
   const title = PAGE_TITLES[location.pathname] ?? "Dashboard";
   const initial = (user?.email?.[0] ?? "T").toUpperCase();
@@ -162,15 +207,32 @@ export function DashboardLayout() {
             <h1 className="text-sm font-semibold">{title}</h1>
           </div>
 
-          <div className="hidden sm:block">
-            {marketOpen ? (
-              <StatusBadge variant="running" pulse>ENGINE RUNNING</StatusBadge>
-            ) : (
-              <StatusBadge variant="halted">MARKET CLOSED</StatusBadge>
-            )}
-          </div>
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:block">
+              {marketOpen ? (
+                <StatusBadge variant="running" pulse>ENGINE RUNNING</StatusBadge>
+              ) : (
+                <StatusBadge variant="halted">MARKET CLOSED</StatusBadge>
+              )}
+            </div>
 
-          <div className="relative">
+            {/* Tier switcher — preview the dashboard as either plan (billing pending) */}
+            <button
+              onClick={toggleTier}
+              title={`Viewing as ${TIER_FEATURES[tier].label} plan — click to switch`}
+              aria-label={`Subscription tier: ${TIER_FEATURES[tier].label}. Click to switch plan.`}
+              className={`flex items-center gap-1.5 h-8 px-3 rounded-full border text-xs font-mono uppercase tracking-wide transition-colors ${
+                tier === "pro"
+                  ? "border-brand-blue/50 bg-brand-blue/10 text-brand-blue hover:bg-brand-blue/20"
+                  : "border-border-muted bg-bg-elevated text-text-secondary hover:text-text-primary hover:border-border-active"
+              }`}
+            >
+              <span aria-hidden>{tier === "pro" ? "★" : "○"}</span>
+              <span>{TIER_FEATURES[tier].label}</span>
+              <span className="text-text-muted" aria-hidden>⇄</span>
+            </button>
+
+            <div className="relative">
             <button
               onClick={() => setMenuOpen((v) => !v)}
               className="h-8 w-8 rounded-full bg-bg-elevated border border-border-muted text-sm font-mono text-text-primary flex items-center justify-center hover:border-border-active"
@@ -197,14 +259,37 @@ export function DashboardLayout() {
                 </button>
               </div>
             )}
+            </div>
           </div>
         </header>
+
+        {/* Engine halt banner — shown across the full dashboard when daily loss limit is reached */}
+        {engineHalted && (
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-4 bg-bear text-white text-xs font-mono px-4 py-2.5 border-b border-bear/80"
+          >
+            <span className="flex items-center gap-2">
+              <span aria-hidden>⛔</span>
+              <strong>ENGINE HALTED</strong>
+              <span className="font-normal opacity-90">— Daily loss limit reached. No new trades until midnight UTC (1:00 AM NGT).</span>
+            </span>
+            <NavLink
+              to="/dashboard/propfirm"
+              className="shrink-0 underline opacity-80 hover:opacity-100"
+            >
+              Prop Firm Panel →
+            </NavLink>
+          </div>
+        )}
 
         {/* Routed content */}
         <main className="flex-1 min-h-0 overflow-hidden">
           <Outlet />
         </main>
       </div>
+
+      <ToastContainer />
     </div>
   );
 }

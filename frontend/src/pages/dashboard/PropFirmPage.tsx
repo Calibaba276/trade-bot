@@ -1,14 +1,47 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PropFirmPanel } from "../../components/dashboard/PropFirmPanel";
 
+const STORAGE_KEY = "propfirm_config_v1";
+
+function loadConfig() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+}
+
+function saveConfig(cfg: object) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+  } catch {}
+}
+
 export function PropFirmPage() {
-  const [dailyLimit, setDailyLimit] = useState(1000);
-  const [maxConsec, setMaxConsec] = useState(3);
-  const [avgLoss, setAvgLoss] = useState(120);
+  const saved = loadConfig();
+  const [dailyLimit, setDailyLimit] = useState<number>(saved?.dailyLimit ?? 1000);
+  const [maxConsec, setMaxConsec] = useState<number>(saved?.maxConsec ?? 3);
+  const [avgLoss, setAvgLoss] = useState<number>(saved?.avgLoss ?? 120);
+  const [profitTarget, setProfitTarget] = useState<number>(saved?.profitTarget ?? 800);
+  const [accountSize, setAccountSize] = useState<number>(saved?.accountSize ?? 10000);
+
+  useEffect(() => {
+    saveConfig({ dailyLimit, maxConsec, avgLoss, profitTarget, accountSize });
+  }, [dailyLimit, maxConsec, avgLoss, profitTarget, accountSize]);
 
   const tradesBeforeHalt = avgLoss > 0 ? Math.floor(dailyLimit / avgLoss) : 0;
 
-  const Field = ({ label, value, onChange, prefix }: { label: string; value: number; onChange: (n: number) => void; prefix?: string }) => (
+  const Field = ({
+    label,
+    value,
+    onChange,
+    prefix,
+  }: {
+    label: string;
+    value: number;
+    onChange: (n: number) => void;
+    prefix?: string;
+  }) => (
     <label className="block">
       <span className="text-xs uppercase tracking-wide text-text-secondary">{label}</span>
       <div className="mt-1.5 flex items-center bg-bg-elevated border border-border-muted rounded-md overflow-hidden focus-within:ring-2 focus-within:ring-brand-blue">
@@ -29,7 +62,15 @@ export function PropFirmPage() {
         {/* Live panel */}
         <div>
           <h2 className="text-sm font-semibold text-text-primary mb-3">Live Constraints</h2>
-          <PropFirmPanel config={{ dailyLossLimit: dailyLimit, consecutiveLossLimit: maxConsec }} expanded />
+          <PropFirmPanel
+            config={{
+              dailyLossLimit: dailyLimit,
+              consecutiveLossLimit: maxConsec,
+              profitTarget,
+              accountSize,
+            }}
+            expanded
+          />
         </div>
 
         {/* Config + simulation */}
@@ -39,10 +80,13 @@ export function PropFirmPage() {
             <div className="grid grid-cols-2 gap-4">
               <Field label="Daily Loss Limit" value={dailyLimit} onChange={setDailyLimit} prefix="$" />
               <Field label="Max Consecutive Losses" value={maxConsec} onChange={setMaxConsec} />
+              <Field label="Account Size" value={accountSize} onChange={setAccountSize} prefix="$" />
+              <Field label="Profit Target" value={profitTarget} onChange={setProfitTarget} prefix="$" />
             </div>
             <p className="text-xs text-text-muted mt-3">
-              These limits mirror the engine's enforcement. When the daily loss limit is reached, no
-              new trades are taken until the next UTC day.
+              Configuration is saved locally and persists across reloads. These limits mirror the
+              engine's enforcement. When the daily loss limit is reached, no new trades are taken
+              until the next UTC day (1:00 AM NGT).
             </p>
           </div>
 

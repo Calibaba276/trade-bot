@@ -3,6 +3,7 @@ import { useAuth } from "./hooks/useAuth";
 import { Landing } from "./pages/Landing";
 import { Login } from "./components/Auth/Login";
 import { SignUp } from "./components/Auth/SignUp";
+import { SharePage } from "./pages/SharePage";
 import { DashboardLayout } from "./components/dashboard/DashboardLayout";
 import { Overview } from "./pages/dashboard/Overview";
 import { FeedPage } from "./pages/dashboard/FeedPage";
@@ -28,6 +29,9 @@ export default function App() {
       <Route path="/sign-up" element={<SignUp />} />
       <Route path="/login" element={<Navigate to="/sign-in" replace />} />
       <Route path="/signup" element={<Navigate to="/sign-up" replace />} />
+
+      {/* Public shareable audit link — no auth required */}
+      <Route path="/share/:token" element={<SharePage />} />
 
       {/* Protected dashboard app */}
       <Route
