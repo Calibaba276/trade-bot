@@ -100,12 +100,23 @@ def publish_verdict(payload: dict):
         channel = "signals"
         serialized_data = json.dumps(payload)
         
-        r.publish(channel, serialized_data)
-        
-        logger.info(
-            f"[REDIS PUBLISHED] channel={channel} "
+        # publish() returns the number of subscribers that received the message.
+        # Pub/sub has NO persistence — if this is 0, the signal was delivered to
+        # nobody and is gone forever. Surfacing it here makes a deaf/absent worker
+        # immediately visible instead of silently dropping trades.
+        receivers = r.publish(channel, serialized_data)
+
+        log = logger.warning if receivers == 0 else logger.info
+        log(
+            f"[REDIS PUBLISHED] channel={channel} receivers={receivers} "
             f"signal_id={payload.get('signal_id')} symbol={payload.get('symbol')}"
         )
+        if receivers == 0:
+            logger.warning(
+                f"[REDIS NO SUBSCRIBERS] signal_id={payload.get('signal_id')} "
+                f"was published but no worker was listening — the durability "
+                f"backstop in the worker should recover it from the signals table."
+            )
     except Exception as e:
         logger.error(f"[REDIS PUBLISH FAILED] error={e}")
         raise

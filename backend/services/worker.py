@@ -2,7 +2,7 @@ import argparse
 import json
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional
 
 import MetaTrader5 as mt5
@@ -21,7 +21,7 @@ from backend.services.position_monitor import (
 )
 from backend.services.vault import vault
 
-logger = setup_logger(__name__)
+logger = setup_logger("workers")
 EXIT_CONFIG_ERROR = 78
 EXIT_RUNTIME_ERROR = 1
 
@@ -174,23 +174,35 @@ def _log_event(
     except Exception:
         pass
 
-def _already_processed(signal_id: str, account_id: str) -> bool:
+def _claim_signal(signal_id: str, account_id: str) -> bool:
     """
-    Returns True if this (account, signal) pair already has a terminal status.
-    Prevents re-executing on worker restart or duplicate Redis delivery.
+    Atomically claim a (signal_id, account_id) pair for execution.
+
+    Inserts a fresh `pending` row. The UNIQUE(signal_id, account_id) constraint
+    makes this the single source of truth for "who owns this signal" — if the
+    row already exists (claimed by a previous delivery, a worker restart, or the
+    durability backstop), the insert raises and we return False.
+
+    This replaces the old read-then-act dedup, which had a race window where the
+    Redis listener and the backstop sweep could both see "no terminal row" and
+    execute the same signal twice.
+
+    Returns True if THIS caller won the claim and should proceed to execute.
     """
-    terminal = {"filled", "submitted", "rejected", "error", "skipped"}
-    row = (
-        supabase.table("executions")
-        .select("status")
-        .eq("signal_id",  signal_id)
-        .eq("account_id", account_id)
-        .limit(1)
-        .execute()
-    )
-    if not getattr(row, "data", None):
+    try:
+        supabase.table("executions").insert(
+            {
+                "signal_id": signal_id,
+                "account_id": account_id,
+                "status": "pending",
+            }
+        ).execute()
+        return True
+    except Exception:
+        # Most common cause: unique-constraint violation == already claimed.
+        # Any other insert error also means we should not execute right now;
+        # if no row actually landed, the backstop sweep will retry next cycle.
         return False
-    return row.data[0].get("status") in terminal
 
 def _compute_lot_size(
     symbol:      str,
@@ -328,9 +340,9 @@ def _execute_signal(
     ):
         return
  
-    # --- Deduplication ---
-    if _already_processed(signal_id, account_id):
-        logger.info(f"[SKIP] signal_id={signal_id} already in terminal status")
+    # --- Atomic claim (dedup across Redis delivery + backstop sweep) ---
+    if not _claim_signal(signal_id, account_id):
+        logger.info(f"[SKIP] signal_id={signal_id} already claimed/processed")
         return
  
     # --- Signal received ---
@@ -534,6 +546,79 @@ def _on_signal_received(
     )
 
 
+def _backstop_loop(
+    broker: MetaTrader5,
+    account_id: str,
+    account_label: str,
+    default_risk: float,
+    default_rr_ratio: float,
+    halt_flag: HaltFlag,
+    monitor: Optional[PositionMonitor],
+    stop_event: threading.Event,
+    interval_seconds: int = 60,
+    lookback_seconds: int = 900,
+) -> None:
+    """
+    Durability backstop for Redis pub/sub message loss.
+
+    Redis pub/sub is fire-and-forget: a signal published while this worker is
+    not subscribed (process down, connection dropped, mid-reconnect) is gone
+    forever. This thread periodically reads recent rows from the `signals`
+    table and executes any that have no `executions` row for this account yet.
+
+    Combined with the atomic _claim_signal(), this is safe to run alongside the
+    live Redis listener — whichever path reaches a signal first wins the claim
+    and the other path skips it. Lookback bounds how stale a recovered signal
+    can be (default 15 min) so we never act on ancient setups.
+    """
+    while not stop_event.is_set():
+        stop_event.wait(interval_seconds)
+        if stop_event.is_set():
+            break
+        try:
+            cutoff = (
+                datetime.now(timezone.utc) - timedelta(seconds=lookback_seconds)
+            ).isoformat()
+            rows = (
+                supabase.table("signals")
+                .select("*")
+                .gte("created_at", cutoff)
+                .execute()
+            )
+            for sig in (getattr(rows, "data", None) or []):
+                if stop_event.is_set():
+                    break
+                sid = str(sig.get("signal_id") or "")
+                if not sid:
+                    continue
+                existing = (
+                    supabase.table("executions")
+                    .select("signal_id")
+                    .eq("signal_id", sid)
+                    .eq("account_id", account_id)
+                    .limit(1)
+                    .execute()
+                )
+                if getattr(existing, "data", None):
+                    continue  # already handled (or claimed) — nothing to recover
+                logger.warning(
+                    f"[BACKSTOP] Recovering unprocessed signal_id={sid} "
+                    f"symbol={sig.get('symbol')} — missed via Redis pub/sub"
+                )
+                _on_signal_received(
+                    raw_message=sig,
+                    broker=broker,
+                    account_id=account_id,
+                    account_label=account_label,
+                    default_risk=default_risk,
+                    default_rr_ratio=default_rr_ratio,
+                    halt_flag=halt_flag,
+                    monitor=monitor,
+                )
+        except Exception as e:
+            logger.warning(f"[BACKSTOP] sweep failed: {e}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Per-account Redis worker for MT5 execution")
     parser.add_argument("--account-id", required=True, help="broker_accounts.id (UUID)")
@@ -594,38 +679,95 @@ def main():
         heartbeat_thread.start()
         logger.info(f"Heartbeat thread started (interval=30s)")
 
-        # --- Connect Redis ---
+        # --- Resolve Redis endpoint ---
         redis_url = _resolve_redis_url(cfg)
-        redis_client = redis.Redis.from_url(redis_url, decode_responses=True)
-        pubsub = redis_client.pubsub(ignore_subscribe_messages=True)
-        pubsub.subscribe(args.channel)
+        # Log the scheme (NOT the credentials) so the endpoint type is verifiable
+        # in production: rediss:// / redis:// support pub/sub; an HTTP/REST URL
+        # would not — and _resolve_redis_url already rejects that case.
+        scheme = str(redis_url).split("://", 1)[0]
+        logger.info(f"[WORKER] Redis endpoint scheme={scheme}:// channel={args.channel}")
 
-        logger.info(
-            f"[WORKER READY] account_id={account_id} login={resolved['login']} "
-            f"server={resolved['server']} channel={args.channel}"
+        # --- Durability backstop: recovers signals missed by pub/sub ---
+        backstop_thread = threading.Thread(
+            target=_backstop_loop,
+            args=(
+                broker, account_id, account_label,
+                resolved["risk_amount"], resolved["rr_ratio"],
+                halt_flag, monitor, stop_event,
+            ),
+            daemon=True,
+            name=f"backstop-{account_id[:8]}",
         )
+        backstop_thread.start()
+        logger.info("Backstop sweep thread started (interval=60s, lookback=900s)")
 
-        # --- Main listen loop ---
-        for message in pubsub.listen():
-            if message.get("type") != "message":
-                continue
-            raw = message.get("data")
-            if not raw:
-                continue
+        # --- Resilient Redis listen loop ---
+        # Managed Redis (Upstash etc.) silently drops idle pub/sub connections.
+        # The old blocking pubsub.listen() would then stop yielding WITHOUT
+        # raising, leaving the worker "alive" (heartbeat still writing) but deaf.
+        # We now:
+        #   - enable socket_keepalive + health_check_interval so dead sockets
+        #     are detected, and
+        #   - poll with get_message(timeout) inside a reconnect loop so a dropped
+        #     connection re-subscribes instead of going silent.
+        backoff = 1
+        while not stop_event.is_set():
+            pubsub = None
             try:
-                signal = json.loads(raw)
-                _on_signal_received(
-                    raw_message=signal,
-                    broker=broker,
-                    account_id=account_id,
-                    account_label=account_label,
-                    default_risk=resolved["risk_amount"],
-                    default_rr_ratio=resolved["rr_ratio"],
-                    halt_flag=halt_flag,
-                    monitor=monitor,
+                redis_client = redis.Redis.from_url(
+                    redis_url,
+                    decode_responses=True,
+                    socket_keepalive=True,
+                    health_check_interval=30,
+                    socket_connect_timeout=10,
                 )
+                pubsub = redis_client.pubsub(ignore_subscribe_messages=True)
+                pubsub.subscribe(args.channel)
+                logger.info(
+                    f"[WORKER READY] account_id={account_id} login={resolved['login']} "
+                    f"server={resolved['server']} channel={args.channel}"
+                )
+                backoff = 1  # reset after a clean (re)subscribe
+
+                while not stop_event.is_set():
+                    message = pubsub.get_message(
+                        ignore_subscribe_messages=True, timeout=1.0
+                    )
+                    if message is None:
+                        continue  # idle tick — lets health_check fire
+                    if message.get("type") != "message":
+                        continue
+                    raw = message.get("data")
+                    if not raw:
+                        continue
+                    try:
+                        signal = json.loads(raw)
+                        _on_signal_received(
+                            raw_message=signal,
+                            broker=broker,
+                            account_id=account_id,
+                            account_label=account_label,
+                            default_risk=resolved["risk_amount"],
+                            default_rr_ratio=resolved["rr_ratio"],
+                            halt_flag=halt_flag,
+                            monitor=monitor,
+                        )
+                    except Exception as e:
+                        logger.exception(f"[WORKER ERROR] {e}")
+
             except Exception as e:
-                logger.exception(f"[WORKER ERROR] {e}")
+                logger.error(
+                    f"[WORKER] Redis subscription dropped: {e} — "
+                    f"reconnecting in {backoff}s (backstop still covering signals)"
+                )
+                time.sleep(backoff)
+                backoff = min(backoff * 2, 30)
+            finally:
+                if pubsub is not None:
+                    try:
+                        pubsub.close()
+                    except Exception:
+                        pass
 
     except KeyboardInterrupt:
         logger.info("Shutdown signal received")
