@@ -9,7 +9,19 @@ export const signIn = (email: string, password: string) =>
   supabase.auth.signInWithPassword({ email, password });
 
 export const signUp = (email: string, password: string) =>
-  supabase.auth.signUp({ email, password });
+  supabase.auth.signUp({
+    email,
+    password,
+    // After the user clicks the confirmation link in their email, Supabase
+    // redirects here with the session tokens in the URL. supabase-js detects
+    // them automatically, so the user lands on the dashboard already signed in.
+    options: { emailRedirectTo: `${window.location.origin}/dashboard` },
+  });
+
+export const resetPassword = (email: string) =>
+  supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/sign-in`,
+  });
 
 export const signOut = () => supabase.auth.signOut();
 

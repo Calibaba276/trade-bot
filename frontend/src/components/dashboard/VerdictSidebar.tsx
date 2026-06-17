@@ -2,15 +2,32 @@ import { useEffect } from "react";
 import type { Trade } from "../../hooks/useTrades";
 import { StatusBadge } from "./StatusBadge";
 import { shortId, fmtDateTimeWAT, fmtPrice } from "../../utils/format";
+import { Term, ICT_DEFS } from "../Term";
+
+const COND_DEFS: Record<string, string> = {
+  swept_high:    ICT_DEFS.swept_high,
+  swept_low:     ICT_DEFS.swept_low,
+  mss_confirmed: ICT_DEFS.mss_confirmed,
+  fvg_confirmed: ICT_DEFS.fvg_confirmed,
+  fvg_top:       ICT_DEFS.fvg_top,
+  fvg_bottom:    ICT_DEFS.fvg_bottom,
+  mss_level:     ICT_DEFS.mss_level,
+  sweep_point:   ICT_DEFS.sweep_point,
+  pdh:           ICT_DEFS.pdh,
+  pdl:           ICT_DEFS.pdl,
+};
 
 /** A single ICT condition row — `–` (muted) when not applicable, `✓` when present. */
 function CondRow({ label, value }: { label: string; value: string | number | null | undefined }) {
   const present = value !== null && value !== undefined && value !== "" && value !== 0;
+  const def = COND_DEFS[label];
   return (
     <div className="flex items-center justify-between gap-2 text-xs py-1 border-b border-border-subtle/40 last:border-0">
       <span className="flex items-center gap-1.5">
         <span className={present ? "text-bull" : "text-text-muted"} aria-hidden>{present ? "✓" : "–"}</span>
-        <span className="text-text-secondary font-mono">{label}</span>
+        <span className="text-text-secondary font-mono">
+          {def ? <Term def={def}>{label}</Term> : label}
+        </span>
       </span>
       <span className="font-mono text-text-primary">{present ? value : "–"}</span>
     </div>

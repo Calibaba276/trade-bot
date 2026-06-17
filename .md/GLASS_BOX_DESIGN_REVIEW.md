@@ -104,7 +104,7 @@ The sidebar calls it "Live Feed", the page heading calls it "Live Logic Feed", t
 ### Issues
 
 **Naming collision**
-The sidebar says "Chart Debugger". The marketing copy calls it "Replay Mode." A Pro user who bought specifically for "Replay Mode" will scan the nav and not immediately find it. Rename the nav item to "Replay Mode" or "Chart Replay."
+The sidebar says "Chart Debugger". The marketing copy calls it "Replay Mode." A Pro user who bought specifically for "Replay Mode" will scan the nav and not immediately find it. Rename the nav item to "Replay Mode"
 
 **Mixed icon system in sidebar**
 Nav uses text glyphs for most items (▦, ≋, ≡, ⚙) but emoji for Chart Debugger (📈) and Prop Firm Panel (🛡). Emoji render differently across OS/browser, breaking visual consistency. Replace both with Unicode symbols.
@@ -123,7 +123,7 @@ One of the strongest pages. CSV export is a practical feature that prop firm use
 Direction, status, and scenario filters exist but there's no date filter. A prop firm user auditing a specific challenge week needs to filter by date range. This is a notable gap.
 
 **"View" button is underselling**
-The button that opens the VerdictSidebar is labeled "View". "Verdict →" or "See Verdict" is more brand-consistent and tells users what they're about to open.
+The button that opens the VerdictSidebar is labeled "View". "Verdict →" is more brand-consistent and tells users what they're about to open.
 
 **SL column coloring could be misread**
 `text-bear` (red) on the Stop Loss column could be misread as "this trade is a loss" by a new user. The coloring is semantically correct (red = risk) but consider expanding the column header from "SL" to "Stop Loss" for clarity.
@@ -163,7 +163,7 @@ The Settings page has "Broker Accounts", "Risk Configuration", "Profile & Securi
 There's no restriction on how many accounts a Starter user can add. When billing is live, the Starter plan (1 account) vs Pro plan (10 accounts) tier gate needs to be enforced here. Wire this before billing ships.
 
 **No follow-up message after adding an account**
-After adding an MT5 account, there's no message about what happens next. Add: "The engine will begin scanning your account during the next London session (09:00 NGT)."
+After adding an MT5 account, there's no message about what happens next. Add: "The engine will begin scanning your account during the next Session."
 
 ---
 
@@ -175,7 +175,7 @@ After adding an MT5 account, there's no message about what happens next. Add: "T
 The sidebar has a "?" Documentation link that goes `href="#"`. Either remove it or link to real docs.
 
 **No notification system**
-There's no way for the engine to push critical alerts to the user (e.g., "Engine halted — daily loss limit reached" or "New trade executed"). An alert badge on the topbar, or a subtle toast system, would be valuable for engaged users who want real-time awareness without watching the feed all day.
+There's no way for the engine to push critical alerts to the user (e.g., "Engine halted — daily loss limit reached" or "New trade executed"). A subtle toast system, would be valuable for engaged users who want real-time awareness without watching the feed all day.
 
 ---
 

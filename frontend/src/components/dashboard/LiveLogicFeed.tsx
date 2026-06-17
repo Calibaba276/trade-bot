@@ -3,6 +3,7 @@ import { useReplayStore } from "../../store/replayStore";
 import { useMarketStatus } from "../../hooks/useMarketStatus";
 import type { TradeEvent } from "../../types";
 import { fmtTimeWAT, fmtPrice } from "../../utils/format";
+import { Term, ICT_DEFS } from "../Term";
 
 type LineKind = "scan" | "detect" | "confirm" | "verdict" | "exec" | "halt" | "breakeven" | "error";
 
@@ -50,6 +51,42 @@ function describe(e: TradeEvent): { kind: LineKind; text: string } {
       return { kind: "scan", text: `Scanning ${e.timeframe} on ${e.pair} for setup conditions...` };
     }
   }
+}
+
+type Chunk = { k: "text"; v: string } | { k: "term"; v: string; def: string };
+const FEED_TERMS: [string, string][] = [
+  ["Fair Value Gap", ICT_DEFS.FVG],
+  ["MSS", ICT_DEFS.MSS],
+  ["FVG", ICT_DEFS.FVG],
+  ["BOS", ICT_DEFS.BOS],
+];
+
+/** Split a feed line string into text + glossary-term chunks for inline tooltips. */
+function parseLine(text: string): React.ReactNode {
+  let chunks: Chunk[] = [{ k: "text", v: text }];
+  for (const [term, def] of FEED_TERMS) {
+    const next: Chunk[] = [];
+    for (const c of chunks) {
+      if (c.k !== "text") { next.push(c); continue; }
+      const parts = c.v.split(term);
+      parts.forEach((part, i) => {
+        if (part) next.push({ k: "text", v: part });
+        if (i < parts.length - 1) next.push({ k: "term", v: term, def });
+      });
+    }
+    chunks = next;
+  }
+  return (
+    <>
+      {chunks.map((c, i) =>
+        c.k === "text" ? (
+          <span key={i}>{c.v}</span>
+        ) : (
+          <Term key={i} def={c.def}>{c.v}</Term>
+        ),
+      )}
+    </>
+  );
 }
 
 /** Markets the engine tracks — each has its own logic feed. */
@@ -100,7 +137,7 @@ export function LiveLogicFeed({
     <div className="bg-bg-surface border border-border-subtle rounded-lg flex flex-col">
       {/* header */}
       <div className="flex items-center justify-between px-4 h-10 border-b border-border-subtle">
-        <span className="text-xs uppercase tracking-wide text-text-secondary font-mono">Live Logic Feed</span>
+        <span className="text-xs uppercase tracking-wide text-text-secondary font-mono">Live Feed</span>
         {marketOpen ? (
           <span className="flex items-center gap-1.5 text-xs text-bull font-mono">
             <span className="h-2 w-2 rounded-full bg-bull animate-pulse-dot" /> LIVE
@@ -171,7 +208,7 @@ export function LiveLogicFeed({
                           : "text-text-secondary"
                     }
                   >
-                    {l.text}
+                    {parseLine(l.text)}
                   </span>
                 </div>
               );

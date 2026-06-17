@@ -4,11 +4,18 @@ import { EmptyState } from "../../components/dashboard/States";
 import { VerdictSidebar } from "../../components/dashboard/VerdictSidebar";
 import { useTrades, type Trade } from "../../hooks/useTrades";
 import { fmtDateTimeWAT, fmtPrice, fmtMoney } from "../../utils/format";
+import { buildShareUrl } from "../../utils/share";
+import { useTierStore } from "../../store/tierStore";
+import { useToastStore } from "../../store/toastStore";
 
 const PAGE_SIZE = 25;
 
 type DirFilter = "All" | "BUY" | "SELL";
 type StatusFilter = "All" | "WIN" | "LOSS" | "OPEN";
+
+function toDateInputValue(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
 
 function exportCsv(rows: Trade[]) {
   const header = ["Time (WAT)", "Symbol", "Direction", "Entry", "SL", "TP", "RR", "PnL", "Status", "Setup"];
@@ -29,11 +36,15 @@ function exportCsv(rows: Trade[]) {
 
 export function TradesPage() {
   const all = useTrades();
+  const tier = useTierStore((s) => s.tier);
+  const push = useToastStore((s) => s.push);
   const [dir, setDir] = useState<DirFilter>("All");
   const [status, setStatus] = useState<StatusFilter>("All");
   const [scenario, setScenario] = useState("All");
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Trade | null>(null);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const scenarios = useMemo(
     () => ["All", ...Array.from(new Set(all.map((t) => t.setup))).filter((s) => s && s !== "—")],
@@ -42,13 +53,17 @@ export function TradesPage() {
 
   const filtered = useMemo(
     () =>
-      all.filter(
-        (t) =>
+      all.filter((t) => {
+        const tDate = t.time ? t.time.slice(0, 10) : "";
+        return (
           (dir === "All" || t.direction === dir) &&
           (status === "All" || t.status === status) &&
-          (scenario === "All" || t.setup === scenario),
-      ),
-    [all, dir, status, scenario],
+          (scenario === "All" || t.setup === scenario) &&
+          (!dateFrom || tDate >= dateFrom) &&
+          (!dateTo || tDate <= dateTo)
+        );
+      }),
+    [all, dir, status, scenario, dateFrom, dateTo],
   );
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -71,8 +86,44 @@ export function TradesPage() {
         <Select value={dir} onChange={(v) => setDir(v as DirFilter)} options={["All", "BUY", "SELL"]} />
         <Select value={status} onChange={(v) => setStatus(v as StatusFilter)} options={["All", "WIN", "LOSS", "OPEN"]} />
         <Select value={scenario} onChange={setScenario} options={scenarios} />
+        <div className="flex items-center gap-1.5">
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => { setDateFrom(e.target.value); setPage(0); }}
+            max={dateTo || toDateInputValue(new Date())}
+            className="bg-bg-elevated border border-border-muted rounded-md text-xs text-text-primary px-2 py-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
+          />
+          <span className="text-text-muted text-xs">–</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => { setDateTo(e.target.value); setPage(0); }}
+            min={dateFrom}
+            max={toDateInputValue(new Date())}
+            className="bg-bg-elevated border border-border-muted rounded-md text-xs text-text-primary px-2 py-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue"
+          />
+        </div>
         <div className="ml-auto flex items-center gap-3">
           <span className="text-xs text-text-muted">{filtered.length} trade{filtered.length === 1 ? "" : "s"}</span>
+          {tier === "starter" && (
+            <button
+              onClick={() => {
+                if (!filtered.length) return;
+                const url = buildShareUrl(filtered, "Glass Box Audit Trail");
+                navigator.clipboard.writeText(url).then(() => {
+                  push({ variant: "success", title: "Share link copied", body: "Send this link to your signal provider — no account needed to view.", durationMs: 7000 });
+                }).catch(() => {
+                  push({ variant: "info", title: "Share link ready", body: url, durationMs: 10000 });
+                });
+              }}
+              disabled={!filtered.length}
+              title="Generate a public read-only link to this trade history"
+              className="text-xs border border-brand-blue/50 hover:border-brand-blue bg-brand-blue/10 text-brand-blue rounded-md px-3 py-1.5 disabled:opacity-40"
+            >
+              Share Audit ↗
+            </button>
+          )}
           <button
             onClick={() => exportCsv(filtered)}
             disabled={!filtered.length}
@@ -94,7 +145,7 @@ export function TradesPage() {
             <table className="w-full text-xs">
               <thead>
                 <tr className="text-text-muted">
-                  {["Time (WAT)", "Symbol", "Direction", "Entry", "SL", "TP", "R:R", "P/L", "Status", "Scenario", ""].map((h) => (
+                  {["Time (WAT)", "Symbol", "Direction", "Entry", "Stop Loss", "TP", "R:R", "P/L", "Status", "Scenario", ""].map((h) => (
                     <th key={h} className="text-left font-normal font-mono px-4 py-2.5 border-b border-border-subtle whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -121,7 +172,7 @@ export function TradesPage() {
                         onClick={() => setSelected(t)}
                         className="text-brand-blue hover:underline text-[11px]"
                       >
-                        View
+                        Verdict →
                       </button>
                     </td>
                   </tr>

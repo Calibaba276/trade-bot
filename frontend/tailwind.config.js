@@ -56,11 +56,16 @@ export default {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0" },
         },
+        "slide-in": {
+          "0%": { opacity: "0", transform: "translateX(1rem)" },
+          "100%": { opacity: "1", transform: "translateX(0)" },
+        },
       },
       animation: {
         "data-flash": "data-flash 400ms ease-out",
         "pulse-dot": "pulse-dot 1.5s ease-in-out infinite",
         "blink": "blink 1s step-end infinite",
+        "slide-in": "slide-in 200ms ease-out",
       },
     },
   },

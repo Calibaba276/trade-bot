@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { signIn } from "../../lib/supaclient";
+import { signIn, resetPassword } from "../../lib/supaclient";
 
 function useNgtTime() {
   const getNgt = () => {
@@ -30,6 +30,7 @@ export function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const ngtTime = useNgtTime();
@@ -47,13 +48,28 @@ export function Login() {
     navigate("/dashboard");
   };
 
+  const handleForgotPassword = async () => {
+    setError(null);
+    setNotice(null);
+    if (!email) {
+      setError("Enter your email above, then click Forgot password.");
+      return;
+    }
+    const { error } = await resetPassword(email);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setNotice("Password reset link sent — check your email.");
+  };
+
   return (
-    <div className="min-h-screen bg-[#0f1419] flex items-center justify-center px-4">
+    <div className="min-h-screen bg-bg-base flex items-center justify-center px-4">
       <div className="w-full max-w-[360px]">
         {/* Back to landing */}
         <Link
           to="/"
-          className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-[#4b5563] hover:text-[#9ca3af] transition-colors mb-4"
+          className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-text-muted hover:text-text-secondary transition-colors mb-4"
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden>
             <path d="M8 2L4 6L8 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -63,16 +79,16 @@ export function Login() {
 
         {/* Card */}
         <div
-          className="bg-[#141921] p-8"
-          style={{ border: "0.5px solid #2a3040" }}
+          className="bg-bg-surface p-8"
+          style={{ border: "0.5px solid var(--border-muted)" }}
         >
           {/* Signature: live system status */}
           <div
             className="font-mono text-[9px] uppercase tracking-wider pb-5 mb-6"
             style={{
-              color: "#34d399",
+              color: "var(--bull-green)",
               opacity: 0.55,
-              borderBottom: "0.5px solid #1e2530",
+              borderBottom: "0.5px solid var(--border-subtle)",
             }}
           >
             GLASS BOX v2.1&nbsp;&nbsp;●&nbsp;&nbsp;{getTradingSession()}&nbsp;&nbsp;●&nbsp;&nbsp;{ngtTime} NGT
@@ -81,12 +97,12 @@ export function Login() {
           {/* Wordmark */}
           <div className="mb-7">
             <p
-              className="font-mono font-normal uppercase text-[#f3f4f6] mb-1"
+              className="font-mono font-normal uppercase text-text-primary mb-1"
               style={{ fontSize: "13px", letterSpacing: "0.3em" }}
             >
               GLASS BOX
             </p>
-            <p className="font-mono text-[10px] text-[#6b7280]">
+            <p className="font-mono text-[10px] text-text-secondary">
               Sign in to continue
             </p>
           </div>
@@ -95,7 +111,7 @@ export function Login() {
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div>
               <label
-                className="block font-mono uppercase text-[#6b7280] mb-1.5"
+                className="block font-mono uppercase text-text-secondary mb-1.5"
                 style={{ fontSize: "9px", letterSpacing: "0.1em" }}
               >
                 Email
@@ -107,23 +123,33 @@ export function Login() {
                 required
                 autoComplete="email"
                 placeholder="trader@firm.com"
-                className="w-full bg-[#0f1419] font-mono text-[11px] text-[#f3f4f6] px-3 py-2.5 placeholder-[#4b5563] focus:outline-none transition-colors"
+                className="w-full bg-bg-base font-mono text-[11px] text-text-primary px-3 py-2.5 placeholder-text-muted focus:outline-none transition-colors"
                 style={{
-                  border: "0.5px solid #2a3040",
+                  border: "0.5px solid var(--border-muted)",
                   borderRadius: 0,
                 }}
-                onFocus={(e) => (e.target.style.borderColor = "#378add")}
-                onBlur={(e) => (e.target.style.borderColor = "#2a3040")}
+                onFocus={(e) => (e.target.style.borderColor = "var(--border-active)")}
+                onBlur={(e) => (e.target.style.borderColor = "var(--border-muted)")}
               />
             </div>
 
             <div>
-              <label
-                className="block font-mono uppercase text-[#6b7280] mb-1.5"
-                style={{ fontSize: "9px", letterSpacing: "0.1em" }}
-              >
-                Password
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label
+                  className="block font-mono uppercase text-text-secondary"
+                  style={{ fontSize: "9px", letterSpacing: "0.1em" }}
+                >
+                  Password
+                </label>
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  className="font-mono uppercase text-text-muted hover:text-text-secondary transition-colors cursor-pointer"
+                  style={{ fontSize: "9px", letterSpacing: "0.1em" }}
+                >
+                  Forgot password?
+                </button>
+              </div>
               <input
                 type="password"
                 value={password}
@@ -131,26 +157,32 @@ export function Login() {
                 required
                 autoComplete="current-password"
                 placeholder="••••••••"
-                className="w-full bg-[#0f1419] font-mono text-[11px] text-[#f3f4f6] px-3 py-2.5 placeholder-[#4b5563] focus:outline-none transition-colors"
+                className="w-full bg-bg-base font-mono text-[11px] text-text-primary px-3 py-2.5 placeholder-text-muted focus:outline-none transition-colors"
                 style={{
-                  border: "0.5px solid #2a3040",
+                  border: "0.5px solid var(--border-muted)",
                   borderRadius: 0,
                 }}
-                onFocus={(e) => (e.target.style.borderColor = "#378add")}
-                onBlur={(e) => (e.target.style.borderColor = "#2a3040")}
+                onFocus={(e) => (e.target.style.borderColor = "var(--border-active)")}
+                onBlur={(e) => (e.target.style.borderColor = "var(--border-muted)")}
               />
             </div>
 
             {error && (
-              <p className="font-mono text-[10px] text-[#f87171] -mt-1">
+              <p className="font-mono text-[10px] text-bear -mt-1">
                 {error}
+              </p>
+            )}
+
+            {notice && (
+              <p className="font-mono text-[10px] text-bull -mt-1">
+                {notice}
               </p>
             )}
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-[#378add] hover:bg-[#2d74c8] font-mono text-[11px] uppercase text-white py-2.5 mt-1 transition-colors disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+              className="w-full bg-brand-blue hover:bg-brand-dim font-mono text-[11px] uppercase text-white py-2.5 mt-1 transition-colors disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
               style={{
                 letterSpacing: "0.08em",
                 borderRadius: 0,
@@ -163,13 +195,13 @@ export function Login() {
 
           {/* Signup link */}
           <div
-            className="mt-5 pt-5 font-mono text-[10px] text-[#6b7280]"
-            style={{ borderTop: "0.5px solid #1e2530" }}
+            className="mt-5 pt-5 font-mono text-[10px] text-text-secondary"
+            style={{ borderTop: "0.5px solid var(--border-subtle)" }}
           >
             No account?{" "}
             <Link
               to="/sign-up"
-              className="text-[#9ca3af] hover:text-[#f3f4f6] underline transition-colors"
+              className="text-text-secondary hover:text-text-primary underline transition-colors"
             >
               Create one
             </Link>
@@ -177,7 +209,7 @@ export function Login() {
         </div>
 
         {/* Footer */}
-        <div className="mt-3 flex justify-between px-0.5 font-mono text-[9px] text-[#4b5563]">
+        <div className="mt-3 flex justify-between px-0.5 font-mono text-[9px] text-text-muted">
           <span>© 2026 Glass Box</span>
           <span>All sessions logged</span>
         </div>

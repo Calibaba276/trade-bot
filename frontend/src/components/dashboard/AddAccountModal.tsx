@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supaclient";
 import { useAuth } from "../../hooks/useAuth";
+import { loadRiskDefaults } from "../../pages/dashboard/SettingsPage";
 
 interface Props {
   open: boolean;
@@ -19,11 +20,16 @@ const FIELDS = [
   { key: "terminal_path", label: "Terminal Path (advanced)", type: "text", placeholder: "C:\\MT5\\terminal64.exe", def: "" },
 ] as const;
 
+function buildInitialForm(): Record<string, string> {
+  const riskDefaults = loadRiskDefaults();
+  return Object.fromEntries(
+    FIELDS.map((f) => [f.key, riskDefaults[f.key] ?? f.def]),
+  );
+}
+
 export function AddAccountModal({ open, onClose, onSaved }: Props) {
   const { user } = useAuth();
-  const [form, setForm] = useState<Record<string, string>>(() =>
-    Object.fromEntries(FIELDS.map((f) => [f.key, f.def])),
-  );
+  const [form, setForm] = useState<Record<string, string>>(buildInitialForm);
   const [currency, setCurrency] = useState("USD");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
