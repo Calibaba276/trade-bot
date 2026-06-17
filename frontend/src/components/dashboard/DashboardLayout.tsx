@@ -1,25 +1,39 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
-import { signOut } from "../../lib/supaclient";
+import { useOnboarding } from "../../hooks/useOnboarding";
 import { useReplayStore } from "../../store/replayStore";
 import { useLiveTradeEvents } from "../../hooks/useLiveTradeEvents";
 import { useTrades } from "../../hooks/useTrades";
 import { StatusBadge } from "./StatusBadge";
 import { ToastContainer } from "./ToastContainer";
+import { OnboardingModal } from "./OnboardingModal";
 import { useMarketStatus } from "../../hooks/useMarketStatus";
-import { useTierStore, TIER_FEATURES } from "../../store/tierStore";
+import { useTierStore, TIER_FEATURES, type Tier } from "../../store/tierStore";
 import { useToastStore } from "../../store/toastStore";
+import { SidebarUserCard } from "./SidebarUserCard";
 
-/* --- sidebar nav config (design guide §6.1) --- */
-const NAV = [
+type TierFeatures = (typeof TIER_FEATURES)[Tier];
+
+/* --- sidebar nav config (design guide §6.1) ---
+   `requires` names a boolean capability in TIER_FEATURES; the item is locked
+   (and its route guarded) on plans that lack it. */
+const NAV: {
+  to: string;
+  label: string;
+  icon: string;
+  end?: boolean;
+  requires?: keyof TierFeatures;
+}[] = [
   { to: "/dashboard", label: "Overview", icon: "▦", end: true },
   { to: "/dashboard/feed", label: "Live Feed", icon: "≋" },
-  { to: "/dashboard/chart", label: "Replay Mode", icon: "▷" },
+  { to: "/dashboard/chart", label: "Replay Mode", icon: "▷", requires: "replayMode" },
   { to: "/dashboard/trades", label: "Trade History", icon: "≡" },
-  { to: "/dashboard/propfirm", label: "Prop Firm Panel", icon: "◈" },
+  { to: "/dashboard/propfirm", label: "Prop Firm Panel", icon: "◈", requires: "propFirmPanel" },
   { to: "/dashboard/settings", label: "Account Settings", icon: "⚙" },
 ];
+
+const REPLAY_PATH = "/dashboard/chart";
 
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Overview",
@@ -43,14 +57,17 @@ function readDailyLimit(): number {
 export function DashboardLayout() {
   const { user } = useAuth();
   const location = useLocation();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const navigate = useNavigate();
   const [mobileNav, setMobileNav] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const [userCollapsed, setUserCollapsed] = useState(false);
   const marketOpen = useMarketStatus();
   const push = useToastStore((s) => s.push);
   const prevMarketOpen = useRef<boolean | null>(null);
   const tier = useTierStore((s) => s.tier);
   const toggleTier = useTierStore((s) => s.toggleTier);
+
+  // First-login onboarding — account-scoped, syncs/resumes across devices.
+  const onboarding = useOnboarding();
 
   // Compute engine halt state from today's trades vs the configured daily loss limit.
   const trades = useTrades();
@@ -94,8 +111,14 @@ export function DashboardLayout() {
     }
   }, [marketOpen, push]);
 
+  // Replay Mode (Pro) takes over the screen: force the sidebar collapsed while
+  // on that route, otherwise honour the user's manual choice. Derived (no
+  // effect) so entering/leaving Replay restores the prior preference for free.
+  const onReplay = location.pathname === REPLAY_PATH && tier === "pro";
+  const collapsed = onReplay || userCollapsed;
+  const toggleCollapsed = () => setUserCollapsed((c) => !c);
+
   const title = PAGE_TITLES[location.pathname] ?? "Dashboard";
-  const initial = (user?.email?.[0] ?? "T").toUpperCase();
 
   return (
     <div className="h-screen flex bg-bg-base text-text-primary overflow-hidden">
@@ -116,7 +139,7 @@ export function DashboardLayout() {
           </span>
           {/* Collapse toggle — desktop only */}
           <button
-            onClick={() => setCollapsed((c) => !c)}
+            onClick={toggleCollapsed}
             className={`hidden md:flex items-center justify-center h-6 w-6 rounded text-text-muted hover:text-text-primary hover:bg-bg-elevated transition-colors ${
               collapsed ? "md:hidden" : "ml-auto"
             }`}
@@ -130,7 +153,7 @@ export function DashboardLayout() {
         {/* Expand button shown when collapsed */}
         {collapsed && (
           <button
-            onClick={() => setCollapsed(false)}
+            onClick={toggleCollapsed}
             className="hidden md:flex items-center justify-center h-9 mx-2 mt-2 rounded text-text-muted hover:text-text-primary hover:bg-bg-elevated transition-colors"
             aria-label="Expand sidebar"
             title="Expand sidebar"
@@ -140,50 +163,64 @@ export function DashboardLayout() {
         )}
 
         <nav className="flex-1 py-2 overflow-y-auto">
-          {NAV.map((n) => (
-            <NavLink
-              key={n.to}
-              to={n.to}
-              end={n.end}
-              onClick={() => setMobileNav(false)}
-              title={collapsed ? n.label : undefined}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-4 py-2.5 text-sm border-l-2 transition-colors ${
-                  collapsed ? "md:justify-center md:px-0 md:gap-0" : ""
-                } ${
-                  isActive
-                    ? "bg-bg-elevated border-brand-blue text-text-primary"
-                    : "border-transparent text-text-secondary hover:text-text-primary hover:bg-bg-elevated"
-                }`
-              }
-            >
-              <span className="w-4 text-center shrink-0" aria-hidden>{n.icon}</span>
-              <span className={collapsed ? "md:hidden" : ""}>{n.label}</span>
-            </NavLink>
-          ))}
+          {NAV.map((n) => {
+            const locked = n.requires ? !TIER_FEATURES[tier][n.requires] : false;
+
+            // Locked (Pro-only) item — not navigable; routes to the upgrade path.
+            if (locked) {
+              return (
+                <button
+                  key={n.to}
+                  onClick={() => {
+                    setMobileNav(false);
+                    navigate("/dashboard/settings");
+                  }}
+                  title={collapsed ? `${n.label} — Pro feature` : undefined}
+                  className={`group w-full flex items-center gap-3 px-4 py-2.5 text-sm border-l-2 border-transparent text-text-muted hover:text-text-secondary hover:bg-bg-elevated transition-colors ${
+                    collapsed ? "md:justify-center md:px-0 md:gap-0" : ""
+                  }`}
+                >
+                  <span className="w-4 text-center shrink-0" aria-hidden>{n.icon}</span>
+                  <span className={collapsed ? "md:hidden" : ""}>{n.label}</span>
+                  {!collapsed && (
+                    <span
+                      className="ml-auto shrink-0 text-[9px] font-mono font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded text-brand-blue bg-brand-blue/10 border border-brand-blue/30"
+                      aria-label="Pro feature"
+                    >
+                      Pro
+                    </span>
+                  )}
+                  <span className={`text-text-muted ${collapsed ? "md:hidden" : "hidden"}`} aria-hidden>🔒</span>
+                </button>
+              );
+            }
+
+            return (
+              <NavLink
+                key={n.to}
+                to={n.to}
+                end={n.end}
+                onClick={() => setMobileNav(false)}
+                title={collapsed ? n.label : undefined}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-4 py-2.5 text-sm border-l-2 transition-colors ${
+                    collapsed ? "md:justify-center md:px-0 md:gap-0" : ""
+                  } ${
+                    isActive
+                      ? "bg-bg-elevated border-brand-blue text-text-primary"
+                      : "border-transparent text-text-secondary hover:text-text-primary hover:bg-bg-elevated"
+                  }`
+                }
+              >
+                <span className="w-4 text-center shrink-0" aria-hidden>{n.icon}</span>
+                <span className={collapsed ? "md:hidden" : ""}>{n.label}</span>
+              </NavLink>
+            );
+          })}
         </nav>
-        <div className="border-t border-border-subtle py-2">
-          <a
-            href="#"
-            title={collapsed ? "Documentation" : undefined}
-            className={`flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:text-text-primary ${
-              collapsed ? "md:justify-center md:px-0 md:gap-0" : ""
-            }`}
-          >
-            <span className="w-4 text-center shrink-0" aria-hidden>?</span>
-            <span className={collapsed ? "md:hidden" : ""}>Documentation</span>
-          </a>
-          <button
-            onClick={() => signOut()}
-            title={collapsed ? "Sign Out" : undefined}
-            className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:text-text-primary ${
-              collapsed ? "md:justify-center md:px-0 md:gap-0" : ""
-            }`}
-          >
-            <span className="w-4 text-center shrink-0" aria-hidden>↪</span>
-            <span className={collapsed ? "md:hidden" : ""}>Sign Out</span>
-          </button>
-        </div>
+
+        {/* Account component — user identity, plan, docs & sign out */}
+        <SidebarUserCard collapsed={collapsed} />
       </aside>
 
       {mobileNav && (
@@ -231,35 +268,6 @@ export function DashboardLayout() {
               <span>{TIER_FEATURES[tier].label}</span>
               <span className="text-text-muted" aria-hidden>⇄</span>
             </button>
-
-            <div className="relative">
-            <button
-              onClick={() => setMenuOpen((v) => !v)}
-              className="h-8 w-8 rounded-full bg-bg-elevated border border-border-muted text-sm font-mono text-text-primary flex items-center justify-center hover:border-border-active"
-              aria-label="Account menu"
-              aria-expanded={menuOpen}
-            >
-              {initial}
-            </button>
-            {menuOpen && (
-              <div className="absolute right-0 mt-2 w-56 bg-bg-overlay border border-border-muted rounded-lg p-2 z-50 text-sm">
-                <p className="px-3 py-2 text-xs text-text-muted truncate font-mono">{user?.email}</p>
-                <NavLink
-                  to="/dashboard/settings"
-                  onClick={() => setMenuOpen(false)}
-                  className="block px-3 py-2 rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-elevated"
-                >
-                  Account Settings
-                </NavLink>
-                <button
-                  onClick={() => signOut()}
-                  className="w-full text-left px-3 py-2 rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-elevated"
-                >
-                  Sign Out
-                </button>
-              </div>
-            )}
-            </div>
           </div>
         </header>
 
@@ -290,6 +298,12 @@ export function DashboardLayout() {
       </div>
 
       <ToastContainer />
+      <OnboardingModal
+        open={onboarding.open}
+        step={onboarding.step}
+        onStepChange={onboarding.setStep}
+        onClose={onboarding.dismiss}
+      />
     </div>
   );
 }

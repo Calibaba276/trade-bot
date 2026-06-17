@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { decodeShare } from "../utils/share";
+import { resolveShare, type SharePayload } from "../utils/share";
 import { StatusBadge } from "../components/dashboard/StatusBadge";
 import { VerdictSidebar } from "../components/dashboard/VerdictSidebar";
 import { EmptyState } from "../components/dashboard/States";
@@ -10,8 +10,35 @@ import type { Trade } from "../hooks/useTrades";
 export function SharePage() {
   const { token } = useParams<{ token: string }>();
   const [selected, setSelected] = useState<Trade | null>(null);
+  const [result, setResult] = useState<{ payload: SharePayload; trades: Trade[] } | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const result = token ? decodeShare(token) : null;
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    if (!token) {
+      setResult(null);
+      setLoading(false);
+      return;
+    }
+    resolveShare(token)
+      .then((r) => active && setResult(r))
+      .finally(() => active && setLoading(false));
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-bg-base flex items-center justify-center p-6">
+        <div className="text-center">
+          <p className="text-4xl mb-4 text-brand-blue animate-pulse-dot" aria-hidden>⬡</p>
+          <p className="text-sm text-text-secondary font-mono">Loading audit trail…</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!result) {
     return (

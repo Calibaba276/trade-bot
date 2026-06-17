@@ -72,19 +72,9 @@ export function SignUp() {
         </Link>
 
         {/* Card */}
-        <div
-          className="bg-bg-surface p-8"
-          style={{ border: "0.5px solid var(--border-muted)" }}
-        >
+        <div className="bg-bg-surface p-8 border-[0.5px] border-border-muted">
           {/* Signature: live system status */}
-          <div
-            className="font-mono text-[9px] uppercase tracking-wider pb-5 mb-6"
-            style={{
-              color: "var(--bull-green)",
-              opacity: 0.55,
-              borderBottom: "0.5px solid var(--border-subtle)",
-            }}
-          >
+          <div className="font-mono text-[9px] uppercase tracking-wider pb-5 mb-6 text-bull opacity-[0.55] border-b-[0.5px] border-border-subtle">
             GLASS BOX v2.1&nbsp;&nbsp;●&nbsp;&nbsp;{getTradingSession()}&nbsp;&nbsp;●&nbsp;&nbsp;{ngtTime} NGT
           </div>
 
@@ -102,10 +92,7 @@ export function SignUp() {
           </div>
 
           {success ? (
-            <div
-              className="py-4 px-3 font-mono text-[10px] text-bull"
-              style={{ border: "0.5px solid var(--bull-green)", background: "rgba(63,185,80,0.04)" }}
-            >
+            <div className="py-4 px-3 font-mono text-[10px] text-bull border-[0.5px] border-bull bg-[rgba(63,185,80,0.04)]">
               ACCOUNT CREATED — check your email to confirm.
               <br />
               <span className="text-text-secondary">
@@ -128,10 +115,7 @@ export function SignUp() {
                   required
                   autoComplete="email"
                   placeholder="trader@firm.com"
-                  className="w-full bg-bg-base font-mono text-[11px] text-text-primary px-3 py-2.5 placeholder-text-muted focus:outline-none transition-colors"
-                  style={{ border: "0.5px solid var(--border-muted)", borderRadius: 0 }}
-                  onFocus={(e) => (e.target.style.borderColor = "var(--border-active)")}
-                  onBlur={(e) => (e.target.style.borderColor = "var(--border-muted)")}
+                  className="w-full bg-bg-base font-mono text-[11px] text-text-primary px-3 py-2.5 placeholder-text-muted border-[0.5px] border-border-muted rounded-none focus:outline-none focus:border-border-active transition-colors"
                 />
               </div>
 
@@ -149,10 +133,7 @@ export function SignUp() {
                   required
                   autoComplete="new-password"
                   placeholder="••••••••"
-                  className="w-full bg-bg-base font-mono text-[11px] text-text-primary px-3 py-2.5 placeholder-text-muted focus:outline-none transition-colors"
-                  style={{ border: "0.5px solid var(--border-muted)", borderRadius: 0 }}
-                  onFocus={(e) => (e.target.style.borderColor = "var(--border-active)")}
-                  onBlur={(e) => (e.target.style.borderColor = "var(--border-muted)")}
+                  className="w-full bg-bg-base font-mono text-[11px] text-text-primary px-3 py-2.5 placeholder-text-muted border-[0.5px] border-border-muted rounded-none focus:outline-none focus:border-border-active transition-colors"
                 />
                 <p className="mt-1.5 font-mono text-[9px] text-text-muted">
                   At least 6 characters
@@ -173,10 +154,7 @@ export function SignUp() {
                   required
                   autoComplete="new-password"
                   placeholder="••••••••"
-                  className="w-full bg-bg-base font-mono text-[11px] text-text-primary px-3 py-2.5 placeholder-text-muted focus:outline-none transition-colors"
-                  style={{ border: "0.5px solid var(--border-muted)", borderRadius: 0 }}
-                  onFocus={(e) => (e.target.style.borderColor = "var(--border-active)")}
-                  onBlur={(e) => (e.target.style.borderColor = "var(--border-muted)")}
+                  className="w-full bg-bg-base font-mono text-[11px] text-text-primary px-3 py-2.5 placeholder-text-muted border-[0.5px] border-border-muted rounded-none focus:outline-none focus:border-border-active transition-colors"
                 />
               </div>
 
@@ -189,8 +167,7 @@ export function SignUp() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-brand-blue hover:bg-brand-dim font-mono text-[11px] uppercase text-white py-2.5 mt-1 transition-colors disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-                style={{ letterSpacing: "0.08em", borderRadius: 0, border: "none" }}
+                className="w-full bg-brand-blue hover:bg-brand-dim font-mono text-[11px] tracking-[0.08em] uppercase text-white py-2.5 mt-1 rounded-none border-0 transition-colors disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
               >
                 {loading ? "CREATING ACCOUNT..." : "CREATE ACCOUNT"}
               </button>
@@ -199,10 +176,7 @@ export function SignUp() {
 
           {/* Login link */}
           {!success && (
-            <div
-              className="mt-5 pt-5 font-mono text-[10px] text-text-secondary"
-              style={{ borderTop: "0.5px solid var(--border-subtle)" }}
-            >
+            <div className="mt-5 pt-5 font-mono text-[10px] text-text-secondary border-t-[0.5px] border-border-subtle">
               Already have an account?{" "}
               <Link
                 to="/sign-in"

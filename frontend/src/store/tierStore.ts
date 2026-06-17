@@ -36,11 +36,13 @@ export const TIER_FEATURES = {
   starter: {
     label: "Starter",
     propFirmPanel: false,
+    replayMode: false,
     maxAccounts: 1,
   },
   pro: {
     label: "Pro",
     propFirmPanel: true,
+    replayMode: true,
     maxAccounts: 10,
   },
 } as const;

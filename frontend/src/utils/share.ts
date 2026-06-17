@@ -1,11 +1,16 @@
-// Shareable Audit Link — encodes a trade snapshot into a public, read-only URL.
+// Shareable Audit Link — a public, read-only audit trail served from Supabase.
 //
 // The B2B2C acquisition motion (design review §New Concepts 1) requires that a
 // signal provider can open a follower's Glass Box results without an account.
-// Until billing + signed share rows exist server-side, we encode the snapshot
-// directly into the URL: purely client-side, no auth, no RLS. The /share route
-// decodes it and renders a read-only audit view.
+// The trust mechanism only holds if the recipient cannot fabricate or tamper
+// with the data: the snapshot is written once by the authenticated owner into
+// `shared_sessions` and served read-only by uuid. The link is `/share/:uuid`.
+//
+// Legacy links embedded the base64 payload in the URL directly; decodeShare()
+// still resolves those so old links don't 404, but new links always go through
+// the server (createShare → buildShareUrl).
 
+import { supabase } from "../lib/supaclient";
 import type { Trade } from "../hooks/useTrades";
 import type { TradeEvent } from "../types";
 
@@ -129,7 +134,58 @@ export function decodeShare(encoded: string): { payload: SharePayload; trades: T
   }
 }
 
-/** Build the absolute public share URL for the given trades. */
-export function buildShareUrl(trades: Trade[], title?: string): string {
-  return `${window.location.origin}/share/${encodeShare(trades, title)}`;
+// --- server-side shares -----------------------------------------------------
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Persist a snapshot to Supabase and return its uuid. Throws on failure. */
+export async function createShare(trades: Trade[], title = "Shared Audit"): Promise<string> {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("You must be signed in to create a share link.");
+
+  const payload: SharePayload = {
+    v: VERSION,
+    createdAt: Date.now(),
+    title,
+    trades: trades.map(toShareTrade),
+  };
+
+  const { data, error } = await supabase
+    .from("shared_sessions")
+    .insert({ user_id: auth.user.id, title, payload })
+    .select("id")
+    .single();
+
+  if (error || !data) throw error ?? new Error("Failed to create share link.");
+  return data.id as string;
+}
+
+/** Fetch a server-stored share by uuid. Null on missing / malformed. */
+export async function fetchShare(
+  id: string,
+): Promise<{ payload: SharePayload; trades: Trade[] } | null> {
+  const { data, error } = await supabase
+    .from("shared_sessions")
+    .select("payload")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  const payload = data.payload as SharePayload;
+  if (!payload || payload.v !== VERSION || !Array.isArray(payload.trades)) return null;
+  return { payload, trades: payload.trades.map(fromShareTrade) };
+}
+
+/** Resolve a /share/:token route param — server uuid first, legacy payload otherwise. */
+export function resolveShare(
+  token: string,
+): Promise<{ payload: SharePayload; trades: Trade[] } | null> {
+  if (UUID_RE.test(token)) return fetchShare(token);
+  return Promise.resolve(decodeShare(token));
+}
+
+/** Create a server-stored share and return its absolute public URL. */
+export async function buildShareUrl(trades: Trade[], title?: string): Promise<string> {
+  const id = await createShare(trades, title);
+  return `${window.location.origin}/share/${id}`;
 }

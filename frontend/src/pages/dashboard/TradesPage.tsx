@@ -43,6 +43,7 @@ export function TradesPage() {
   const [scenario, setScenario] = useState("All");
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Trade | null>(null);
+  const [sharing, setSharing] = useState(false);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
@@ -108,20 +109,28 @@ export function TradesPage() {
           <span className="text-xs text-text-muted">{filtered.length} trade{filtered.length === 1 ? "" : "s"}</span>
           {tier === "starter" && (
             <button
-              onClick={() => {
-                if (!filtered.length) return;
-                const url = buildShareUrl(filtered, "Glass Box Audit Trail");
-                navigator.clipboard.writeText(url).then(() => {
-                  push({ variant: "success", title: "Share link copied", body: "Send this link to your signal provider — no account needed to view.", durationMs: 7000 });
-                }).catch(() => {
-                  push({ variant: "info", title: "Share link ready", body: url, durationMs: 10000 });
-                });
+              onClick={async () => {
+                if (!filtered.length || sharing) return;
+                setSharing(true);
+                try {
+                  const url = await buildShareUrl(filtered, "Glass Box Audit Trail");
+                  try {
+                    await navigator.clipboard.writeText(url);
+                    push({ variant: "success", title: "Share link copied", body: "Send this link to your signal provider — no account needed to view.", durationMs: 7000 });
+                  } catch {
+                    push({ variant: "info", title: "Share link ready", body: url, durationMs: 10000 });
+                  }
+                } catch (err) {
+                  push({ variant: "critical", title: "Couldn't create share link", body: err instanceof Error ? err.message : "Please try again.", durationMs: 7000 });
+                } finally {
+                  setSharing(false);
+                }
               }}
-              disabled={!filtered.length}
+              disabled={!filtered.length || sharing}
               title="Generate a public read-only link to this trade history"
               className="text-xs border border-brand-blue/50 hover:border-brand-blue bg-brand-blue/10 text-brand-blue rounded-md px-3 py-1.5 disabled:opacity-40"
             >
-              Share Audit ↗
+              {sharing ? "Creating link…" : "Share Audit ↗"}
             </button>
           )}
           <button
