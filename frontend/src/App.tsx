@@ -11,6 +11,7 @@ import { ChartPage } from "./pages/dashboard/ChartPage";
 import { TradesPage } from "./pages/dashboard/TradesPage";
 import { PropFirmPage } from "./pages/dashboard/PropFirmPage";
 import { SettingsPage } from "./pages/dashboard/SettingsPage";
+import { ProGuard } from "./components/dashboard/ProGuard";
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -44,9 +45,31 @@ export default function App() {
       >
         <Route index element={<Overview />} />
         <Route path="feed" element={<FeedPage />} />
-        <Route path="chart" element={<ChartPage />} />
+        <Route
+          path="chart"
+          element={
+            <ProGuard
+              feature="replayMode"
+              title="Replay Mode"
+              blurb="Step through historical price action candle-by-candle and watch the engine's reasoning unfold. Available on the Pro plan."
+            >
+              <ChartPage />
+            </ProGuard>
+          }
+        />
         <Route path="trades" element={<TradesPage />} />
-        <Route path="propfirm" element={<PropFirmPage />} />
+        <Route
+          path="propfirm"
+          element={
+            <ProGuard
+              feature="propFirmPanel"
+              title="Prop Firm Panel"
+              blurb="Track daily drawdown, consecutive-loss limits, halt simulation and profit-target progress against your prop firm's rules. Available on the Pro plan."
+            >
+              <PropFirmPage />
+            </ProGuard>
+          }
+        />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { HeroLiveFeed } from "../components/Marketing/HeroLiveFeed";
 
@@ -159,49 +159,20 @@ function Hero() {
             No AI guesswork. No black boxes. No surprises.
           </p>
 
-          {/* Two acquisition tracks — pick your path */}
-          <div className="mt-8 grid sm:grid-cols-2 gap-px bg-border-subtle rounded-lg overflow-hidden border border-border-subtle">
-            {/* Track 1 — Signal follower (Starter) */}
-            <div className="bg-bg-base p-5 flex flex-col">
-              <p className="text-xs uppercase tracking-widest text-text-muted font-mono">
-                I follow signals
-              </p>
-              <h3 className="font-display text-lg font-bold text-text-primary mt-2">
-                Auto-execute the trades you already follow
-              </h3>
-              <p className="text-sm text-text-secondary mt-2 flex-1">
-                Stop watching Telegram for entries. Glass Box places every signal on your account
-                the instant it fires — and shows you exactly why.
-              </p>
-              <Link
-                to="/sign-up"
-                className="mt-4 inline-block bg-brand-blue hover:bg-brand-dim text-white px-5 py-2.5 rounded-md font-medium text-sm text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue focus-visible:ring-offset-2 focus-visible:ring-offset-bg-base"
-              >
-                Auto-execute my signals &nbsp;→
-              </Link>
-              <p className="text-xs text-text-muted mt-2">Starter · from $15/mo</p>
-            </div>
-
-            {/* Track 2 — Prop firm challenger (Pro) */}
-            <div className="bg-bg-base p-5 flex flex-col">
-              <p className="text-xs uppercase tracking-widest text-text-muted font-mono">
-                I run a prop challenge
-              </p>
-              <h3 className="font-display text-lg font-bold text-text-primary mt-2">
-                Pass your challenge without breaking the rules
-              </h3>
-              <p className="text-sm text-text-secondary mt-2 flex-1">
-                Hard-coded daily loss limits, drawdown guards, and a full audit trail of every
-                decision. Built FTMO-ready, so the rules are kept for you.
-              </p>
-              <Link
-                to="/sign-up"
-                className="mt-4 inline-block border border-border-muted hover:border-border-active text-text-primary px-5 py-2.5 rounded-md font-medium text-sm text-center transition-colors"
-              >
-                Protect my challenge &nbsp;→
-              </Link>
-              <p className="text-xs text-text-muted mt-2">Pro · from $49/mo</p>
-            </div>
+          {/* Primary CTAs — full detail lives in the "Choose your path" section */}
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link
+              to="/sign-up"
+              className="inline-block bg-brand-blue hover:bg-brand-dim text-white px-5 py-2.5 rounded-md font-medium text-sm text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue focus-visible:ring-offset-2 focus-visible:ring-offset-bg-base"
+            >
+              Start free &nbsp;→
+            </Link>
+            <a
+              href="#choose-path"
+              className="inline-block border border-border-muted hover:border-border-active text-text-primary px-5 py-2.5 rounded-md font-medium text-sm text-center transition-colors"
+            >
+              Find your path
+            </a>
           </div>
 
           <div className="mt-6 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-muted">
@@ -305,6 +276,83 @@ function WhatIsGlassBox() {
             <Proof>Only enters when ALL conditions are met — no exceptions</Proof>
             <Proof>Logs every condition flag for every trade — auditable forever</Proof>
           </ul>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Choose your path — two acquisition tracks                           */
+/* ------------------------------------------------------------------ */
+
+function ChoosePath() {
+  return (
+    <section id="choose-path" className="scroll-mt-20 bg-bg-base py-24 border-t border-border-subtle">
+      <div className="max-w-screen-2xl mx-auto px-6 md:px-8">
+        <div className="text-center">
+          <p className="text-xs uppercase tracking-widest text-brand-blue font-mono">Choose Your Path</p>
+          <h2 className="font-display text-2xl md:text-3xl font-bold text-text-primary mt-3">
+            Two ways traders use Glass Box
+          </h2>
+          <p className="text-text-secondary mt-3 max-w-2xl mx-auto">
+            Whether you follow a signal channel or you're chasing a funded account, the engine
+            adapts to how you trade.
+          </p>
+        </div>
+
+        <div className="mt-12 grid md:grid-cols-2 gap-6">
+          {/* Track 1 — Signal follower (Starter) */}
+          <div className="bg-bg-surface border border-border-subtle rounded-xl p-8 flex flex-col">
+            <p className="text-xs uppercase tracking-widest text-text-muted font-mono">
+              I follow signals
+            </p>
+            <h3 className="font-display text-xl font-bold text-text-primary mt-3">
+              Auto-execute the trades you already follow
+            </h3>
+            <p className="text-sm text-text-secondary mt-3 flex-1 leading-relaxed">
+              Stop watching Telegram for entries. Glass Box places every signal on your account
+              the instant it fires — and shows you exactly why each trade was taken.
+            </p>
+            <ul className="mt-5 space-y-2 text-sm text-text-secondary">
+              <li className="flex items-start gap-2"><span className="text-bull mt-0.5">✓</span>Instant signal-to-execution on your MT5 account</li>
+              <li className="flex items-start gap-2"><span className="text-bull mt-0.5">✓</span>Full audit log you can show your provider</li>
+              <li className="flex items-start gap-2"><span className="text-bull mt-0.5">✓</span>Never miss an entry while you're at work</li>
+            </ul>
+            <Link
+              to="/sign-up"
+              className="mt-6 inline-block bg-brand-blue hover:bg-brand-dim text-white px-5 py-2.5 rounded-md font-medium text-sm text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue focus-visible:ring-offset-2 focus-visible:ring-offset-bg-base"
+            >
+              Auto-execute my signals &nbsp;→
+            </Link>
+            <p className="text-xs text-text-muted mt-3">Starter · from $15/mo</p>
+          </div>
+
+          {/* Track 2 — Prop firm challenger (Pro) */}
+          <div className="bg-bg-elevated border border-border-subtle border-l-2 border-l-brand-blue rounded-xl p-8 flex flex-col">
+            <p className="text-xs uppercase tracking-widest text-brand-blue font-mono">
+              I run a prop challenge
+            </p>
+            <h3 className="font-display text-xl font-bold text-text-primary mt-3">
+              Pass your challenge without breaking the rules
+            </h3>
+            <p className="text-sm text-text-secondary mt-3 flex-1 leading-relaxed">
+              Hard-coded daily loss limits, drawdown guards, and a full audit trail of every
+              decision. Built FTMO-ready, so the rules are kept for you — automatically.
+            </p>
+            <ul className="mt-5 space-y-2 text-sm text-text-secondary">
+              <li className="flex items-start gap-2"><span className="text-bull mt-0.5">✓</span>Daily drawdown enforced by the engine</li>
+              <li className="flex items-start gap-2"><span className="text-bull mt-0.5">✓</span>Consecutive-loss halt stops revenge trading</li>
+              <li className="flex items-start gap-2"><span className="text-bull mt-0.5">✓</span>Complete Verdict trail for every position</li>
+            </ul>
+            <Link
+              to="/sign-up"
+              className="mt-6 inline-block border border-border-muted hover:border-border-active text-text-primary px-5 py-2.5 rounded-md font-medium text-sm text-center transition-colors"
+            >
+              Protect my challenge &nbsp;→
+            </Link>
+            <p className="text-xs text-text-muted mt-3">Pro · from $49/mo</p>
+          </div>
         </div>
       </div>
     </section>
@@ -693,6 +741,166 @@ const COMMUNITY_STATS = [
   { value: "68%", label: "Average win rate across active accounts" },
 ];
 
+/* ------------------------------------------------------------------ */
+/* Testimonial marquee                                                 */
+/* ------------------------------------------------------------------ */
+
+function TestimonialCard({ t }: { t: (typeof TESTIMONIALS)[number] }) {
+  const initials = t.handle
+    .replace(/^@/, "")
+    .split(/[_\s]/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
+  return (
+    <figure className="w-[340px] shrink-0 bg-bg-surface border border-border-subtle rounded-xl p-6 flex flex-col gap-4 transition-colors hover:border-brand-blue/50">
+      <div className="flex items-center gap-3">
+        <span className="grid place-items-center h-10 w-10 rounded-full bg-brand-blue/15 text-brand-blue font-mono text-sm font-semibold border border-brand-blue/30 shrink-0">
+          {initials}
+        </span>
+        <div className="min-w-0">
+          <figcaption className="text-sm font-medium text-text-primary font-mono truncate">
+            {t.handle}
+          </figcaption>
+          <p className="text-xs text-text-muted truncate">{t.context}</p>
+        </div>
+        <span
+          className={`ml-auto text-[10px] px-2 py-0.5 rounded-full font-mono border shrink-0 ${
+            t.tier === "Pro"
+              ? "border-brand-blue text-brand-blue"
+              : "border-border-muted text-text-muted"
+          }`}
+        >
+          {t.tier}
+        </span>
+      </div>
+      <blockquote className="text-sm text-text-secondary leading-relaxed">
+        <span className="text-brand-blue mr-0.5">"</span>
+        {t.quote}
+        <span className="text-brand-blue ml-0.5">"</span>
+      </blockquote>
+    </figure>
+  );
+}
+
+function MarqueeRow({
+  items,
+  reverse = false,
+}: {
+  items: typeof TESTIMONIALS;
+  reverse?: boolean;
+}) {
+  // Duplicate the track so the translateX loop appears seamless.
+  const track = [...items, ...items];
+  return (
+    <div className="group flex overflow-hidden" aria-hidden={reverse}>
+      <div
+        className="flex gap-6 pr-6 shrink-0 will-change-transform group-hover:[animation-play-state:paused] motion-reduce:animate-none"
+        style={{
+          animation: `${reverse ? "marquee-rtl" : "marquee-ltr"} 40s linear infinite`,
+        }}
+      >
+        {track.map((t, i) => (
+          <TestimonialCard key={i} t={t} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TestimonialMarquee() {
+  const half = Math.ceil(TESTIMONIALS.length / 2);
+  const rowA = TESTIMONIALS;
+  const rowB = [...TESTIMONIALS.slice(half), ...TESTIMONIALS.slice(0, half)];
+  return (
+    <div className="relative mt-12 -mx-6 md:-mx-8">
+      <style>{`
+        @keyframes marquee-ltr { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+        @keyframes marquee-rtl { from { transform: translateX(-50%); } to { transform: translateX(0); } }
+      `}</style>
+      {/* edge fade masks in app background colour */}
+      <div className="pointer-events-none absolute inset-y-0 left-0 w-16 md:w-32 z-10 bg-gradient-to-r from-bg-base to-transparent" />
+      <div className="pointer-events-none absolute inset-y-0 right-0 w-16 md:w-32 z-10 bg-gradient-to-l from-bg-base to-transparent" />
+      <div className="flex flex-col gap-6 px-6 md:px-8">
+        <MarqueeRow items={rowA} />
+        <MarqueeRow items={rowB} reverse />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Animates a number counting up from 0 to the target parsed out of `value`
+ * (e.g. "12,000+", "68%", "340+"). Surrounding prefix/suffix text is
+ * preserved and the count starts when the element scrolls into view.
+ */
+function CountUp({ value, className = "" }: { value: string; className?: string }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const [display, setDisplay] = useState(value);
+
+  useEffect(() => {
+    const match = value.match(/([^\d]*)([\d,]+)(.*)/);
+    if (!match) {
+      setDisplay(value);
+      return;
+    }
+    const [, prefix, numStr, suffix] = match;
+    const target = parseInt(numStr.replace(/,/g, ""), 10);
+    const hasComma = numStr.includes(",");
+    const format = (n: number) =>
+      `${prefix}${hasComma ? n.toLocaleString("en-US") : n}${suffix}`;
+
+    setDisplay(format(0));
+
+    const el = ref.current;
+    if (!el) return;
+
+    let raf = 0;
+    let started = false;
+    const duration = 1600;
+
+    const run = () => {
+      const start = performance.now();
+      const tick = (now: number) => {
+        const t = Math.min((now - start) / duration, 1);
+        // easeOutCubic
+        const eased = 1 - Math.pow(1 - t, 3);
+        setDisplay(format(Math.round(eased * target)));
+        if (t < 1) raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+    };
+
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      setDisplay(format(target));
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !started) {
+          started = true;
+          run();
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.4 }
+    );
+    observer.observe(el);
+
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(raf);
+    };
+  }, [value]);
+
+  return (
+    <p ref={ref} className={className}>
+      {display}
+    </p>
+  );
+}
+
 function SocialProof() {
   return (
     <section className="bg-bg-base py-24 border-t border-border-subtle">
@@ -711,39 +919,17 @@ function SocialProof() {
         <div className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-px bg-border-subtle rounded-lg overflow-hidden border border-border-subtle">
           {COMMUNITY_STATS.map((s, i) => (
             <div key={i} className="bg-bg-surface p-6 text-center">
-              <p className="font-display text-3xl font-bold text-text-primary">{s.value}</p>
+              <CountUp
+                value={s.value}
+                className="font-display text-3xl font-bold text-text-primary"
+              />
               <p className="text-xs text-text-muted mt-1 leading-snug">{s.label}</p>
             </div>
           ))}
         </div>
 
-        {/* Testimonial cards */}
-        <div className="mt-10 grid md:grid-cols-2 gap-6">
-          {TESTIMONIALS.map((t, i) => (
-            <div key={i} className="bg-bg-surface border border-border-subtle rounded-lg p-6 flex flex-col gap-4">
-              <p className="text-sm text-text-secondary leading-relaxed">
-                <span className="text-brand-blue mr-1">"</span>
-                {t.quote}
-                <span className="text-brand-blue ml-1">"</span>
-              </p>
-              <div className="flex items-center justify-between mt-auto pt-4 border-t border-border-subtle">
-                <div>
-                  <p className="text-sm font-medium text-text-primary font-mono">{t.handle}</p>
-                  <p className="text-xs text-text-muted mt-0.5">{t.context}</p>
-                </div>
-                <span
-                  className={`text-xs px-2.5 py-1 rounded-full font-mono border ${
-                    t.tier === "Pro"
-                      ? "border-brand-blue text-brand-blue"
-                      : "border-border-muted text-text-muted"
-                  }`}
-                >
-                  {t.tier}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
+        {/* Testimonial marquee */}
+        <TestimonialMarquee />
 
         <p className="text-center text-xs text-text-muted mt-8">
           Early access community · Nigeria, UK, Canada, South Africa
@@ -924,6 +1110,7 @@ export function Landing() {
       <Hero />
       <TrustBar />
       <WhatIsGlassBox />
+      <ChoosePath />
       <HowItWorks />
       <GlassBoxFeature />
       <PropFirmSection />

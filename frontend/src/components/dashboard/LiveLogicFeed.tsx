@@ -54,11 +54,17 @@ function describe(e: TradeEvent): { kind: LineKind; text: string } {
 }
 
 type Chunk = { k: "text"; v: string } | { k: "term"; v: string; def: string };
+// Ordered longest-phrase-first so multi-word terms are matched before their
+// abbreviations (e.g. "Fair Value Gap" before "FVG").
 const FEED_TERMS: [string, string][] = [
+  ["Market Structure Shift", ICT_DEFS.MSS],
+  ["Break of Structure", ICT_DEFS.BOS],
   ["Fair Value Gap", ICT_DEFS.FVG],
+  ["Order Block", ICT_DEFS.OB],
   ["MSS", ICT_DEFS.MSS],
   ["FVG", ICT_DEFS.FVG],
   ["BOS", ICT_DEFS.BOS],
+  ["OB", ICT_DEFS.OB],
 ];
 
 /** Split a feed line string into text + glossary-term chunks for inline tooltips. */
