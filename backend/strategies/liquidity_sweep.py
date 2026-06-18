@@ -37,6 +37,7 @@ class LiquiditySweep(Strategy):
         self.risk_amount = self.parameters.get("risk_amount", 25)
         self.stop_loss_distance = None
         self.asset = Asset(symbol=self.symbol, asset_type="forex")
+        self._logged_market_closed = False
 
         # Breakeven & Drawdown Protection
         self.entry_prices = {}
@@ -55,6 +56,7 @@ class LiquiditySweep(Strategy):
         self.mss_swing_high = None
         self.stop_loss_distance = None
         self.entry_prices = {}
+        self._logged_market_closed = False
 
     def on_trading_iteration(self):
         dt = self.get_datetime()
@@ -82,7 +84,9 @@ class LiquiditySweep(Strategy):
                 self.last_range_date = dt.date()
                 logger.info(f"--- {current_date} - {current_time} From 12:00 - 6:59am: High={self.high}, Low={self.low} ---")
             else:
-                logger.warning(f"--- {current_date} Market is Closed (No Data) ---")
+                if not self._logged_market_closed:
+                    logger.warning(f"--- {current_date} Market is Closed (No Data) ---")
+                    self._logged_market_closed = True
                 return
 
         if self.high is not None and self.low is not None and not self.traded_today:
