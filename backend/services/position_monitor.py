@@ -26,6 +26,7 @@ from typing import Optional
 import MetaTrader5 as mt5
 
 from ..config.logger import setup_logger
+from .telegram_notifier import notify_drawdown_halt
 
 logger = setup_logger(__name__)
 
@@ -309,6 +310,14 @@ class PositionMonitor(threading.Thread):
         self.halt_flag.halt()
         self._write_drawdown_halt_event(current, day_start, loss_pct)
         self._flip_account_status("halted", f"Daily drawdown {loss_pct:.2f}% exceeded limit")
+        notify_drawdown_halt(
+            account_number=self.config.account_number,
+            account_id=self.config.account_id,
+            day_start=day_start,
+            current=current,
+            loss_pct=loss_pct,
+            limit_pct=self.config.max_daily_drawdown_pct * 100,
+        )
 
     def _write_drawdown_halt_event(
         self, current: float, day_start: float, loss_pct: float
