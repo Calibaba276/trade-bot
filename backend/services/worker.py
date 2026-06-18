@@ -20,6 +20,12 @@ from backend.services.position_monitor import (
     TrackedPosition,
 )
 from backend.services.vault import vault
+from backend.services.telegram_notifier import (
+    notify_order_filled,
+    notify_order_rejected,
+    notify_worker_online,
+    notify_worker_offline,
+)
 
 logger = setup_logger("workers")
 EXIT_CONFIG_ERROR = 78
@@ -483,6 +489,17 @@ def _execute_signal(
             f"[EXECUTED] signal_id={signal_id} status={status} "
             f"symbol={symbol} lots={lot_size} latency={latency_ms}ms"
         )
+        notify_order_filled(
+            symbol=symbol,
+            direction=direction,
+            lot_size=lot_size,
+            fill_price=float(result.price or entry_price),
+            sl=float(stop_loss),
+            tp=float(take_profit) if take_profit not in (None, "") else 0.0,
+            broker_order_id=str(result.order or ""),
+            latency_ms=latency_ms,
+            signal_id=signal_id,
+        )
         ticket = int(result.order or 0)
         if status == "filled" and ticket > 0:
             side = "long" if direction == "buy" else "short"
@@ -515,6 +532,13 @@ def _execute_signal(
             "latency_ms": latency_ms,
         })
         logger.error(f"[REJECTED] signal_id={signal_id} retcode={code} error={err}")
+        notify_order_rejected(
+            symbol=symbol,
+            direction=direction,
+            retcode=code,
+            error=str(err),
+            signal_id=signal_id,
+        )
 
 
 def _on_signal_received(
@@ -667,6 +691,11 @@ def main():
         # --- Mark account as ready in Supabase ---
         _set_account_status(account_id, "ready", "Worker online")
         worker_online = True
+        notify_worker_online(
+            account_number=resolved["login"],
+            server=resolved["server"],
+            account_id=account_id,
+        )
 
         # --- Start heartbeat background thread ---
         stop_event = threading.Event()
@@ -777,12 +806,22 @@ def main():
         detail = f"Startup configuration error: {exc}"
         _set_account_status(account_id, "error", detail[:500])
         logger.exception(f"[WORKER FATAL] account={account_label} {detail}")
+        notify_worker_offline(
+            account_number=int(account_label) if account_label.isdigit() else 0,
+            reason=detail[:200],
+            account_id=account_id,
+        )
 
     except Exception as exc:
         exit_code = EXIT_RUNTIME_ERROR
         detail = f"Worker crashed: {type(exc).__name__}: {exc}"
         _set_account_status(account_id, "error", detail[:500])
         logger.exception(f"[WORKER FATAL] account={account_label} {detail}")
+        notify_worker_offline(
+            account_number=int(account_label) if account_label.isdigit() else 0,
+            reason=detail[:200],
+            account_id=account_id,
+        )
 
     finally:
         # --- Clean shutdown ---
@@ -795,6 +834,11 @@ def main():
             monitor.join(timeout=5)
         if worker_online and exit_code == 0:
             _set_account_status(account_id, "provisioned", "Worker offline")
+            notify_worker_offline(
+                account_number=int(account_label) if account_label.isdigit() else 0,
+                reason="Clean shutdown",
+                account_id=account_id,
+            )
         mt5.shutdown()
         logger.info("MT5 shutdown. Worker exited.")
 
