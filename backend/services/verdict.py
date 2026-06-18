@@ -9,6 +9,7 @@ import redis
 from backend.config.logger import setup_logger
 from backend.config.supaclient import supabase
 from backend.config.secrets import get_azure_secret
+from backend.services.telegram_notifier import notify_signal
 
 logger = setup_logger(__name__)
 
@@ -76,6 +77,15 @@ def save_verdict(verdict: Verdict):
             f"[VERDICT SAVED] signal_id={verdict.signal_id} "
             f"symbol={verdict.symbol} direction={verdict.direction} "
             f"scenario={verdict.scenario} execute_at={verdict.execute_at}"
+        )
+        notify_signal(
+            symbol=verdict.symbol,
+            direction=verdict.direction,
+            scenario=verdict.scenario,
+            entry=verdict.entry_price,
+            sl=verdict.stop_loss,
+            tp=verdict.take_profit,
+            signal_id=verdict.signal_id,
         )
         return payload
     except Exception as e:
