@@ -17,9 +17,16 @@ from ..config.logger import setup_logger
 logger = setup_logger(__name__)
 
 
-class ICTModel(Strategy):
+class XAUUSDModel(Strategy):
     """
-    ICT Model Coded as Observed... HOPE IT WORKS!!!
+    ICT Model for XAUUSD (Gold) — same institutional order-flow laws as the
+    EURUSD model (liquidity sweep -> MSS -> FVG -> OTE), tuned for Gold's scale.
+
+    Gold trades in USD/oz, not pips, so two parameters differ from forex:
+      * `buffer`        — stop padding in dollars (~$0.50) instead of 0.0002.
+      * `min_fvg_size`  — minimum fair-value-gap width in dollars (~$0.50) to
+                          discard the tiny noise gaps Gold's aggressive wicks
+                          leave behind, which would otherwise trigger junk entries.
     """
 
     def initialize(self):
@@ -30,7 +37,9 @@ class ICTModel(Strategy):
         self.rr_ratio = float(self.parameters.get("rr_ratio", 3.0) or 3.0)
         self.breakeven_buffer_ticks = int(self.parameters.get("breakeven_buffer_ticks", 10) or 10)
         self.asset = Asset(symbol=self.symbol, asset_type="forex")
-        self.buffer = 0.0002
+        # Gold-specific: stop buffer and FVG filter are in dollars, not pips.
+        self.buffer = float(self.parameters.get("buffer", 0.50) or 0.50)
+        self.min_fvg_size = float(self.parameters.get("min_fvg_size", 0.50) or 0.50)
 
         # Higher-timeframe directional bias filter. Only setups aligned with the
         # daily trend are taken (bull bias -> longs only, bear bias -> shorts only).
@@ -356,7 +365,7 @@ class ICTModel(Strategy):
                     c1 = float(df.iloc[-3]["low"])
                     c2 = float(df.iloc[-1]["high"])
 
-                    if c1 > c2:
+                    if c1 > c2 and (c1 - c2) >= self.min_fvg_size:
                         self.fvg_top = c1
                         self.fvg_bottom = c2
 
@@ -448,7 +457,7 @@ class ICTModel(Strategy):
                     c1 = float(df.iloc[-3]["high"])
                     c2 = float(df.iloc[-1]["low"])
 
-                    if c1 < c2:
+                    if c1 < c2 and (c2 - c1) >= self.min_fvg_size:
                         self.fvg_top = c2
                         self.fvg_bottom = c1
 
@@ -753,7 +762,7 @@ class ICTModel(Strategy):
                             c1 = float(df.iloc[-3]["low"])
                             c2 = float(df.iloc[-1]["high"])
 
-                            if c1 > c2:
+                            if c1 > c2 and (c1 - c2) >= self.min_fvg_size:
                                 self.fvg_top = c1
                                 self.fvg_bottom = c2
 
@@ -817,7 +826,7 @@ class ICTModel(Strategy):
                                 c1 = float(df.iloc[-3]["high"])
                                 c2 = float(df.iloc[-1]["low"])
 
-                                if c2 > c1:  # Bullish FVG Found
+                                if c2 > c1 and (c2 - c1) >= self.min_fvg_size:  # Bullish FVG Found
                                     self.fvg_top = c2
                                     self.fvg_bottom = c1
 

@@ -21,8 +21,11 @@ pip install -r requirements.txt
 # Authenticate with Azure (required for all secrets)
 az login
 
-# Run ICT strategy (backtest or live, determined by ISBACKTESTING vault secret)
-python -m backend.runners.ict
+# Run EURUSD ICT strategy (backtest or live, determined by ISBACKTESTING vault secret)
+python -m backend.runners.eurusd
+
+# Run XAUUSD (Gold) ICT strategy (backtest or live)
+python -m backend.runners.xauusd
 
 # Run LiquiditySweep live (MT5)
 python -m backend.runners.liquidity_sweep
@@ -51,14 +54,15 @@ The codebase is organized as a three-layer system with a multi-account execution
 All strategies inherit from Lumibot's `Strategy` base class. They are pure trading logic:
 
 - `liquidity_sweep.py`: Detects Asian session (01:00–07:00 NGT) high/low, waits for a price sweep, then enters on the reversal swing break. Risk: $25/trade, RR: 3.0.
-- `ict_model.py`: 8-phase ICT institutional order flow. London session (09:00–11:00 NGT) and NY session (13:00–17:00 NGT). Uses fair value gaps and market structure shifts. Risk: $500/trade, RR: 3.0.
+- `eurusd_model.py`: 8-phase ICT institutional order flow. London session (09:00–11:00 NGT) and NY session (13:00–17:00 NGT). Uses fair value gaps and market structure shifts. Risk: $500/trade, RR: 3.0.
+- `xauusd_model.py`: Gold (XAUUSD) variant of the ICT order-flow model. Same sweep → MSS → FVG → OTE structure as `eurusd_model.py`, but tuned for Gold's dollar-denominated scale: stop `buffer` and `min_fvg_size` are in USD (~$0.50) rather than pips, so noise FVGs are filtered out. Symbol: `C:XAUUSD` (backtest) / `XAUUSDm` (live).
 - `common.py`: Shared `calculate_quantity()` (risk-based position sizing), `_calculate_take_profit()`, and `_manage_risk_controls()`.
 
 **Position sizing** (always use `calculate_quantity()`):
 - Forex: `risk_amount / sl_distance / 100_000`, floored to nearest 0.01 lot
 - Stocks: `risk_amount / sl_distance`, floored to whole units
 
-**ICTModel uses the Verdict pattern** — it doesn't submit orders directly. Instead it calls `save_verdict()` (Supabase) and `publish_verdict()` (Redis), and workers execute.
+**EURUSDModel uses the Verdict pattern** — it doesn't submit orders directly. Instead it calls `save_verdict()` (Supabase) and `publish_verdict()` (Redis), and workers execute.
 
 ### Layer 2 — Execution (`backend/runners/`, `backend/brokers/`)
 
@@ -109,7 +113,7 @@ No `.env` file is used in production. Locally, run `az login` — `DefaultAzureC
 3. Use `calculate_quantity()` from `common.py` for position sizing
 4. Add a runner in `backend/runners/` following the existing backtest/live pattern
 
-### Verdict / worker flow (ICTModel)
+### Verdict / worker flow (EURUSDModel)
 
 ```
 Strategy generates Verdict

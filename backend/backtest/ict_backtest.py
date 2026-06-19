@@ -1,8 +1,8 @@
 """
-Standalone backtest harness for the ICT Model strategy (backend/strategies/ict_model.py).
+Standalone backtest harness for the ICT Model strategy (backend/strategies/eurusd_model.py).
 
 This is a faithful, dependency-light re-implementation of the decision logic in
-ICTModel.on_trading_iteration. It does NOT import lumibot / supabase / MT5 (none of
+EURUSDModel.on_trading_iteration. It does NOT import lumibot / supabase / MT5 (none of
 which can run in this environment); instead it drives the exact same branching over
 1-minute bars and then resolves each emitted signal against future price action.
 
@@ -33,7 +33,7 @@ from datetime import time, date
 
 import pandas as pd
 
-# ── Parameters (mirror backend/runners/ict.py production config) ──────────────
+# ── Parameters (mirror backend/runners/eurusd.py production config) ──────────────
 RR_RATIO = 3.0
 RISK = 500.0           # $ risked per trade
 BUFFER = 0.0002        # self.buffer in the strategy
