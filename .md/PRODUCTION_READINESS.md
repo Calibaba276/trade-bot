@@ -75,12 +75,15 @@ DM five ICT signal providers on Telegram. Not to sell. To ask: "I'm building a t
 
 ### Recommended Pricing Structure
 
+No free tier. A free tier would let people consume audit links and trade logs without converting — killing the upgrade incentive entirely.
+
 | Tier | Price | Accounts | Core value |
 |---|---|---|---|
-| **Observer** | Free | 0 (view only) | Read-only dashboard + shareable audit link — enables B2B2C signal provider motion |
-| **Starter** | $15/mo | 1 | Auto-execution on Starter markets + full audit log + shareable link |
+| **Starter** | $15/mo | 1 | Auto-execution on Starter markets + full audit log + shareable audit link |
 | **Pro** | $49/mo | Up to 10 | Everything above + Replay Mode + full Prop Firm Panel + US Indices |
 | **Enterprise** | Custom | 50+ | Dedicated VM, SLA, custom risk config |
+
+**The shareable audit link is a Starter feature, not a free one.** The generated link is a public read-only URL — anyone can *view* it without an account. But only a paying Starter user can *generate* it. Signal providers pay $15/mo, post their audit link to Telegram, followers see the product, followers who want their own execution pay $15/mo. The monetisation gate is on generating the link, not viewing it.
 
 **Why $15 not $20 for Starter:** Nigerian impulse-buy threshold is $10–$15. At $15, you stay below the deliberation line. The target Starter user is coming from free Telegram signals — the gap from $0 to $15 is smaller than $0 to $20.
 
@@ -96,19 +99,20 @@ Cap at 50–100 users to create urgency. These early users become the word-of-mo
 
 ### Pricing Page: What Each Tier Includes
 
-| Feature | Observer (Free) | Starter ($15/mo) | Pro ($49/mo) |
-|---|---|---|---|
-| Accounts | View only | 1 | Up to 10 |
-| Auto-execution | — | ✓ | ✓ |
-| Live Logic Feed | ✓ (view) | ✓ | ✓ |
-| Shareable audit link | ✓ | ✓ | ✓ |
-| Trade history + CSV | ✓ | ✓ | ✓ |
-| Replay Mode | — | — | ✓ |
-| Prop Firm Panel (full with profit target) | — | Basic | ✓ |
-| Live ICT condition feed | — | — | ✓ |
-| Multi-account execution | — | — | ✓ |
-| US Indices (NAS100, US30, SPX500) | — | — | ✓ |
-| Crypto (BTC, ETH) | — | — | Coming Soon |
+| Feature | Starter ($15/mo) | Pro ($49/mo) |
+|---|---|---|
+| Accounts | 1 | Up to 10 |
+| Auto-execution | ✓ | ✓ |
+| Live Logic Feed | ✓ | ✓ |
+| Shareable audit link (generates public read-only URL) | ✓ | ✓ |
+| Trade history + CSV | ✓ | ✓ |
+| Forex markets (EURUSD, GBPUSD, XAUUSD, USDJPY…) | ✓ | ✓ |
+| Replay Mode | — | ✓ |
+| Prop Firm Panel (full with profit target) | Basic | ✓ |
+| Live ICT condition feed | — | ✓ |
+| Multi-account execution | — | ✓ |
+| US Indices (NAS100, US30, SPX500) | — | ✓ |
+| Crypto (BTC, ETH) | — | Coming Soon |
 
 ---
 
@@ -158,7 +162,7 @@ Cap at 50–100 users to create urgency. These early users become the word-of-mo
 - No notification system for engine halt events
 
 **New concepts to add:**
-1. Observer free tier (enables B2B2C motion)
+1. Shareable audit link (Starter feature — generates a public read-only URL, no account needed to view)
 2. Onboarding checklist for new users
 3. Engine halt banner (full-width, impossible to miss)
 4. Profit target tracker in PropFirmPanel

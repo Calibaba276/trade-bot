@@ -287,14 +287,15 @@ FTMO challenge fees: €155–€1,080 depending on account size. The5ers: $39�
 
 ### Recommended Pricing Structure
 
+No free tier. A free tier would let people consume audit links and trade logs without ever paying — removing the incentive to convert.
+
 | Tier | Price | Who it's for |
 |---|---|---|
-| **Observer** | Free | Signal providers + curious followers |
-| **Starter** | $15/mo | Telegram followers who want auto-execution |
+| **Starter** | $15/mo | Telegram signal followers + providers wanting auto-execution and audit links |
 | **Pro** | $49/mo | Prop firm challenge candidates |
 | **Enterprise** | Custom | 50+ accounts, dedicated VM |
 
-**Observer (Free):** Read-only dashboard, full trade history/audit log, shareable audit link. Enables the B2B2C motion — providers share their Glass Box link with their Telegram channel. Followers see the product for free and convert to Starter.
+**The shareable audit link is a Starter feature, not a free one.** The link itself generates a public read-only URL — anyone can *view* it without an account. But only a paying Starter user can *generate* one. This preserves the B2B2C motion (provider shares link → follower sees the product) while ensuring the provider must be a paying customer. Signal followers who want their own execution and their own audit links must pay Starter.
 
 **Why $15 not $20:** Nigerian impulse threshold is $10–15. At $15 you stay below the deliberation line. The target Starter user is coming from free Telegram signals — the jump from $0 to $15 is smaller than $0 to $20.
 
@@ -310,19 +311,20 @@ Cap at 50–100 users to create urgency. The trading tool market expects and res
 
 ### What Each Tier Includes
 
-| | Observer (Free) | Starter ($15/mo) | Pro ($49/mo) |
-|---|---|---|---|
-| Accounts | View only | 1 | Up to 10 |
-| Auto-execution | — | ✓ | ✓ |
-| Live Logic Feed | ✓ (view) | ✓ | ✓ |
-| Shareable audit link | ✓ | ✓ | ✓ |
-| Trade history + CSV | ✓ | ✓ | ✓ |
-| Replay Mode | — | — | ✓ |
-| Prop Firm Panel (full) | — | Basic | ✓ |
-| Live ICT condition feed | — | — | ✓ |
-| Multi-account execution | — | — | ✓ |
-| US Indices | — | — | ✓ |
-| Crypto | — | — | Coming Soon |
+| | Starter ($15/mo) | Pro ($49/mo) |
+|---|---|---|
+| Accounts | 1 | Up to 10 |
+| Auto-execution | ✓ | ✓ |
+| Live Logic Feed | ✓ | ✓ |
+| Shareable audit link (generates public read-only URL) | ✓ | ✓ |
+| Trade history + CSV | ✓ | ✓ |
+| Forex markets (EURUSD, GBPUSD, XAUUSD, USDJPY…) | ✓ | ✓ |
+| Replay Mode | — | ✓ |
+| Prop Firm Panel (full with profit target) | Basic | ✓ |
+| Live ICT condition feed | — | ✓ |
+| Multi-account execution | — | ✓ |
+| US Indices (NAS100, US30, SPX500) | — | ✓ |
+| Crypto (BTC, ETH) | — | Coming Soon |
 
 ---
 
