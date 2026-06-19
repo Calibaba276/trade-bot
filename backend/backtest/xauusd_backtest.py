@@ -41,13 +41,11 @@ MIN_FVG_SIZE = 0.50    # discard FVGs narrower than this ($) — Gold's noisy wi
 MAX_HOLD_MIN = 3 * 24 * 60  # cap how long an open position is tracked (3 days)
 HTF_BIAS_PERIOD = 20   # daily SMA lookback for the directional bias filter
 
-# ── Trade-reducing quality filters (mirror XAUUSDModel commit f8b54b0) ──────────
-BIAS_EDGE = 0.30       # daily close must land in the top/bottom 30% of prev range;
-                       #   a close in the middle 40% => no bias => no trades that day
-MIN_PROFIT_TARGET = 3.00  # skip any setup whose TP distance is < $3.00/oz from entry
-# NOTE: the live strategy's _spread_ok filter ($0.35/oz live ask-bid) cannot be
-# replicated here — the historical dataset is mid-price only, with no bid/ask.
-# Its real-world drag is captured instead by the cost-sensitivity table below.
+# Trade selection: the blanket quality filters (top/bottom-30% bias, $3 min-TP)
+# are removed — bias reverts to the canonical close-vs-midpoint rule. Instead we
+# simply drop the London session entirely (it was the consistent net loser) and
+# trade NY only.
+TRADE_LONDON = False   # set True to re-enable the 09:00-11:00 London session
 
 DATA_ROOT = os.path.join(os.path.dirname(__file__), "..", "..", "_fxdata")
 
@@ -146,26 +144,12 @@ class Sim:
         # ICT daily bias: previous completed daily candle's close vs its range
         # midpoint. shift(1) => yesterday's candle decides today's bias (no
         # look-ahead). bull if close >= midpoint else bear.
-        # Stronger bias (commit f8b54b0): close must land in the top 30% of the
-        # prev daily range -> bull, bottom 30% -> bear, middle 40% -> None (no
-        # trades). Kills choppy/indecisive days that bleed fees with no real move.
+        # Canonical ICT daily bias: previous completed daily candle's close vs its
+        # range midpoint. shift(1) => yesterday decides today (no look-ahead).
         daily = df.resample("1D").agg(high=("high", "max"), low=("low", "min"),
                                       close=("close", "last")).dropna()
-        rng = (daily["high"] - daily["low"]).replace(0, pd.NA)
-        upper = daily["low"] + rng * (1.0 - BIAS_EDGE)
-        lower = daily["low"] + rng * BIAS_EDGE
-        def _bias(close, up, lo):
-            if pd.isna(up) or pd.isna(lo):
-                return None
-            if close >= up:
-                return "bull"
-            if close <= lo:
-                return "bear"
-            return None
-        bias_today = pd.Series(
-            [_bias(c, u, l) for c, u, l in zip(daily["close"], upper, lower)],
-            index=daily.index,
-        )
+        mid = (daily["high"] + daily["low"]) / 2.0
+        bias_today = (daily["close"] >= mid).map({True: "bull", False: "bear"})
         bias_prev = bias_today.shift(1)
         self.bias_for_date = {ts.date(): v for ts, v in bias_prev.items()}
 
@@ -184,10 +168,6 @@ class Sim:
         argument is accepted for call-site compatibility but unused here)."""
         tp_calc = calc_tp(entry, sl, direction, RR_RATIO)
         if tp_calc is None:
-            return False
-        # Min-TP filter (commit f8b54b0): reject setups whose reward is too small
-        # to clear the spread — TP must be at least MIN_PROFIT_TARGET $/oz away.
-        if abs(tp_calc - entry) < MIN_PROFIT_TARGET:
             return False
         self.signals.append(Signal(dt=dt, direction=direction, entry=float(entry),
                                    sl=float(sl), tp=float(tp_calc), scenario=scenario,
@@ -229,6 +209,8 @@ class Sim:
             return
 
         # ── LONDON 09:00-11:00 ────────────────────────────────────────────────
+        # State (sweeps / london range) is always tracked because NY scenarios
+        # depend on it; only the London *entries* are gated by TRADE_LONDON.
         if time(9, 0) <= current_time < time(11, 0) and not s.traded_london:
             if s.london_low is None or last_price < s.london_low:
                 s.london_low = last_price
@@ -269,7 +251,7 @@ class Sim:
                     return
 
             # bearish execution
-            if s.bearish_fvg_confirmed and s.highest_sweep_point is not None and self._bias_allows("sell"):
+            if TRADE_LONDON and s.bearish_fvg_confirmed and s.highest_sweep_point is not None and self._bias_allows("sell"):
                 entry = s.fvg_bottom
                 sl = s.highest_sweep_point + BUFFER
                 if self._emit(dt, "sell", entry, sl, s.pdl, "london_bearish"):
@@ -307,7 +289,7 @@ class Sim:
                     return
 
             # bullish execution (elif as in source)
-            elif s.bullish_fvg_confirmed and s.lowest_sweep_point is not None and self._bias_allows("buy"):
+            elif TRADE_LONDON and s.bullish_fvg_confirmed and s.lowest_sweep_point is not None and self._bias_allows("buy"):
                 entry = s.fvg_top
                 sl = s.lowest_sweep_point - BUFFER
                 if self._emit(dt, "buy", entry, sl, s.pdh, "london_bullish"):
