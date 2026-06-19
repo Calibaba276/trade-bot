@@ -27,6 +27,14 @@ class XAUUSDModel(Strategy):
       * `min_fvg_size`  — minimum fair-value-gap width in dollars (~$0.50) to
                           discard the tiny noise gaps Gold's aggressive wicks
                           leave behind, which would otherwise trigger junk entries.
+
+    Three quality filters are layered on top to protect profit from spreads:
+      * Stronger bias   — daily close must be in the top/bottom 30% of range
+                          (not just above/below midpoint) before a bias is set.
+      * Spread filter   — entry is skipped when the live spread exceeds
+                          `max_spread` dollars (default $0.35/oz).
+      * Min TP filter   — entry is skipped when the calculated TP distance is
+                          less than `min_profit_target` dollars (default $3.00).
     """
 
     def initialize(self):
@@ -40,16 +48,14 @@ class XAUUSDModel(Strategy):
         # Gold-specific: stop buffer and FVG filter are in dollars, not pips.
         self.buffer = float(self.parameters.get("buffer", 0.50) or 0.50)
         self.min_fvg_size = float(self.parameters.get("min_fvg_size", 0.50) or 0.50)
+        # Quality filters: spread cap and minimum TP distance (both in USD/oz).
+        self.max_spread = float(self.parameters.get("max_spread", 0.35) or 0.35)
+        self.min_profit_target = float(self.parameters.get("min_profit_target", 3.00) or 3.00)
 
         # Higher-timeframe directional bias filter. Only setups aligned with the
         # daily trend are taken (bull bias -> longs only, bear bias -> shorts only).
         self.htf_bias_period = int(self.parameters.get("htf_bias_period", 20) or 20)
         self.daily_bias = None  # "bull" | "bear" | None, recomputed each day
-
-        # Backtest finding: London entries (09:00-11:00) are a consistent net
-        # loser on Gold — the edge lives entirely in the NY session. Set to True
-        # only if you want to re-enable London for testing.
-        self.trade_london = bool(self.parameters.get("trade_london", False))
 
         self.traded_london = False
         self.traded_ny = False
@@ -185,17 +191,20 @@ class XAUUSDModel(Strategy):
     # ──────────────────────────────────────────────────────────────────────────
 
     def _compute_daily_bias(self, current_date):
-        """ICT daily bias from the previous completed daily candle (draw on
-        liquidity proxy): bullish if it closed in the upper half of its range
-        (closing above the midpoint => buyside is the likely draw), else bearish.
-        Only the side aligned with the bias is traded."""
+        """ICT daily bias from the previous completed daily candle.
+
+        Requires the close to be in the top 30% (bull) or bottom 30% (bear)
+        of the day's range. A close in the middle 40% means the market has no
+        clear institutional draw — no bias is set and no trades fire that day.
+        This is tighter than the EURUSD model's midpoint check and cuts choppy,
+        low-conviction days that bleed spread fees without a real directional move.
+        """
         try:
             ddf = self.get_historical_prices(self.asset, 5, "day")
         except Exception:
             return None
         if ddf is None or ddf.empty or "close" not in ddf.columns:
             return None
-        # use the last daily candle strictly before today (no look-ahead)
         try:
             prev = ddf[ddf.index.date < current_date]
         except Exception:
@@ -206,8 +215,17 @@ class XAUUSDModel(Strategy):
             return None
         row = prev.iloc[-1]
         hi, lo, close = float(row["high"]), float(row["low"]), float(row["close"])
-        mid = (hi + lo) / 2.0
-        return "bull" if close >= mid else "bear"
+        day_range = hi - lo
+        if day_range <= 0:
+            return None
+        # Close in top 30% → institutions drew price to buy-side → bias bull.
+        # Close in bottom 30% → draw to sell-side → bias bear.
+        # Middle 40% → indecisive day, sit out.
+        if close >= lo + day_range * 0.70:
+            return "bull"
+        elif close <= lo + day_range * 0.30:
+            return "bear"
+        return None
 
     def _bias_allows(self, direction):
         """True only when the trade direction agrees with the daily bias."""
@@ -225,6 +243,36 @@ class XAUUSDModel(Strategy):
         if df is None or df.empty:
             return None, None
         return float(df.iloc[-1]["high"]), float(df.iloc[-1]["low"])
+
+    def _spread_ok(self, current_time) -> bool:
+        """Return False and log a warning when the live spread exceeds max_spread.
+        Gold spreads spike during news and thin sessions — skipping those entries
+        prevents paying an outsized portion of the TP in fees on entry alone."""
+        try:
+            ask = self.get_last_price(self.asset, quote="ask")
+            bid = self.get_last_price(self.asset, quote="bid")
+            if ask is None or bid is None:
+                return True  # can't measure → don't block
+            spread = ask - bid
+            if spread > self.max_spread:
+                logger.warning(
+                    f" --- {current_time} [SPREAD FILTER] Spread ${spread:.2f} > max ${self.max_spread:.2f} — trade skipped ---"
+                )
+                return False
+        except Exception:
+            return True  # graceful fallback: don't block if broker API fails
+        return True
+
+    def _tp_ok(self, entry_price: float, tp: float, current_time) -> bool:
+        """Return False when the TP distance is below min_profit_target dollars.
+        Ensures the reward is always large enough to justify the spread cost."""
+        distance = abs(tp - entry_price)
+        if distance < self.min_profit_target:
+            logger.warning(
+                f" --- {current_time} [MIN TP FILTER] TP distance ${distance:.2f} < minimum ${self.min_profit_target:.2f} — trade skipped ---"
+            )
+            return False
+        return True
 
     def before_market_opens(self):
         self.traded_london = False
@@ -384,8 +432,10 @@ class XAUUSDModel(Strategy):
                         logger.warning("Price broke swing low but no displacement (FVG) found. Skipping entry.")
                         return
 
-                # Trade Execution (BEARISH) — gated: London disabled by default
-                if self.trade_london and self.bearish_fvg_confirmed and self.highest_sweep_point is not None and self._bias_allows("sell"):
+                # Trade Execution (BEARISH)
+                if self.bearish_fvg_confirmed and self.highest_sweep_point is not None and self._bias_allows("sell"):
+                    if not self._spread_ok(current_time):
+                        return
                     entry_price = self.fvg_bottom
                     sl = self.highest_sweep_point + self.buffer
                     tp = _calculate_take_profit(entry_price, sl, "sell", self.rr_ratio)
@@ -394,16 +444,11 @@ class XAUUSDModel(Strategy):
                     if tp is None:
                         logger.warning(f" --- {current_time} [BEARISH TRADE SKIPPED] Invalid TP calculation ---")
                         return
+                    if not self._tp_ok(entry_price, tp, current_time):
+                        return
 
                     verdict = build_verdict(
-                        symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="london_bearish",
-                        pdh=self.pdh, pdl=self.pdl,
-                        swept_high=self.highest_sweep_point, swept_low=self.swept_low if self.swept_low else None,
-                        mss_swing_low=self.mss_swing_low, mss_swing_high=self.mss_swing_high,
-                        fvg_top=self.fvg_top, fvg_bottom=self.fvg_bottom, fvg_confirmed=self.bearish_fvg_confirmed,
-                        sweep_point=self.highest_sweep_point,
-                        daily_bias=self.daily_bias,
-                        london_high=self.london_high, london_low=self.london_low,
+                        symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="london_bearish"
                     )
                     try:
                         payload = save_verdict(verdict)
@@ -483,8 +528,10 @@ class XAUUSDModel(Strategy):
                         logger.warning(f" --- {current_time} [FVG NOT FOUND] Price broke swing high but no displacement (FVG) found. Skipping entry. ---")
                         return
 
-                # Trade Execution (BULLISH) — gated: London disabled by default
-                elif self.trade_london and self.bullish_fvg_confirmed and self.lowest_sweep_point is not None and self._bias_allows("buy"):
+                # Trade Execution (BULLISH)
+                elif self.bullish_fvg_confirmed and self.lowest_sweep_point is not None and self._bias_allows("buy"):
+                    if not self._spread_ok(current_time):
+                        return
                     entry_price = self.fvg_top
                     sl = self.lowest_sweep_point - self.buffer
                     risk = entry_price - sl
@@ -492,16 +539,11 @@ class XAUUSDModel(Strategy):
                     if tp is None:
                         logger.warning(f" --- {current_time} [BULLISH TRADE SKIPPED] Invalid TP calculation ---")
                         return
+                    if not self._tp_ok(entry_price, tp, current_time):
+                        return
 
                     verdict = build_verdict(
-                        symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="london_bullish",
-                        pdh=self.pdh, pdl=self.pdl,
-                        swept_high=self.swept_high if self.swept_high else None, swept_low=self.lowest_sweep_point,
-                        mss_swing_low=self.mss_swing_low, mss_swing_high=self.mss_swing_high,
-                        fvg_top=self.fvg_top, fvg_bottom=self.fvg_bottom, fvg_confirmed=self.bullish_fvg_confirmed,
-                        sweep_point=self.lowest_sweep_point,
-                        daily_bias=self.daily_bias,
-                        london_high=self.london_high, london_low=self.london_low,
+                        symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="london_bullish"
                     )
                     try:
                         payload = save_verdict(verdict)
@@ -622,6 +664,8 @@ class XAUUSDModel(Strategy):
 
                         # Entry on MSS confirmation
                         if self.mss_swing_low and last_price < self.mss_swing_low and self._bias_allows("sell"):
+                            if not self._spread_ok(current_time):
+                                return
                             entry_price = self.mss_swing_low
                             sl = self.highest_sweep_point + self.buffer
                             risk = sl - entry_price
@@ -630,16 +674,11 @@ class XAUUSDModel(Strategy):
                             if tp is None:
                                 logger.warning(f"{current_time} --- [BEARISH NY CONTINUATION TRADE SKIPPED] Invalid TP calculation --- ")
                                 return
+                            if not self._tp_ok(entry_price, tp, current_time):
+                                return
 
                             verdict = build_verdict(
-                                symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bearish",
-                                pdh=self.pdh, pdl=self.pdl,
-                                swept_high=self.highest_sweep_point, swept_low=self.swept_low if self.swept_low else None,
-                                mss_swing_low=self.mss_swing_low, mss_swing_high=self.mss_swing_high,
-                                fvg_top=self.fvg_top, fvg_bottom=self.fvg_bottom, fvg_confirmed=self.bearish_fvg_confirmed,
-                                sweep_point=self.highest_sweep_point,
-                                daily_bias=self.daily_bias,
-                                london_high=self.london_high, london_low=self.london_low,
+                                symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bearish"
                             )
                             try:
                                 payload = save_verdict(verdict)
@@ -694,6 +733,8 @@ class XAUUSDModel(Strategy):
 
                         # Entry on MSS confirmation
                         if self.mss_swing_high and last_price > self.mss_swing_high and not self.traded_ny and self._bias_allows("buy"):
+                            if not self._spread_ok(current_time):
+                                return
                             entry_price = self.mss_swing_high
                             sl = self.lowest_sweep_point - self.buffer
                             risk = entry_price - sl
@@ -702,16 +743,11 @@ class XAUUSDModel(Strategy):
                             if tp is None:
                                 logger.warning(f"{current_time} --- [BULLISH NY CONTINUATION TRADE SKIPPED] Invalid TP calculation ---")
                                 return
+                            if not self._tp_ok(entry_price, tp, current_time):
+                                return
 
                             verdict = build_verdict(
-                                symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bullish",
-                                pdh=self.pdh, pdl=self.pdl,
-                                swept_high=self.swept_high if self.swept_high else None, swept_low=self.lowest_sweep_point,
-                                mss_swing_low=self.mss_swing_low, mss_swing_high=self.mss_swing_high,
-                                fvg_top=self.fvg_top, fvg_bottom=self.fvg_bottom, fvg_confirmed=self.bullish_fvg_confirmed,
-                                sweep_point=self.lowest_sweep_point,
-                                daily_bias=self.daily_bias,
-                                london_high=self.london_high, london_low=self.london_low,
+                                symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bullish"
                             )
                             try:
                                 payload = save_verdict(verdict)
@@ -810,6 +846,8 @@ class XAUUSDModel(Strategy):
                                 return
 
                         if self.bearish_fvg_confirmed and self._bias_allows("sell"):
+                            if not self._spread_ok(current_time):
+                                return
                             entry_price = self.mss_swing_low
                             sl = self.sweep_peak + self.buffer
                             risk = sl - entry_price
@@ -818,16 +856,11 @@ class XAUUSDModel(Strategy):
                             if tp is None:
                                 logger.warning(f"{current_time} -- [BEARISH TRADE SKIPPED] Invalid TP calculation")
                                 return
+                            if not self._tp_ok(entry_price, tp, current_time):
+                                return
 
                             verdict = build_verdict(
-                                symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bearish",
-                                pdh=self.pdh, pdl=self.pdl,
-                                swept_high=self.sweep_peak, swept_low=self.swept_low if self.swept_low else None,
-                                mss_swing_low=self.mss_swing_low, mss_swing_high=self.mss_swing_high,
-                                fvg_top=self.fvg_top, fvg_bottom=self.fvg_bottom, fvg_confirmed=self.bearish_fvg_confirmed,
-                                sweep_point=self.sweep_peak,
-                                daily_bias=self.daily_bias,
-                                london_high=self.london_high, london_low=self.london_low,
+                                symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bearish"
                             )
                             try:
                                 payload = save_verdict(verdict)
@@ -880,6 +913,8 @@ class XAUUSDModel(Strategy):
                                     logger.warning("Price broke swing low but no displacement (FVG) found. Skipping entry.")
                                     return
                             if self.bullish_fvg_confirmed and self._bias_allows("buy"):
+                                if not self._spread_ok(current_time):
+                                    return
                                 entry_price = self.mss_swing_high
                                 sl = self.sweep_trough - self.buffer  # SL below OB/Sweep Low
                                 risk = entry_price - sl
@@ -888,16 +923,11 @@ class XAUUSDModel(Strategy):
                                 if tp is None:
                                     logger.warning(f"{current_time} --- [BULLISH TRADE SKIPPED] Invalid TP calculation --- ")
                                     return
+                                if not self._tp_ok(entry_price, tp, current_time):
+                                    return
 
                                 verdict = build_verdict(
-                                    symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bullish",
-                                    pdh=self.pdh, pdl=self.pdl,
-                                    swept_high=self.swept_high if self.swept_high else None, swept_low=self.sweep_trough,
-                                    mss_swing_low=self.mss_swing_low, mss_swing_high=self.mss_swing_high,
-                                    fvg_top=self.fvg_top, fvg_bottom=self.fvg_bottom, fvg_confirmed=self.bullish_fvg_confirmed,
-                                    sweep_point=self.sweep_trough,
-                                    daily_bias=self.daily_bias,
-                                    london_high=self.london_high, london_low=self.london_low,
+                                    symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bullish"
                                 )
                                 try:
                                     payload = save_verdict(verdict)
