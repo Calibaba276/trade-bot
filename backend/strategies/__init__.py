@@ -1,10 +1,10 @@
 from .common import _is_daily_drawdown_halted, _manage_risk_controls, calculate_quantity
-from .ict_model import ICTModel
+from .eurusd_model import EURUSDModel
 from .liquidity_sweep import LiquiditySweep
 
 __all__ = [
     "LiquiditySweep",
-    "ICTModel",
+    "EURUSDModel",
     "calculate_quantity",
     "_is_daily_drawdown_halted",
     "_manage_risk_controls",

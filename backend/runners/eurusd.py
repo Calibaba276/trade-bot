@@ -12,7 +12,7 @@ from backend.brokers.mt5_broker import MetaTrader5
 from backend.config.logger import setup_logger
 from backend.config.secrets import get_azure_secret
 from backend.config.supaclient import supabase
-from backend.strategies.ict_model import ICTModel
+from backend.strategies.eurusd_model import EURUSDModel
 
 logger = setup_logger(__name__)
 
@@ -80,7 +80,7 @@ def run():
         start_date = datetime.strptime(backtesting_start, "%Y-%m-%d")
         end_date = datetime.strptime(backtesting_end, "%Y-%m-%d")
 
-        ICTModel.backtest(
+        EURUSDModel.backtest(
             PolygonDataBacktesting,
             start_date,
             end_date,
@@ -108,7 +108,7 @@ def run():
             }
         )
 
-        strategy = ICTModel(
+        strategy = EURUSDModel(
             broker=broker,
             parameters={
                 "symbol": "EURUSDm",

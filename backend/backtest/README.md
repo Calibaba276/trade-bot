@@ -1,7 +1,7 @@
 # ICT Model — standalone backtest
 
 `ict_backtest.py` is a dependency-light, faithful re-implementation of the
-decision logic in `backend/strategies/ict_model.py`. It drives the exact same
+decision logic in `backend/strategies/eurusd_model.py`. It drives the exact same
 session/sweep/MSS/FVG/OTE branching over 1-minute bars, emits the same signals,
 then resolves each one against future price action.
 
