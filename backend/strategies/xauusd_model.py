@@ -46,6 +46,11 @@ class XAUUSDModel(Strategy):
         self.htf_bias_period = int(self.parameters.get("htf_bias_period", 20) or 20)
         self.daily_bias = None  # "bull" | "bear" | None, recomputed each day
 
+        # Backtest finding: London entries (09:00-11:00) are a consistent net
+        # loser on Gold — the edge lives entirely in the NY session. Set to True
+        # only if you want to re-enable London for testing.
+        self.trade_london = bool(self.parameters.get("trade_london", False))
+
         self.traded_london = False
         self.traded_ny = False
         self.last_range_date = None
@@ -379,8 +384,8 @@ class XAUUSDModel(Strategy):
                         logger.warning("Price broke swing low but no displacement (FVG) found. Skipping entry.")
                         return
 
-                # Trade Execution (BEARISH)
-                if self.bearish_fvg_confirmed and self.highest_sweep_point is not None and self._bias_allows("sell"):
+                # Trade Execution (BEARISH) — gated: London disabled by default
+                if self.trade_london and self.bearish_fvg_confirmed and self.highest_sweep_point is not None and self._bias_allows("sell"):
                     entry_price = self.fvg_bottom
                     sl = self.highest_sweep_point + self.buffer
                     tp = _calculate_take_profit(entry_price, sl, "sell", self.rr_ratio)
@@ -471,8 +476,8 @@ class XAUUSDModel(Strategy):
                         logger.warning(f" --- {current_time} [FVG NOT FOUND] Price broke swing high but no displacement (FVG) found. Skipping entry. ---")
                         return
 
-                # Trade Execution (BULLISH)
-                elif self.bullish_fvg_confirmed and self.lowest_sweep_point is not None and self._bias_allows("buy"):
+                # Trade Execution (BULLISH) — gated: London disabled by default
+                elif self.trade_london and self.bullish_fvg_confirmed and self.lowest_sweep_point is not None and self._bias_allows("buy"):
                     entry_price = self.fvg_top
                     sl = self.lowest_sweep_point - self.buffer
                     risk = entry_price - sl
