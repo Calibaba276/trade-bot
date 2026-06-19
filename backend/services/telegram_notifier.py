@@ -6,6 +6,8 @@ sends messages via the Telegram Bot API. All public functions fail silently
 so a Telegram outage never interrupts live trading.
 """
 
+from functools import lru_cache
+
 import requests
 
 from backend.config.secrets import get_azure_secret
@@ -16,10 +18,12 @@ logger = setup_logger(__name__)
 _TIMEOUT = 8  # seconds
 
 
+@lru_cache(maxsize=1)
 def _bot_token() -> str | None:
     return get_azure_secret("TELEGRAM-BOT-TOKEN")
 
 
+@lru_cache(maxsize=1)
 def _chat_id() -> str | None:
     return get_azure_secret("TELEGRAM-CHAT-ID")
 
@@ -143,7 +147,14 @@ def notify_drawdown_halt(
 
 
 def notify_worker_online(account_number: int, server: str, account_id: str) -> None:
-    """Worker connected to MT5 and ready to trade."""
+    """Worker connected to MT5 and ready to trade. Also validates Telegram credentials."""
+    token = _bot_token()
+    chat_id = _chat_id()
+    if not token or not chat_id:
+        logger.error(
+            "[TELEGRAM] TELEGRAM-BOT-TOKEN or TELEGRAM-CHAT-ID missing from Key Vault — "
+            "no Telegram notifications will be sent. Add both secrets to calibabasecret vault."
+        )
     msg = (
         f"🟢 <b>WORKER ONLINE</b>\n"
         f"Account : {account_number}\n"
