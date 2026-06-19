@@ -43,13 +43,11 @@ MAX_HOLD_MIN = 3 * 24 * 60  # cap how long an open position is tracked (3 days)
 # 1. Stronger bias: daily close must land in top/bottom 30% of prev day's range.
 #    A close in the middle 40% → no bias → all trades that day skipped.
 BIAS_EDGE = 0.30
-# 2. Min TP distance in pips (1 pip = 0.0001 for EUR/USD & GBP/USD).
+# 2. Min TP distance in pips (1 pip = 0.0001 for EUR/USD).
 #    Skips setups where reward is too small to clear spread costs.
 MIN_PROFIT_PIPS = 15.0   # 1.5× typical 1-pip EUR/USD spread
-# 3. London session: keep enabled for EUR/USD (London is profitable there);
-#    disabled for GBP/USD (consistent net loser — same finding as Gold).
-TRADE_LONDON_EURUSD = True
-TRADE_LONDON_GBPUSD = False
+# 3. London session: enabled for EUR/USD (profitable there).
+TRADE_LONDON = True
 
 DATA_ROOT = os.path.join(os.path.dirname(__file__), "..", "..", "_fxdata")
 
@@ -590,13 +588,12 @@ def report(signals, pair="EUR_USD"):
 
 def main():
     years = {2018, 2019, 2020}
-    pairs = ["EUR_USD", "GBP_USD"]
+    pairs = ["EUR_USD"]
     for pair in pairs:
         print(f"\nLoading {pair} 1m data for {sorted(years)} ...")
         df = load_data(pair, years)
         print(f"Loaded {len(df):,} bars  {df.index[0]} -> {df.index[-1]} (UTC+1)")
-        trade_london = TRADE_LONDON_EURUSD if pair == "EUR_USD" else TRADE_LONDON_GBPUSD
-        sim = Sim(df, trade_london=trade_london)
+        sim = Sim(df, trade_london=TRADE_LONDON)
         signals = sim.run()
         report(signals, pair)
 
