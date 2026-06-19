@@ -241,3 +241,156 @@ The design system is solid — the token architecture, `font-mono` consistency, 
 ---
 
 *Glass Box — See everything. Trust what you see.*
+
+---
+
+## Pricing Research & Recommendations
+
+*Session: 2026-06-16 — market research across ICT EAs, prop firm tools, Telegram signal services, and Nigerian SaaS pricing*
+
+### What the Market Charges
+
+**ICT EAs (direct competitors)**
+
+| Product | Price | Model |
+|---|---|---|
+| ICT Silver Bullet EA (MQL5) | $349–$449 | One-time |
+| ICT UNO EA v2 | $14.99 | One-time |
+| ICT Basic Robot | Free | Free |
+| Happy Forex Full Pack (10 EAs) | €699–€899 | One-time |
+
+The ICT EA market is almost entirely one-time purchase, no subscription, no transparency. A subscription implies ongoing value delivery — which the Glass Box dashboard provides.
+
+**Prop firm tools (Pro tier competitive set)**
+
+| Tool | Price | What it does |
+|---|---|---|
+| Prop Firm One Premium | $44.99/mo | Risk management, journaling, analytics |
+| Prop Firm One Pro | $79.99/mo | Above + copy trading (7 accounts) |
+| Tradesea OmniProp | $97/mo | Trade copier, liquidation tracking, daily loss alerts |
+| Edgewonk | $197/year | Trade journal + analytics |
+| Prop Firm Guard | Free | TradingView script, position sizing + max loss |
+
+FTMO challenge fees: €155–€1,080 depending on account size. The5ers: $39–$850.
+
+**Telegram signal services (Starter tier competitive set)**
+
+| Service | Price |
+|---|---|
+| Premium Telegram signal services | $50–$150/mo |
+| VIP tiers | $79–$199/mo |
+| Lifetime access | $250–$500 |
+| Nigeria/Africa VIP signal tiers | $49–$199/mo |
+| MT5 signal copiers (MetaCopier etc.) | €29–$109/mo |
+
+**Critical Nigeria finding:** Impulse-buy threshold for Nigerian digital subscriptions is **$10–$15/mo**. Above $15, users enter deliberation mode. The most common Nigerian signal tier is free — ChartsEmpire and similar providers give signals at no charge.
+
+### Recommended Pricing Structure
+
+| Tier | Price | Who it's for |
+|---|---|---|
+| **Observer** | Free | Signal providers + curious followers |
+| **Starter** | $15/mo | Telegram followers who want auto-execution |
+| **Pro** | $49/mo | Prop firm challenge candidates |
+| **Enterprise** | Custom | 50+ accounts, dedicated VM |
+
+**Observer (Free):** Read-only dashboard, full trade history/audit log, shareable audit link. Enables the B2B2C motion — providers share their Glass Box link with their Telegram channel. Followers see the product for free and convert to Starter.
+
+**Why $15 not $20:** Nigerian impulse threshold is $10–15. At $15 you stay below the deliberation line. The target Starter user is coming from free Telegram signals — the jump from $0 to $15 is smaller than $0 to $20.
+
+**Why $49 Pro is correct:** Prop Firm One Premium is $44.99/mo with no replay and no ICT-specific transparency. Glass Box is $4 more expensive and significantly more capable. At ~5% of a typical FTMO challenge fee ($600–$1,000), the math is obvious.
+
+### Pre-Launch: Lifetime Deal
+
+Before billing ships, a lifetime deal generates immediate cash and seeds the early community:
+- **Starter lifetime: $99** (= 6.6 months at $15/mo)
+- **Pro lifetime: $199** (= ~4 months at $49/mo)
+
+Cap at 50–100 users to create urgency. The trading tool market expects and responds well to one-time deals (Fox Signals $69, Forex Tester $49–$150).
+
+### What Each Tier Includes
+
+| | Observer (Free) | Starter ($15/mo) | Pro ($49/mo) |
+|---|---|---|---|
+| Accounts | View only | 1 | Up to 10 |
+| Auto-execution | — | ✓ | ✓ |
+| Live Logic Feed | ✓ (view) | ✓ | ✓ |
+| Shareable audit link | ✓ | ✓ | ✓ |
+| Trade history + CSV | ✓ | ✓ | ✓ |
+| Replay Mode | — | — | ✓ |
+| Prop Firm Panel (full) | — | Basic | ✓ |
+| Live ICT condition feed | — | — | ✓ |
+| Multi-account execution | — | — | ✓ |
+| US Indices | — | — | ✓ |
+| Crypto | — | — | Coming Soon |
+
+---
+
+## Market Tiering Architecture
+
+*Session: 2026-06-16*
+
+### Market Split by Tier
+
+**Starter markets (pre-selected, user can deselect any):**
+EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD, XAUUSD
+
+**Pro markets (additional, locked for Starter):**
+NAS100, US30, SPX500 — US Indices
+BTCUSD, ETHUSD — Crypto (Coming Soon)
+
+**Why XAUUSD must be on Starter:** Gold is the most traded instrument by Nigerian retail traders. A large percentage of Telegram signal channels targeted for Starter acquisition are Gold channels. Gating XAUUSD behind Pro cuts the Starter target market in half before launch.
+
+**Why US Indices are Pro-only:** They require a different session window (NYSE open at 15:30–17:30 NGT, not London). This is a backend config change. They are naturally associated with prop firm challenge accounts — the Pro user persona.
+
+**Why Crypto is Pro + deferred:** Runs 24/7 with its own strategy logic — not the London/NY session model. Requires a separate strategy runner build. Do not block indices on crypto.
+
+### Build Priority
+
+| Market | Priority | Session logic needed |
+|---|---|---|
+| XAUUSD | #1 — build next | Same London/NY windows as forex |
+| GBPUSD, USDJPY, AUDUSD | #2 | Same windows |
+| NAS100, US30, SPX500 | #3 | NYSE open 15:30–17:30 NGT |
+| BTC, ETH | #4 | 24/7, separate strategy |
+
+### How Multi-Market Execution Works
+
+**Scanning is global, filtering is per-account:**
+
+1. Strategy engine runs one instance per active symbol (one `ict.py` for EURUSD, one for XAUUSD, etc.)
+2. Every verdict is published to Redis `signals` channel with a `symbol` field — signals already carry this field
+3. Each worker (one per broker account) reads the account's enabled symbols from `broker_accounts.symbol`
+4. Worker skips any signal whose symbol is not in the account's enabled list
+5. All enabled-symbol signals execute on the same single broker account
+
+**Storage approach:** `broker_accounts.symbol` stores a comma-separated list (`"EURUSD,XAUUSD,GBPUSD"`). No DB migration needed — the existing column accepts this format and is backward compatible with all current single-value records.
+
+**User experience in Settings:**
+- Account created with all tier-applicable markets pre-selected (opt-out model, not opt-in)
+- User unchecks any markets they don't want to trade
+- Deselecting = "don't execute signals for this symbol on my account" — the global scanner is unaffected
+- Starter users see Pro markets as locked with "Unlock with Pro" on hover
+
+**Dashboard market tabs (Live Logic Feed):**
+```
+Starter:  [EURUSD] [GBPUSD] [XAUUSD] [USDJPY] ...
+Pro:      [EURUSD] [GBPUSD] [XAUUSD] [USDJPY] ... [NAS100 ⚡] [US30 ⚡] [SPX500 ⚡] [BTC 🔒 Soon]
+```
+
+### Note on SPX500 Broker Naming
+
+SPX500 varies by MT5 broker — some call it `US500`, `SP500`, or `USTEC`. The per-account symbol configuration handles this naturally: the trader enters whatever their broker calls it when adding the account. Do not hardcode instrument names in the strategy.
+
+---
+
+## Critical Path to First Revenue
+
+In order:
+
+1. **Legal/compliance review** — pre-public-launch blocker for signal-following use case. Run beta/waitlist-only until resolved. Fallback: reposition Starter as "personal automation tool" (user sets their own ICT rules, not copying a third party).
+2. **Billing integration** — nothing monetises without this.
+3. **Shareable audit link** — small build, big unlock for the B2B2C motion.
+4. **Landing page two-track structure** — two CTAs, corrected pricing to $15/$49.
+5. **Onboarding flow** — first-login checklist.
+6. **XAUUSD market expansion** — immediately increases Starter value for Nigerian market.
