@@ -52,15 +52,9 @@ The "Upgrade" button is `disabled` with "Coming Soon". Tier is toggled via a dev
 
 ---
 
-**2. Share link encodes trade data in the URL** (`utils/share.ts`)
+**2. ~~Share link encodes trade data in the URL~~** ✅ Fixed
 
-The share token is a base64-encoded payload of the trade data itself (no server round-trip — `decodeShare(token)` reconstructs from URL params). This means:
-
-- Share links can be arbitrarily large (many trades = enormous URL)
-- No server-side audit — anyone can craft a fake share link with modified trade data
-- Signal providers cannot trust the data they're shown
-
-**Fix required:** Share links need to store the payload in Supabase and serve it server-side. A `shared_sessions` table with `id`, `user_id`, `trade_ids[]`, `created_at` — the link is `/share/:uuid`, the page fetches from Supabase. This is the B2B2C trust mechanism and it only works if the data can't be fabricated by the sender.
+The `shared_sessions` table (migration `20260618000000_shared_sessions.sql`) stores immutable snapshot data server-side. Share links are `/share/:uuid` — the page fetches from Supabase. Snapshots cannot be modified once created (no UPDATE policy). Only the authenticated owner can create or delete them. This satisfies the B2B2C trust requirement.
 
 ---
 
@@ -122,10 +116,10 @@ Stats ("340+ Traders", "12,000+ Trades executed", "68% win rate") and testimonia
 | Profit target tracker | ✅ Fixed | — |
 | Engine halt banner | ✅ Fixed | — |
 | Session summary cards | ✅ Fixed | — |
-| Shareable audit link (UI) | ✅ Exists | Share data is URL-encoded, not server-stored |
+| Shareable audit link (UI) | ✅ Fixed | `shared_sessions` table in Supabase; server-stored, immutable snapshots |
 | Toast notifications | ✅ Fixed | — |
 | Billing / tier gating | ⚠ Stub | **Yes** — tier switcher is accessible to real users |
-| Share link security | ⚠ URL payload | **Yes** — data can be client-fabricated; links can be huge |
+| Share link security | ✅ Fixed | Server-stored in `shared_sessions`; immutable; UUID-gated |
 | Footer dead links | ❌ Still `href="#"` | Trust issue for financial product |
 | Free trial CTA copy | ❌ Billing not live | Promise can't be honored at checkout |
 | Dashboard `Term` tooltips | ❌ Not ported | Nice-to-have for Starter tier UX |
@@ -136,10 +130,22 @@ Stats ("340+ Traders", "12,000+ Trades executed", "68% win rate") and testimonia
 ## Recommended next actions (ordered)
 
 1. **Persist tier to Supabase `user_metadata`** and hide the dev tier-switcher from production users. This is the minimum viable billing gate even before Stripe is wired.
-2. **Move share links to server-side** (`shared_sessions` table in Supabase). The B2B2C motion only works if providers can trust the audit data.
-3. **Remove or replace footer dead links** — strip the About/Blog/Careers/Contact columns entirely.
-4. **Change "free trial" copy to "early access"** across the landing page until billing ships.
-5. **Replace placeholder social proof** with real numbers before any marketing goes out.
+2. **Remove or replace footer dead links** — strip the About/Blog/Careers/Contact columns entirely.
+3. **Change "free trial" copy to "early access"** across the landing page until billing ships.
+4. **Replace placeholder social proof** with real numbers before any marketing goes out.
+
+---
+
+## Tasks not yet accomplished
+
+- [ ] **Wire billing / Stripe** — `BillingTab` in `SettingsPage.tsx` is still a stub. Tier is toggled in-memory by a developer preview switch. No real subscription gate exists.
+- [ ] **Hide tier preview switcher from non-dev users** — or gate it behind `NODE_ENV === 'development'`.
+- [ ] **Replace footer dead links** — `Landing.tsx` About/Blog/Careers/Contact are all `href="#"`.
+- [ ] **Change "30-day free trial" landing page copy** to "Request Early Access" or "Join the Waitlist" until billing is live.
+- [ ] **Replace placeholder social proof** in `Landing.tsx` (fabricated stats and testimonials) with real data before any marketing outreach.
+- [ ] **Port `Term` glossary tooltips to dashboard** — the ICT jargon tooltip component from the landing page is not used in the Live Feed or VerdictSidebar.
+- [ ] **Wire "?" Documentation link** in `DashboardLayout.tsx` sidebar — currently `href="#"`.
+- [ ] **Align auth page inline styles with design token system** — `Login.tsx` and `SignUp.tsx` use hardcoded hex values instead of Tailwind CSS variable tokens.
 
 ---
 

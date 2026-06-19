@@ -4,12 +4,13 @@
 
 You and an agent will build a multi-timeframe trade replay system with deterministic pattern detection visualization. This guide breaks down the entire project into discrete, sequential phases with clear deliverables at each stage.
 
-**Tech Stack:**
-- Frontend: React 18 + TypeScript, Zustand, TradingView Lightweight Charts, Tailwind CSS
-- Backend: Python (lumi_trade.py), Supabase (Postgres + Auth + Realtime + Edge Functions)
+**Tech Stack (as built):**
+- Frontend: React 19 + TypeScript, Zustand, TradingView Lightweight Charts v5, Tailwind CSS 3, TanStack Query v5, React Router v7
+- Backend: Python + Lumibot, MetaTrader5, `frontend_emitter.py` (Supabase), `telegram_notifier.py`, Redis (Upstash)
 - Auth: Supabase Auth
 - Real-time: Supabase Realtime
 - Database: Supabase Postgres
+- Secrets: Azure Key Vault (no `.env` files in production)
 
 ---
 
@@ -1396,55 +1397,65 @@ Create `CONTRIBUTING.md`:
 
 ## Summary: Checkpoint Checklist
 
-Print this out and check off as you go:
+> **Status as of 2026-06-19:** All core phases are complete. Outstanding items are listed at the bottom.
 
 ### Phase 0: Setup
-- [] Login to Supabase using the cli
-- [ ] Database schema deployed
-- [ ] RLS policies enabled
+- [x] Login to Supabase using the CLI
+- [x] Database schema deployed (3 migrations under `supabase/migrations/`)
+- [x] RLS policies enabled on all tables
 
 ### Phase 1: Frontend
-- [ ] React project initialized
-- [ ] Zustand store working
-- [ ] Auth pages (Login/SignUp) functional
-- [ ] Supabase client integrated
+- [x] React 19 + Vite project initialized
+- [x] Zustand store working (`store/replayStore.ts`, `toastStore.ts`, `tierStore.ts`)
+- [x] Auth pages (Login/SignUp) functional
+- [x] Supabase client integrated (`lib/supaclient.ts`)
 
 ### Phase 2: Chart & Controls
-- [ ] Chart renders candles
-- [ ] Scrubber works (drag + hover)
-- [ ] Play/Pause button works
-- [ ] Speed selector functional
-- [ ] Timeframe selector updates chart
-- [ ] Event log displays and filters correctly
-- [ ] Realtime event subscription works
+- [x] Chart renders candles (`TradeReplayChart.tsx` with Lightweight Charts v5)
+- [x] Scrubber works (drag + hover)
+- [x] Play/Pause button works
+- [x] Speed selector functional
+- [x] Timeframe selector updates chart
+- [x] Event log displays and filters correctly
+- [x] Realtime event subscription works (`useLiveTradeEvents.ts`)
 
 ### Phase 3: Pattern Overlays
-- [ ] Pattern color coding applied
-- [ ] FVG/OB/MSS/Entry/Exit overlays render
-- [ ] Pattern tooltips display
+- [x] Pattern color coding applied
+- [x] FVG/OB/MSS/BOS overlays render via canvas (`patternRenderer.ts`)
+- [x] Context Cascade strip shows parent timeframe patterns
 
 ### Phase 4: Advanced
-- [ ] Context cascade shows parent TF confirmation
-- [ ] Replay session persists across refresh
-- [ ] Statistics Edge Function computes win rate
+- [x] Context cascade shows parent TF confirmation
+- [x] Replay session persists across refresh (`useReplaySession.ts`)
+- [x] Performance stats: win rate, P&L, avg R, consecutive wins/losses (`usePerformanceStats.ts`)
+- [x] Share audit link — immutable snapshots via `shared_sessions` table
+- [x] Onboarding wizard synced via `user_onboarding` table
 
 ### Phase 5: Backend
-- [ ] Python backend emits events to Supabase
-- [ ] Candles inserted correctly
-- [ ] Historical data backfilled
+- [x] Python backend emits events to Supabase (`frontend_emitter.py`)
+- [x] Candles inserted correctly
+- [x] Telegram notifications (`telegram_notifier.py`)
+- [x] Multi-account orchestrator with restart logic
+- [x] Standalone backtest harness (`backend/backtest/ict_backtest.py`)
 
 ### Phase 6: Testing
-- [ ] Unit tests pass
-- [ ] E2E tests pass
-- [ ] Performance targets met (< 16ms chart, 60 FPS scrubber)
-- [ ] Built & deployed successfully
+- [x] Unit tests pass (Vitest — store, hooks, utils)
+- [x] E2E tests pass (Playwright — login, signup, redirect)
+- [ ] Performance targets validated in production (< 16ms chart render, 60 FPS scrubber)
+- [ ] Production build & deployment configured
 
 ### Phase 7: Polish
-- [ ] Mobile responsive
-- [ ] Keyboard shortcuts work
-- [ ] Dark mode validated
-- [ ] Documentation complete
-- [ ] QA passed
+- [x] Keyboard shortcuts (Space, ← →, Home/End, L, 1/5/F/H)
+- [x] Dark mode design system
+- [x] Prop Firm Panel — drawdown tracker, halt status, profit-target progress
+- [x] Toast notification system
+- [x] Landing page with two acquisition tracks
+- [ ] Mobile bottom-nav and responsive chart layout
+- [ ] Billing / Stripe integration
+- [ ] Dead footer links replaced
+- [ ] Placeholder social proof replaced with real data
+- [ ] "Explain This" (`Term`) tooltips ported to dashboard
+- [ ] Documentation link in sidebar wired up
 
 ---
 
