@@ -73,6 +73,8 @@ All strategies inherit from Lumibot's `Strategy` base class. They are pure tradi
 - `worker.py`: Subscribes to Redis `signals` channel. On signal receipt: validates timing, fetches MT5 credentials from Azure Key Vault, connects to MT5, submits order. Runs `PositionMonitor` as a background thread.
 - `position_monitor.py`: Polls MT5 every 5s. Moves SL to entry + buffer once unrealized P&L ≥ `rr_ratio × risk`. Halts new trades if daily equity loss exceeds threshold; `HaltFlag` auto-resets at UTC midnight.
 - `verdict.py`: `build_verdict()` → `save_verdict()` (Supabase `signals`) → `publish_verdict()` (Redis `signals` channel).
+- `frontend_emitter.py`: `emit_candle()` and `emit_trade_event()` write to Supabase `candles` and `trade_events` tables. Called by the strategy; fails silently — never interrupts trading.
+- `telegram_notifier.py`: All `notify_*` functions call Telegram Bot API via `requests`. Reads `TELEGRAM-BOT-TOKEN` and `TELEGRAM-CHAT-ID` from Key Vault. Fails silently — does not block execution.
 - `publisher.py`: Redis pub/sub wrapper.
 - `vault.py`: `VaultClient` wrapping Azure SDK; uses `DefaultAzureCredential` (Managed Identity on VM, `az login` locally). Secrets cached in-process.
 
@@ -95,6 +97,8 @@ All strategies inherit from Lumibot's `Strategy` base class. They are pure tradi
 | `BACKTESTING-START` / `BACKTESTING-END` | Backtest date range (YYYY-MM-DD) |
 | `SUPABASE-URL` / `SUPABASE-KEY` | Database client |
 | `REDIS-URL` | Upstash Redis connection string |
+| `TELEGRAM-BOT-TOKEN` | Telegram Bot API token (from @BotFather) |
+| `TELEGRAM-CHAT-ID` | Telegram user/chat numeric ID |
 
 No `.env` file is used in production. Locally, run `az login` — `DefaultAzureCredential` picks up the CLI token automatically.
 
