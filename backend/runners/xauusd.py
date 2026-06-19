@@ -12,7 +12,7 @@ from backend.brokers.mt5_broker import MetaTrader5
 from backend.config.logger import setup_logger
 from backend.config.secrets import get_azure_secret
 from backend.config.supaclient import supabase
-from backend.strategies.ict_model import ICTModel
+from backend.strategies.xauusd_model import XAUUSDModel
 
 logger = setup_logger(__name__)
 
@@ -80,17 +80,20 @@ def run():
         start_date = datetime.strptime(backtesting_start, "%Y-%m-%d")
         end_date = datetime.strptime(backtesting_end, "%Y-%m-%d")
 
-        ICTModel.backtest(
+        XAUUSDModel.backtest(
             PolygonDataBacktesting,
             start_date,
             end_date,
             parameters={
-                "symbol": "C:EURUSD",
+                "symbol": "C:XAUUSD",
                 "risk_amount": 500,
                 "rr_ratio": 3.0,
                 "max_daily_drawdown_pct": 0.02,
                 "breakeven_buffer_ticks": 10,
                 "stop_buffer_pips": 2,
+                # Gold-specific: dollar-based stop buffer and FVG noise filter
+                "buffer": 0.50,
+                "min_fvg_size": 0.50,
             },
             polygon_api_key=polygon_api_key,
             quiet_logs=False,
@@ -108,15 +111,18 @@ def run():
             }
         )
 
-        strategy = ICTModel(
+        strategy = XAUUSDModel(
             broker=broker,
             parameters={
-                "symbol": "EURUSDm",
+                "symbol": "XAUUSDm",
                 "risk_amount": 500,
                 "rr_ratio": strategy_cfg["rr_ratio"],
                 "max_daily_drawdown_pct": strategy_cfg["max_daily_drawdown_pct"],
                 "breakeven_buffer_ticks": strategy_cfg["breakeven_buffer_ticks"],
                 "stop_buffer_pips": 2,
+                # Gold-specific: dollar-based stop buffer and FVG noise filter
+                "buffer": 0.50,
+                "min_fvg_size": 0.50,
                 # Frontend emitter identifiers (None in backtest / when account has no user yet)
                 "user_id": strategy_cfg.get("user_id"),
                 "account_id": strategy_cfg.get("account_id"),

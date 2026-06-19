@@ -24,7 +24,7 @@ trade-bot/
 │   ├── config/               # Azure Key Vault client, Supabase client, logger, latency probe
 │   ├── runners/              # Entry points: ict.py, liquidity_sweep.py, main.py
 │   ├── services/             # orchestrator, worker, position_monitor, verdict, frontend_emitter, telegram_notifier
-│   └── strategies/           # ICTModel, LiquiditySweep, common utilities
+│   └── strategies/           # EURUSDModel, LiquiditySweep, common utilities
 ├── frontend/                 # React TypeScript dashboard
 │   ├── src/
 │   │   ├── components/       # Chart, Layout, Controls, EventLog, Auth, Marketing
@@ -139,7 +139,7 @@ where account_number = '<your-mt5-login>';
 
 ```bash
 # ICT strategy — backtest or live, determined by ISBACKTESTING vault secret
-python -m backend.runners.ict
+python -m backend.runners.eurusd
 
 # Multi-account orchestrator (reads all active accounts from Supabase, spawns workers)
 python -m backend.services.orchestrator
@@ -154,7 +154,7 @@ python -m backend.config.latency
 ### How signals flow
 
 ```
-ICTModel.on_trading_iteration()
+EURUSDModel.on_trading_iteration()
   └── detects FVG / MSS / OB pattern
       ├── emits trade_event to Supabase  ← frontend reads this
       ├── emits candle OHLCV to Supabase ← frontend reads this
