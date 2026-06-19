@@ -17,9 +17,9 @@ from ..config.logger import setup_logger
 logger = setup_logger(__name__)
 
 
-class ICTModel(Strategy):
+class EURUSDModel(Strategy):
     """
-    ICT Model Coded as Observed... HOPE IT WORKS!!!
+    ICT Model for EURUSD — Coded as Observed... HOPE IT WORKS!!!
     """
 
     def initialize(self):
