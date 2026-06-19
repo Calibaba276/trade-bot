@@ -11,6 +11,7 @@ An automated forex trading system built on the ICT (Inner Circle Trader) institu
 | **Strategy** | ICT model running on MetaTrader 5 — detects FVG, MSS, OB, BOS patterns across London and New York sessions, then builds and publishes trade signals |
 | **Execution** | Per-account workers subscribe to signals via Redis and submit orders to MT5 with breakeven management and daily drawdown protection |
 | **Dashboard** | React frontend connected to Supabase — streams live trade events in real time or replays historical sessions on an interactive chart with pattern overlays |
+| **Telegram** | Real-time push notifications to your Telegram bot — signals, order fills/rejections, drawdown halts, and worker status, no VM access required |
 
 ---
 
@@ -22,7 +23,7 @@ trade-bot/
 │   ├── brokers/              # MetaTrader 5 Lumibot adapter
 │   ├── config/               # Azure Key Vault client, Supabase client, logger
 │   ├── runners/              # Entry points: ict.py, liquidity_sweep.py, main.py
-│   ├── services/             # orchestrator, worker, position_monitor, verdict, frontend_emitter
+│   ├── services/             # orchestrator, worker, position_monitor, verdict, frontend_emitter, telegram_notifier
 │   └── strategies/           # ICTModel, LiquiditySweep, common utilities
 ├── frontend/                 # React dashboard
 │   ├── src/
@@ -93,6 +94,26 @@ All secrets are stored in `https://calibabasecret.vault.azure.net/`. Create each
 | `BACKTESTING-START` | Start date for backtest, `YYYY-MM-DD` |
 | `BACKTESTING-END` | End date for backtest, `YYYY-MM-DD` |
 | `POLYGON-API-KEY` | Polygon.io key for backtest OHLCV data |
+| `TELEGRAM-BOT-TOKEN` | Token from @BotFather (e.g. `7123456789:AAHxxxxxx…`) |
+| `TELEGRAM-CHAT-ID` | Your Telegram user/chat ID (numeric) |
+
+#### Setting up Telegram notifications
+
+1. Message **@BotFather** on Telegram → `/newbot` → copy the token into `TELEGRAM-BOT-TOKEN`
+2. Start a conversation with your new bot, then open `https://api.telegram.org/bot<TOKEN>/getUpdates` and grab the `"id"` field from the `"chat"` object → put it in `TELEGRAM-CHAT-ID`
+3. Add both secrets to the vault via CLI:
+   ```bash
+   az keyvault secret set --vault-name calibabasecret --name TELEGRAM-BOT-TOKEN --value "<token>"
+   az keyvault secret set --vault-name calibabasecret --name TELEGRAM-CHAT-ID --value "<chat_id>"
+   ```
+4. Restart the worker — you will receive a 🟢 **WORKER ONLINE** message confirming it works
+
+You will then receive messages for:
+- 🟢 / 🔴 Signal generated (pair, direction, entry/SL/TP, scenario)
+- ✅ Order placed at broker (lots, fill price, latency)
+- ⚠️ Order rejected (error code and reason)
+- 🚨 Drawdown halt triggered (balance, loss %, limit %)
+- 🟢 / 🔴 Worker online / offline
 
 ### 4. Supabase: set `user_id` on broker accounts
 
@@ -133,9 +154,16 @@ ICTModel.on_trading_iteration()
       ├── emits candle OHLCV to Supabase ← frontend reads this
       └── build_verdict()
           ├── save_verdict()  → Supabase `signals` table
+          ├── notify_signal() → Telegram 🟢/🔴 SIGNAL message
           └── publish_verdict() → Redis "signals" channel
                 └── worker.py receives signal
-                    └── submits order to MetaTrader 5
+                    ├── submits order to MetaTrader 5
+                    ├── notify_order_filled()  → Telegram ✅ ORDER PLACED
+                    └── notify_order_rejected() → Telegram ⚠️ ORDER REJECTED
+
+position_monitor.py (background thread)
+  └── daily drawdown breached
+      └── notify_drawdown_halt() → Telegram 🚨 DRAWDOWN HALT
 ```
 
 ---
@@ -256,6 +284,7 @@ Covers: login page UI, signup form, unauthenticated redirect.
 | [redis-py](https://github.com/redis/redis-py) | Signal pub/sub via Upstash |
 | [azure-keyvault-secrets](https://pypi.org/project/azure-keyvault-secrets/) | Secret management |
 | [pandas](https://pandas.pydata.org/) | OHLCV data manipulation |
+| [requests](https://docs.python-requests.org/) | Telegram Bot API calls |
 
 ### Frontend
 
