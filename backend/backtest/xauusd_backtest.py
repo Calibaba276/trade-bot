@@ -41,6 +41,14 @@ MIN_FVG_SIZE = 0.50    # discard FVGs narrower than this ($) — Gold's noisy wi
 MAX_HOLD_MIN = 3 * 24 * 60  # cap how long an open position is tracked (3 days)
 HTF_BIAS_PERIOD = 20   # daily SMA lookback for the directional bias filter
 
+# ── Trade-reducing quality filters (mirror XAUUSDModel commit f8b54b0) ──────────
+BIAS_EDGE = 0.30       # daily close must land in the top/bottom 30% of prev range;
+                       #   a close in the middle 40% => no bias => no trades that day
+MIN_PROFIT_TARGET = 3.00  # skip any setup whose TP distance is < $3.00/oz from entry
+# NOTE: the live strategy's _spread_ok filter ($0.35/oz live ask-bid) cannot be
+# replicated here — the historical dataset is mid-price only, with no bid/ask.
+# Its real-world drag is captured instead by the cost-sensitivity table below.
+
 DATA_ROOT = os.path.join(os.path.dirname(__file__), "..", "..", "_fxdata")
 
 
@@ -138,10 +146,26 @@ class Sim:
         # ICT daily bias: previous completed daily candle's close vs its range
         # midpoint. shift(1) => yesterday's candle decides today's bias (no
         # look-ahead). bull if close >= midpoint else bear.
+        # Stronger bias (commit f8b54b0): close must land in the top 30% of the
+        # prev daily range -> bull, bottom 30% -> bear, middle 40% -> None (no
+        # trades). Kills choppy/indecisive days that bleed fees with no real move.
         daily = df.resample("1D").agg(high=("high", "max"), low=("low", "min"),
                                       close=("close", "last")).dropna()
-        mid = (daily["high"] + daily["low"]) / 2.0
-        bias_today = (daily["close"] >= mid).map({True: "bull", False: "bear"})
+        rng = (daily["high"] - daily["low"]).replace(0, pd.NA)
+        upper = daily["low"] + rng * (1.0 - BIAS_EDGE)
+        lower = daily["low"] + rng * BIAS_EDGE
+        def _bias(close, up, lo):
+            if pd.isna(up) or pd.isna(lo):
+                return None
+            if close >= up:
+                return "bull"
+            if close <= lo:
+                return "bear"
+            return None
+        bias_today = pd.Series(
+            [_bias(c, u, l) for c, u, l in zip(daily["close"], upper, lower)],
+            index=daily.index,
+        )
         bias_prev = bias_today.shift(1)
         self.bias_for_date = {ts.date(): v for ts, v in bias_prev.items()}
 
@@ -160,6 +184,10 @@ class Sim:
         argument is accepted for call-site compatibility but unused here)."""
         tp_calc = calc_tp(entry, sl, direction, RR_RATIO)
         if tp_calc is None:
+            return False
+        # Min-TP filter (commit f8b54b0): reject setups whose reward is too small
+        # to clear the spread — TP must be at least MIN_PROFIT_TARGET $/oz away.
+        if abs(tp_calc - entry) < MIN_PROFIT_TARGET:
             return False
         self.signals.append(Signal(dt=dt, direction=direction, entry=float(entry),
                                    sl=float(sl), tp=float(tp_calc), scenario=scenario,
