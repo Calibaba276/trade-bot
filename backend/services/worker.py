@@ -61,7 +61,7 @@ def _resolve_account_config(account_id: str) -> Dict[str, Any]:
     )
     if not getattr(row, "data", None):
         raise RuntimeError(f"No broker_accounts row found for account_id={account_id}")
-    
+
     cfg = row.data[0]
 
     login = _pick(cfg, "login", "account_login", "account_number")
@@ -69,10 +69,10 @@ def _resolve_account_config(account_id: str) -> Dict[str, Any]:
     server = _pick(cfg, "server", "account_server")
     path = _pick(cfg, "path", "terminal_path")
     timezone_name = _pick(cfg, "timezone", default="Africa/Lagos")
-    
+
     if not login or not password or not server:
         raise RuntimeError(f"Missing login/password/server for account_id={account_id}")
-    
+
     cfg["_resolved"] = {
         "login": int(login),
         "password": password,
