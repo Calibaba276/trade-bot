@@ -38,7 +38,18 @@ RR_RATIO = 3.0
 RISK = 500.0           # $ risked per trade
 BUFFER = 0.0002        # self.buffer in the strategy
 MAX_HOLD_MIN = 3 * 24 * 60  # cap how long an open position is tracked (3 days)
-HTF_BIAS_PERIOD = 20   # daily SMA lookback for the directional bias filter
+
+# ── Quality filters to reduce low-conviction trades ───────────────────────────
+# 1. Stronger bias: daily close must land in top/bottom 30% of prev day's range.
+#    A close in the middle 40% → no bias → all trades that day skipped.
+BIAS_EDGE = 0.30
+# 2. Min TP distance in pips (1 pip = 0.0001 for EUR/USD & GBP/USD).
+#    Skips setups where reward is too small to clear spread costs.
+MIN_PROFIT_PIPS = 15.0   # 1.5× typical 1-pip EUR/USD spread
+# 3. London session: keep enabled for EUR/USD (London is profitable there);
+#    disabled for GBP/USD (consistent net loser — same finding as Gold).
+TRADE_LONDON_EURUSD = True
+TRADE_LONDON_GBPUSD = False
 
 DATA_ROOT = os.path.join(os.path.dirname(__file__), "..", "..", "_fxdata")
 
@@ -124,7 +135,7 @@ def calc_tp(entry, sl, direction, rr):
 
 # ── The ported decision logic ─────────────────────────────────────────────────
 class Sim:
-    def __init__(self, df: pd.DataFrame):
+    def __init__(self, df: pd.DataFrame, trade_london: bool = True):
         self.df = df
         self.idx = df.index
         self.high = df["high"].values
@@ -133,14 +144,27 @@ class Sim:
         self.n = len(df)
         self.s = State()
         self.signals: list[Signal] = []
+        self.trade_london = trade_london
 
-        # ICT daily bias: previous completed daily candle's close vs its range
-        # midpoint. shift(1) => yesterday's candle decides today's bias (no
-        # look-ahead). bull if close >= midpoint else bear.
+        # Stronger bias filter: daily close must land in the top BIAS_EDGE of
+        # the range (bull) or bottom BIAS_EDGE (bear); middle => None (no trade).
         daily = df.resample("1D").agg(high=("high", "max"), low=("low", "min"),
                                       close=("close", "last")).dropna()
-        mid = (daily["high"] + daily["low"]) / 2.0
-        bias_today = (daily["close"] >= mid).map({True: "bull", False: "bear"})
+        rng = (daily["high"] - daily["low"]).replace(0, pd.NA)
+        upper = daily["low"] + rng * (1.0 - BIAS_EDGE)
+        lower = daily["low"] + rng * BIAS_EDGE
+        def _bias(close, up, lo):
+            if pd.isna(up) or pd.isna(lo):
+                return None
+            if close >= up:
+                return "bull"
+            if close <= lo:
+                return "bear"
+            return None
+        bias_today = pd.Series(
+            [_bias(c, u, l) for c, u, l in zip(daily["close"], upper, lower)],
+            index=daily.index,
+        )
         bias_prev = bias_today.shift(1)
         self.bias_for_date = {ts.date(): v for ts, v in bias_prev.items()}
 
@@ -159,6 +183,10 @@ class Sim:
         argument is accepted for call-site compatibility but unused here)."""
         tp_calc = calc_tp(entry, sl, direction, RR_RATIO)
         if tp_calc is None:
+            return False
+        # Min-TP filter: skip if reward distance < MIN_PROFIT_PIPS (avoids
+        # tiny setups that spread costs would immediately eat).
+        if abs(tp_calc - entry) < MIN_PROFIT_PIPS * 0.0001:
             return False
         self.signals.append(Signal(dt=dt, direction=direction, entry=float(entry),
                                    sl=float(sl), tp=float(tp_calc), scenario=scenario,
@@ -239,8 +267,8 @@ class Sim:
                 else:
                     return
 
-            # bearish execution
-            if s.bearish_fvg_confirmed and s.highest_sweep_point is not None and self._bias_allows("sell"):
+            # bearish execution — gated by trade_london flag
+            if self.trade_london and s.bearish_fvg_confirmed and s.highest_sweep_point is not None and self._bias_allows("sell"):
                 entry = s.fvg_bottom
                 sl = s.highest_sweep_point + BUFFER
                 if self._emit(dt, "sell", entry, sl, s.pdl, "london_bearish"):
@@ -277,8 +305,8 @@ class Sim:
                 else:
                     return
 
-            # bullish execution (elif as in source)
-            elif s.bullish_fvg_confirmed and s.lowest_sweep_point is not None and self._bias_allows("buy"):
+            # bullish execution (elif as in source) — gated by trade_london flag
+            elif self.trade_london and s.bullish_fvg_confirmed and s.lowest_sweep_point is not None and self._bias_allows("buy"):
                 entry = s.fvg_top
                 sl = s.lowest_sweep_point - BUFFER
                 if self._emit(dt, "buy", entry, sl, s.pdh, "london_bullish"):
@@ -567,7 +595,8 @@ def main():
         print(f"\nLoading {pair} 1m data for {sorted(years)} ...")
         df = load_data(pair, years)
         print(f"Loaded {len(df):,} bars  {df.index[0]} -> {df.index[-1]} (UTC+1)")
-        sim = Sim(df)
+        trade_london = TRADE_LONDON_EURUSD if pair == "EUR_USD" else TRADE_LONDON_GBPUSD
+        sim = Sim(df, trade_london=trade_london)
         signals = sim.run()
         report(signals, pair)
 
