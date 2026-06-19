@@ -855,4 +855,6 @@ class ICTModel(Strategy):
                                 logger.info(f"{current_time} --- [BUY ORDER - SCENARIO B] Price: {entry_price} | RR: {self.rr_ratio:.2f} --- ")
                                 
         if current_time >= time(16, 0):
-            logger.info(f" --- {current_date} - Market is closed for the day --- ")
+            if not self._logged_market_closed:
+                logger.info(f" --- {current_date} - Market is closed for the day --- ")
+                self._logged_market_closed = True

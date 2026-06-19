@@ -138,7 +138,7 @@ class DailyEquityTracker:
 
             info = mt5.account_info()
             if info is None:
-                logger.warning("DailyEquityTracker: mt5.account_info() returned None")
+                logger.debug("DailyEquityTracker: mt5.account_info() returned None")
                 return False, 0.0, 0.0
 
             current_balance = info.balance
@@ -378,7 +378,7 @@ class PositionMonitor(threading.Thread):
 
         symbol_info = mt5.symbol_info(pos.symbol)
         if symbol_info is None:
-            logger.warning(f"[MONITOR] symbol_info returned None for {pos.symbol}")
+            logger.debug(f"[MONITOR] symbol_info returned None for {pos.symbol}")
             return
         buffer = symbol_info.point * self.config.breakeven_buffer_ticks
 

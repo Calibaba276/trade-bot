@@ -21,21 +21,27 @@ An automated forex trading system built on the ICT (Inner Circle Trader) institu
 trade-bot/
 ├── backend/                  # Python trading engine
 │   ├── brokers/              # MetaTrader 5 Lumibot adapter
-│   ├── config/               # Azure Key Vault client, Supabase client, logger
+│   ├── config/               # Azure Key Vault client, Supabase client, logger, latency probe
 │   ├── runners/              # Entry points: ict.py, liquidity_sweep.py, main.py
 │   ├── services/             # orchestrator, worker, position_monitor, verdict, frontend_emitter, telegram_notifier
 │   └── strategies/           # ICTModel, LiquiditySweep, common utilities
-├── frontend/                 # React dashboard
+├── frontend/                 # React TypeScript dashboard
 │   ├── src/
-│   │   ├── components/       # Chart, Layout, Controls, EventLog, Auth
-│   │   ├── hooks/            # useAuth, useLiveTradeEvents, useReplaySession, useKeyboardShortcuts …
+│   │   ├── components/       # Chart, Layout, Controls, EventLog, Auth, Marketing
+│   │   ├── hooks/            # useAuth, useLiveTradeEvents, useReplaySession,
+│   │   │                     #   useKeyboardShortcuts, usePerformanceStats,
+│   │   │                     #   useSessionSummaries, useTrades, useMarketStatus,
+│   │   │                     #   useOnboarding
+│   │   ├── pages/            # Landing, Dashboard, SharePage + dashboard sub-pages
+│   │   │                     #   (Overview, FeedPage, ChartPage, TradesPage,
+│   │   │                     #    PropFirmPage, SettingsPage)
 │   │   ├── store/            # Zustand replay store
-│   │   ├── types/            # TradeEvent, Candle, ReplaySession, BrokerAccount
+│   │   ├── types/            # TradeEvent, Candle, ReplaySession, BrokerAccount …
 │   │   └── utils/            # patternRenderer (canvas overlay)
 │   ├── e2e/                  # Playwright end-to-end tests
 │   └── src/__tests__/        # Vitest unit tests
 └── supabase/
-    └── migrations/           # SQL schema applied to Supabase
+    └── migrations/           # SQL schema applied to Supabase (three migrations)
 ```
 
 ---
@@ -192,23 +198,22 @@ VITE_SUPABASE_ANON_KEY=<your-anon-key>
 
 Use the **anon (publishable) key** here — never the service role key. Row-level security handles data isolation.
 
-### 3. Apply the database migration
+### 3. Apply the database migrations
 
-The migration lives at `supabase/migrations/20260612000000_glassbox_frontend_schema.sql`. Run it once against your Supabase project:
+Three migration files live under `supabase/migrations/`. Run them all at once with the Supabase CLI:
 
 ```bash
 # With the Supabase CLI (recommended)
 supabase db push
 
-# Or paste the SQL directly in the Supabase SQL editor
+# Or paste each SQL file directly in the Supabase SQL editor
 ```
 
-This creates:
-- `public.candles` — OHLCV market data per timeframe, with RLS
-- `public.trade_events` — pattern detections, entries, exits, with RLS
-- `public.replay_sessions` — persists scrub position, with RLS
-- Adds `user_id` column to `broker_accounts`
-- Adds `trade_events` to the `supabase_realtime` publication
+| Migration file | What it creates |
+|---------------|----------------|
+| `20260612000000_glassbox_frontend_schema.sql` | `candles`, `trade_events`, `replay_sessions`, `signals`; adds `user_id` to `broker_accounts`; enables Realtime |
+| `20260617000000_user_onboarding.sql` | `user_onboarding` — wizard step + completion flag, synced across devices |
+| `20260618000000_shared_sessions.sql` | `shared_sessions` — immutable audit snapshots for public share links |
 
 ### 4. Start the dev server
 
@@ -217,7 +222,7 @@ npm run dev
 # → http://localhost:5173
 ```
 
-Sign up at `/signup`, then log in. The dashboard loads immediately — candles and events appear once the ICT strategy starts emitting data.
+Sign up at `/signup`, then log in. The onboarding wizard runs on first login. The dashboard loads immediately — candles and events appear once the ICT strategy starts emitting data.
 
 ---
 
@@ -226,11 +231,15 @@ Sign up at `/signup`, then log in. The dashboard loads immediately — candles a
 | Feature | How to use |
 |---------|-----------|
 | **Live mode** | Click `● LIVE` in the topbar (or press `L`) — chart follows real-time events from Supabase Realtime |
-| **Replay mode** | Press `L` to switch — scrub with the slider or keyboard |
+| **Replay mode** *(Pro)* | Press `L` to switch — scrub with the slider or keyboard, step candle-by-candle through any past session |
 | **Chart overlays** | FVG boxes (amber), OB zones (blue), MSS lines (teal), BOS lines (purple), entry ▼ / exit ▲ pins |
-| **Context Cascade** | Strip below chart header shows latest pattern on each parent timeframe |
+| **Context Cascade** | Strip below chart header shows latest pattern on each parent timeframe (1m → 5m → 15m → 1h) |
 | **Markets panel** | Click any pair to switch; click `‹` to collapse |
-| **Right panel** | Event log + prop firm rules + monthly performance; click `›` to collapse |
+| **Event log** | Granular pattern detections + entries/exits with timestamps; collapses with `›` |
+| **Trade history** | Sortable table with scenario, entry price, SL, TP, P&L, and status |
+| **Prop Firm panel** *(Pro)* | Daily drawdown tracker, consecutive-loss counter, profit-target progress, halt status |
+| **Performance dashboard** | Monthly P&L, win rate, average R, consecutive wins/losses |
+| **Share audit link** | Export any session as a tamper-proof public link — recipients see the exact snapshot at `/share/:uuid`, no login required |
 
 ### Keyboard shortcuts
 
@@ -249,6 +258,20 @@ Hover the `?` button in the topbar to see this list at any time.
 
 ---
 
+## Database schema
+
+| Table | RLS | Description |
+|-------|-----|-------------|
+| `broker_accounts` | `auth.uid() = user_id` | MT5 account credentials per user |
+| `candles` | `auth.uid() = user_id` | OHLCV market data per pair/timeframe |
+| `trade_events` | `auth.uid() = user_id` | Pattern detections, entries, exits; published to Supabase Realtime |
+| `signals` | service role write / worker read | Verdicts built by the strategy and consumed by workers |
+| `replay_sessions` | `auth.uid() = user_id` | Persists scrub position and playback speed |
+| `user_onboarding` | `auth.uid() = user_id` | Wizard step index and completion flag, synced across devices |
+| `shared_sessions` | public read / owner insert+delete | Immutable audit snapshots — anyone can read by UUID; only the owner can create or revoke |
+
+---
+
 ## Testing
 
 ### Unit tests (Vitest)
@@ -259,7 +282,7 @@ npm test          # run once
 npm run test:watch  # watch mode
 ```
 
-Covers: Zustand store actions, `usePerformanceStats` calculations, Context Cascade parent-timeframe logic (22 tests).
+Covers: Zustand store actions, `usePerformanceStats` calculations, Context Cascade parent-timeframe logic.
 
 ### End-to-end tests (Playwright)
 
@@ -306,7 +329,8 @@ Covers: login page UI, signup form, unauthenticated redirect.
 
 ## Security notes
 
-- The frontend uses the **anon key** — RLS policies on `candles`, `trade_events`, and `replay_sessions` ensure each user only sees their own rows.
+- The frontend uses the **anon key** — RLS policies on `candles`, `trade_events`, `replay_sessions`, and `user_onboarding` ensure each user only sees their own rows.
 - The backend uses the **service role key** (fetched from Azure Key Vault, never committed) to write rows with the correct `user_id` so RLS passes on read.
+- `shared_sessions` rows are readable by anyone (the UUID is the unguessable capability), but only the authenticated owner can create or delete them. Snapshots are immutable once created — no update policy exists by design.
 - Never commit `.env.local` or any file containing the service role key. Both are gitignored.
 - All MT5 credentials, Redis URLs, and Supabase keys live exclusively in Azure Key Vault.
