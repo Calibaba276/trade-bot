@@ -176,8 +176,7 @@ def _check_stale_heartbeats(workers: Dict[str, WorkerProcess]) -> None:
                     logger.warning(
                         f"[STALE HEARTBEAT] account={label} last_heartbeat={age:.0f}s ago - "
                         f"worker may be hung"
-          )
-                )
+                    )
     except Exception as e:
         logger.warning(f"Heartbeat check failed: {e}")
 
