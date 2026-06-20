@@ -127,11 +127,11 @@ You don't want to learn how to trade. You want a system that's running rules you
 
 | Plan | Price | Accounts | Features |
 |---|---|---|---|
-| **Starter** | $20/mo | 1 broker account | Live signals, Glass Box feed, basic analytics |
-| **Pro** | COMING SOON | Up to 10 accounts | Full visual debugger, trade replay, prop firm panel, priority execution |
+| **Starter** | $15/mo | 1 broker account | Live signals, Glass Box feed, basic analytics, shareable audit links |
+| **Pro** | $49/mo | Up to 10 accounts | Full visual debugger, trade replay, prop firm panel, priority execution |
 | **Enterprise** | Custom | 50+ accounts | Dedicated VM, custom risk configuration, SLA support, priority execution |
 
-All plans include a **30-day free trial**. No credit card required to start.
+> **Note:** Billing integration is not yet live. CTAs on the landing page are pending update to "Request Early Access" until Stripe ships.
 
 ---
 
@@ -179,7 +179,21 @@ We don't make return projections. Past performance on backtests does not guarant
 
 ## Current Status
 
-Glass Box is in active development. The core trading engine, multi-account execution system, and dashboard (Live Mode + Replay Mode + Trade History) are built and operational. The landing page, settings page, and subscription billing integration are currently in progress.
+The core trading engine, multi-account execution system, and full dashboard are built and operational. This includes:
+
+- **Live Mode** — Supabase Realtime streams pattern detections, entries, and exits to the chart
+- **Replay Mode** — candle-by-candle scrub of any historical session with pattern overlays
+- **Prop Firm Panel** — drawdown tracker, consecutive-loss counter, profit-target progress, halt status
+- **Shareable Audit Links** — immutable public snapshots at `/share/:uuid`, no login required
+- **Onboarding Wizard** — step-by-step setup synced across devices
+- **Telegram Notifications** — signals, fills, rejections, drawdown halts, worker status
+- **Multi-account Orchestrator** — auto-restarts crashed workers
+
+**What is still pending:**
+- Billing / Stripe integration (BillingTab is a stub; tier is toggled by a dev preview switch)
+- Landing page CTAs to update from "30-day free trial" to "Request Early Access"
+- Footer dead links to remove or replace
+- Placeholder social proof to replace with real data
 
 If you're interested in early access or have questions about a specific use case, reach out directly.
 
