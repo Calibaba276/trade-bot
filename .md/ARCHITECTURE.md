@@ -51,99 +51,27 @@ interface ReplaySession {
 
 ## Supabase Schema
 
+The live schema is defined by three migration files under `supabase/migrations/`. The tables below reflect what is actually deployed.
+
 ### Tables
 
-```sql
--- Users are managed by Supabase Auth (auth.users)
+| Table | RLS | Description |
+|-------|-----|-------------|
+| `broker_accounts` | `auth.uid() = user_id` | MT5 account credentials + strategy config (rr_ratio, drawdown %, breakeven buffer) per user |
+| `candles` | `auth.uid() = user_id` | OHLCV bars (1m, 5m, 15m, 1h); unique on `(pair, timeframe, time)` |
+| `trade_events` | `auth.uid() = user_id` | Pattern detections, entries, exits; Supabase Realtime enabled |
+| `signals` | service role write / worker read | Verdicts built by ICT strategy; consumed by `worker.py` via Redis |
+| `replay_sessions` | `auth.uid() = user_id` | Scrub position, playback speed, selected timeframe |
+| `user_onboarding` | `auth.uid() = user_id` | Wizard step index and completion flag, synced across devices |
+| `shared_sessions` | public read / owner insert+delete | Immutable audit snapshots; anyone reads by UUID, only owner creates or deletes |
 
-create table accounts (
-  id          uuid primary key default gen_random_uuid(),
-  user_id     uuid references auth.users(id) on delete cascade,
-  label       text,                    -- e.g. "MT5 Live", "Paper"
-  created_at  timestamptz default now()
-);
+> **Note on `accounts` vs `broker_accounts`:** Earlier drafts of this doc referenced a generic `accounts` table. The actual table is `broker_accounts`, which also stores per-account strategy configuration (risk amount, RR ratio, drawdown %, etc.).
 
-create table trade_events (
-  id           uuid primary key default gen_random_uuid(),
-  user_id      uuid references auth.users(id) on delete cascade,
-  account_id   uuid references accounts(id) on delete cascade,
-  pair         text not null,
-  timestamp    bigint not null,        -- ms UTC
-  timeframe    text not null,          -- "1m" | "5m" | "15m" | "1h"
-  type         text not null,
-  pattern      text,
-  price        numeric,
-  high         numeric,
-  low          numeric,
-  volume       numeric,
-  ohlcv        jsonb,
-  confidence   numeric,
-  metadata     jsonb,
-  created_at   timestamptz default now()
-);
+### Row-Level Security
 
--- Composite index for the most common query pattern
-create index idx_trade_events_user_pair_time
-  on trade_events(user_id, pair, timestamp);
+All tables have RLS enabled. Each user sees only their own rows (`auth.uid() = user_id`). `shared_sessions` uses a custom policy: public SELECT (UUID is the capability), owner-only INSERT and DELETE, no UPDATE (immutable by design).
 
-create index idx_trade_events_timeframe
-  on trade_events(timeframe, timestamp);
-
-create table candles (
-  id          bigserial primary key,
-  user_id     uuid references auth.users(id) on delete cascade,
-  pair        text not null,
-  timeframe   text not null,
-  time        bigint not null,         -- ms UTC, candle open time
-  open        numeric,
-  high        numeric,
-  low         numeric,
-  close       numeric,
-  volume      numeric,
-  unique(pair, timeframe, time)
-);
-
-create index idx_candles_pair_tf_time
-  on candles(pair, timeframe, time);
-
-create table replay_sessions (
-  id              uuid primary key default gen_random_uuid(),
-  user_id         uuid references auth.users(id) on delete cascade,
-  trade_id        uuid references trade_events(id),
-  pair            text,
-  start_time      bigint,
-  end_time        bigint,
-  current_time    bigint,
-  playback_speed  int default 1,
-  created_at      timestamptz default now(),
-  updated_at      timestamptz default now()
-);
-```
-
-### Row-Level Security (RLS)
-
-```sql
--- Enable RLS on all tables
-alter table accounts        enable row level security;
-alter table trade_events    enable row level security;
-alter table candles         enable row level security;
-alter table replay_sessions enable row level security;
-
--- Each user sees only their own rows
-create policy "user_isolation" on accounts
-  for all using (auth.uid() = user_id);
-
-create policy "user_isolation" on trade_events
-  for all using (auth.uid() = user_id);
-
-create policy "user_isolation" on candles
-  for all using (auth.uid() = user_id);
-
-create policy "user_isolation" on replay_sessions
-  for all using (auth.uid() = user_id);
-```
-
-> **Note:** Using **Supabase Auth**. Supabase Auth handles JWTs natively and RLS policies reference `auth.uid()` directly
+> Supabase Auth handles JWTs natively; RLS policies reference `auth.uid()` directly. The frontend uses the **anon key**; the Python backend uses the **service role key** (from Azure Key Vault) to write rows with the correct `user_id`.
 
 ---
 
@@ -370,12 +298,12 @@ const useReplayStore = create<ReplayStore>((set, get) => ({
 ## Auth — Supabase Auth
 
 ```typescript
-// lib/supabase.ts
+// lib/supaclient.ts
 import { createClient } from "@supabase/supabase-js";
 
 export const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
 // Auth helpers
@@ -522,16 +450,16 @@ serve(async (req) => {
 
 | Layer | Technology | Why |
 |-------|------------|-----|
-| Framework | React 18 + TypeScript | Type safety, real-time updates |
+| Framework | React 19 + TypeScript | Type safety, real-time updates |
 | State | Zustand | Minimal boilerplate, fast |
-| Charts | TradingView Lightweight Charts | Lightweight, real-time candles, easy overlays |
-| Styling | Tailwind CSS | Fast iteration, dark mode out-of-box |
-| Data Fetching | React Query + Supabase SDK | Caching, Supabase-aware re-fetching |
+| Charts | TradingView Lightweight Charts v5 | Lightweight, real-time candles, easy overlays |
+| Styling | Tailwind CSS 3 | Fast iteration, dark mode out-of-box |
+| Data Fetching | TanStack Query v5 + Supabase SDK | Caching, Supabase-aware re-fetching |
 | Auth | **Supabase Auth** | Native JWT, RLS integration, no extra service |
 | Database | **Supabase (Postgres)** | Events, candles, sessions — all in one place |
 | Real-time | **Supabase Realtime** | Postgres CDC → frontend, replaces Socket.io |
-| Server Logic | **Supabase Edge Functions** | Aggregations, stats — no separate API server |
-| Secrets | Supabase Vault / env vars | No plaintext secrets in code |
+| Routing | React Router v7 | Client-side SPA routing |
+| Secrets | Azure Key Vault | No plaintext secrets in code |
 
 ---
 
@@ -643,14 +571,36 @@ currentTime:       1620063120000  // 2024-05-04 14:32 UTC
 
 ---
 
-## Known Limitations & Future Work
+## What Is Built
 
-- ✅ Single pair, single strategy initially
-- ✅ Replay only (no live trading UI)
-- 🔲 Multi-pair comparison (swap pairs, align timescales)
-- 🔲 Backtesting UI (bulk analyze 100 trades — Supabase Edge Function for aggregation)
+The following features from the original design are now implemented:
+
+- ✅ Live mode — Supabase Realtime streams trade events to the chart and event log in real time
+- ✅ Replay mode — scrub any historical session candle-by-candle with a slider or keyboard shortcuts
+- ✅ Pattern overlays — FVG boxes (amber), OB zones (blue), MSS lines (teal), BOS lines (purple) rendered on canvas
+- ✅ Context Cascade — strip below the chart header showing the latest pattern on each parent timeframe (1m → 5m → 15m → 1h)
+- ✅ Multi-page dashboard — Overview, Feed, Chart, Trades, Prop Firm, Settings
+- ✅ Prop Firm Panel — daily drawdown tracker, consecutive-loss counter, profit-target progress, halt status
+- ✅ Share audit link — immutable public snapshots via `/share/:uuid` served from `shared_sessions` table; no login required to view
+- ✅ Onboarding wizard — step-by-step setup stored in `user_onboarding`, synced across devices
+- ✅ Toast notification system
+- ✅ Keyboard shortcuts (Space, ← →, Home/End, L, 1/5/F/H)
+- ✅ Telegram notifications (signals, fills, rejections, drawdown halts, worker status)
+- ✅ Multi-account orchestrator with automatic restarts
+- ✅ Standalone backtest harness (`backend/backtest/ict_backtest.py`) with no Lumibot/MT5/Supabase deps
+
+## Tasks Not Yet Accomplished
+
+- 🔲 Billing / Stripe integration — `BillingTab` in `SettingsPage.tsx` is a stub; tier is toggled by a dev preview switch
+- 🔲 Hide tier preview switcher from non-dev users (or gate on `NODE_ENV`)
+- 🔲 Replace dead footer links (`Landing.tsx` About/Blog/Careers/Contact)
+- 🔲 Change "30-day free trial" landing page copy to "Request Early Access" until billing ships
+- 🔲 Replace placeholder social proof with real stats/testimonials before marketing outreach
+- 🔲 Port `Term` glossary tooltips from landing page to dashboard (Live Feed, VerdictSidebar)
+- 🔲 Wire "?" Documentation link in sidebar
+- 🔲 Multi-pair comparison view
+- 🔲 Paper trading / simulation mode
+- 🔲 Mobile bottom-nav and responsive chart layout
 - 🔲 Pattern strength heatmap (R:R histogram by pattern type)
-- 🔲 Mobile charting (Lightweight Charts responsive)
-- 🔲 Collaborative review (share `replay_sessions` UUID, invite by user email via Supabase Auth)
 
 ---
