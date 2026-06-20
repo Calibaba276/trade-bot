@@ -14,6 +14,7 @@ from backend.brokers.mt5_broker import MetaTrader5
 from backend.config.logger import setup_logger
 from backend.config.secrets import get_azure_secret
 from backend.config.supaclient import supabase, SUPABASE_URL
+from backend.config.markets import is_market_enabled, markets_for_plan
 from backend.strategies.common import _calculate_take_profit
 from backend.services.position_monitor import (
     HaltFlag,
@@ -98,10 +99,18 @@ def _resolve_account_config(account_id: str) -> Dict[str, Any]:
     server = _pick(cfg, "server", "account_server")
     path = _pick(cfg, "path", "terminal_path")
     timezone_name = _pick(cfg, "timezone", default="Africa/Lagos")
-    
+
     if not login or not password or not server:
         raise RuntimeError(f"Missing login/password/server for account_id={account_id}")
-    
+
+    # Markets this account is allowed to trade. enabled_markets is the user's
+    # opt-in subset; if it's empty/missing (older rows pre-migration) fall back
+    # to every market the account's plan permits.
+    plan = str(_pick(cfg, "plan", default="starter")).lower()
+    enabled_markets = cfg.get("enabled_markets") or []
+    if not enabled_markets:
+        enabled_markets = markets_for_plan(plan)
+
     cfg["_resolved"] = {
         "login": int(login),
         "password": password,
@@ -110,6 +119,8 @@ def _resolve_account_config(account_id: str) -> Dict[str, Any]:
         "timezone": timezone_name,
         "risk_amount": float(_pick(cfg, "risk_amount", default=25)),
         "rr_ratio": float(_pick(cfg, "rr_ratio", default=3.0)),
+        "plan": plan,
+        "enabled_markets": list(enabled_markets),
     }
     return cfg
 
@@ -351,13 +362,14 @@ def _execute_signal(
     account_id:   str,
     default_risk: float,
     default_rr_ratio: float,
+    enabled_markets: list,
     halt_flag:    Optional[HaltFlag] = None,
     monitor:      Optional[PositionMonitor] = None,
 ) -> None:
     """
     Full lifecycle for one signal on one account.
- 
-    Step 1 — Guard checks   : signal_id present, account targeting, dedup
+
+    Step 1 — Guard checks   : signal_id present, account targeting, market gate, dedup
     Step 2 — Timing gate    : sleep until execute_at (ICT prop-firm safe delay)
     Step 3 — Lot sizing     : risk_amount / (sl_distance * contract_size)
     Step 4 — Pending limit  : TRADE_ACTION_PENDING + BUY_LIMIT / SELL_LIMIT
@@ -377,7 +389,19 @@ def _execute_signal(
         and str(account_id) not in {str(x) for x in signal["target_accounts"]}
     ):
         return
- 
+
+    # --- Market access gate (plan + per-account opt-out) ---
+    # Signals are broadcast to every worker; this account only acts on the
+    # markets its plan permits and the user has left enabled. Skip silently
+    # before claiming so an out-of-plan signal stays available to other
+    # accounts and leaves no execution row here.
+    if not is_market_enabled(signal.get("symbol"), enabled_markets):
+        logger.debug(
+            f"[MARKET SKIP] signal_id={signal_id} symbol={signal.get('symbol')} "
+            f"not in enabled_markets={enabled_markets}"
+        )
+        return
+
     # --- Atomic claim (dedup across Redis delivery + backstop sweep) ---
     if not _claim_signal(signal_id, account_id):
         logger.info(f"[SKIP] signal_id={signal_id} already claimed/processed")
@@ -580,6 +604,7 @@ def _on_signal_received(
     account_label: str,
     default_risk: float,
     default_rr_ratio: float,
+    enabled_markets: list,
     halt_flag: HaltFlag,
     monitor: Optional[PositionMonitor],
 ) -> None:
@@ -597,6 +622,7 @@ def _on_signal_received(
         account_id=account_id,
         default_risk=default_risk,
         default_rr_ratio=default_rr_ratio,
+        enabled_markets=enabled_markets,
         halt_flag=halt_flag,
         monitor=monitor,
     )
@@ -608,6 +634,7 @@ def _backstop_loop(
     account_label: str,
     default_risk: float,
     default_rr_ratio: float,
+    enabled_markets: list,
     halt_flag: HaltFlag,
     monitor: Optional[PositionMonitor],
     stop_event: threading.Event,
@@ -668,6 +695,7 @@ def _backstop_loop(
                     account_label=account_label,
                     default_risk=default_risk,
                     default_rr_ratio=default_rr_ratio,
+                    enabled_markets=enabled_markets,
                     halt_flag=halt_flag,
                     monitor=monitor,
                 )
@@ -721,7 +749,11 @@ def main():
         monitor = _start_monitor(cfg, halt_flag)
 
         # --- Mark account as ready in Supabase ---
-        _set_account_status(account_id, "ready", "Worker online")
+        _set_account_status(
+            account_id,
+            "ready",
+            f"Worker online — plan={resolved['plan']} markets={','.join(resolved['enabled_markets'])}",
+        )
         worker_online = True
         notify_worker_online(
             account_number=resolved["login"],
@@ -754,6 +786,7 @@ def main():
             args=(
                 broker, account_id, account_label,
                 resolved["risk_amount"], resolved["rr_ratio"],
+                resolved["enabled_markets"],
                 halt_flag, monitor, stop_event,
             ),
             daemon=True,
@@ -810,6 +843,7 @@ def main():
                             account_label=account_label,
                             default_risk=resolved["risk_amount"],
                             default_rr_ratio=resolved["rr_ratio"],
+                            enabled_markets=resolved["enabled_markets"],
                             halt_flag=halt_flag,
                             monitor=monitor,
                         )
