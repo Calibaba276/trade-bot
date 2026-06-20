@@ -396,7 +396,14 @@ class XAUUSDModel(Strategy):
                         return
 
                     verdict = build_verdict(
-                        symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="london_bearish"
+                        symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="london_bearish",
+                        pdh=self.pdh, pdl=self.pdl,
+                        swept_high=self.highest_sweep_point, swept_low=self.swept_low if self.swept_low else None,
+                        mss_swing_low=self.mss_swing_low, mss_swing_high=self.mss_swing_high,
+                        fvg_top=self.fvg_top, fvg_bottom=self.fvg_bottom, fvg_confirmed=self.bearish_fvg_confirmed,
+                        sweep_point=self.highest_sweep_point,
+                        daily_bias=self.daily_bias,
+                        london_high=self.london_high, london_low=self.london_low,
                     )
                     try:
                         payload = save_verdict(verdict)
@@ -487,7 +494,14 @@ class XAUUSDModel(Strategy):
                         return
 
                     verdict = build_verdict(
-                        symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="london_bullish"
+                        symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="london_bullish",
+                        pdh=self.pdh, pdl=self.pdl,
+                        swept_high=self.swept_high if self.swept_high else None, swept_low=self.lowest_sweep_point,
+                        mss_swing_low=self.mss_swing_low, mss_swing_high=self.mss_swing_high,
+                        fvg_top=self.fvg_top, fvg_bottom=self.fvg_bottom, fvg_confirmed=self.bullish_fvg_confirmed,
+                        sweep_point=self.lowest_sweep_point,
+                        daily_bias=self.daily_bias,
+                        london_high=self.london_high, london_low=self.london_low,
                     )
                     try:
                         payload = save_verdict(verdict)
@@ -618,7 +632,14 @@ class XAUUSDModel(Strategy):
                                 return
 
                             verdict = build_verdict(
-                                symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bearish"
+                                symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bearish",
+                                pdh=self.pdh, pdl=self.pdl,
+                                swept_high=self.highest_sweep_point, swept_low=self.swept_low if self.swept_low else None,
+                                mss_swing_low=self.mss_swing_low, mss_swing_high=self.mss_swing_high,
+                                fvg_top=self.fvg_top, fvg_bottom=self.fvg_bottom, fvg_confirmed=self.bearish_fvg_confirmed,
+                                sweep_point=self.highest_sweep_point,
+                                daily_bias=self.daily_bias,
+                                london_high=self.london_high, london_low=self.london_low,
                             )
                             try:
                                 payload = save_verdict(verdict)
@@ -683,7 +704,14 @@ class XAUUSDModel(Strategy):
                                 return
 
                             verdict = build_verdict(
-                                symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bullish"
+                                symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bullish",
+                                pdh=self.pdh, pdl=self.pdl,
+                                swept_high=self.swept_high if self.swept_high else None, swept_low=self.lowest_sweep_point,
+                                mss_swing_low=self.mss_swing_low, mss_swing_high=self.mss_swing_high,
+                                fvg_top=self.fvg_top, fvg_bottom=self.fvg_bottom, fvg_confirmed=self.bullish_fvg_confirmed,
+                                sweep_point=self.lowest_sweep_point,
+                                daily_bias=self.daily_bias,
+                                london_high=self.london_high, london_low=self.london_low,
                             )
                             try:
                                 payload = save_verdict(verdict)
@@ -792,7 +820,14 @@ class XAUUSDModel(Strategy):
                                 return
 
                             verdict = build_verdict(
-                                symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bearish"
+                                symbol=self.asset.symbol, direction="sell", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bearish",
+                                pdh=self.pdh, pdl=self.pdl,
+                                swept_high=self.sweep_peak, swept_low=self.swept_low if self.swept_low else None,
+                                mss_swing_low=self.mss_swing_low, mss_swing_high=self.mss_swing_high,
+                                fvg_top=self.fvg_top, fvg_bottom=self.fvg_bottom, fvg_confirmed=self.bearish_fvg_confirmed,
+                                sweep_point=self.sweep_peak,
+                                daily_bias=self.daily_bias,
+                                london_high=self.london_high, london_low=self.london_low,
                             )
                             try:
                                 payload = save_verdict(verdict)
@@ -855,7 +890,14 @@ class XAUUSDModel(Strategy):
                                     return
 
                                 verdict = build_verdict(
-                                    symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bullish"
+                                    symbol=self.asset.symbol, direction="buy", entry=entry_price, sl=sl, tp=tp, risk=risk, rr=self.rr_ratio, scenario="ny_continuation_bullish",
+                                    pdh=self.pdh, pdl=self.pdl,
+                                    swept_high=self.swept_high if self.swept_high else None, swept_low=self.sweep_trough,
+                                    mss_swing_low=self.mss_swing_low, mss_swing_high=self.mss_swing_high,
+                                    fvg_top=self.fvg_top, fvg_bottom=self.fvg_bottom, fvg_confirmed=self.bullish_fvg_confirmed,
+                                    sweep_point=self.sweep_trough,
+                                    daily_bias=self.daily_bias,
+                                    london_high=self.london_high, london_low=self.london_low,
                                 )
                                 try:
                                     payload = save_verdict(verdict)
