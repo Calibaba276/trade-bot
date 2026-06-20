@@ -29,7 +29,9 @@ from backend.services.telegram_notifier import (
     notify_worker_offline,
 )
 
-logger = setup_logger("workers")
+# Every account runs as its own `worker` subprocess; they all write to the same
+# worker.log, so use the non-rotating handler to avoid cross-process rotation races.
+logger = setup_logger("worker", rotate=False)
 EXIT_CONFIG_ERROR = 78
 EXIT_RUNTIME_ERROR = 1
 
