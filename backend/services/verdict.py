@@ -6,12 +6,18 @@ from typing import Literal
 
 import redis
 
+from supabase import create_client
+
 from backend.config.logger import setup_logger
-from backend.config.supaclient import supabase
+from backend.config.supaclient import supabase, SUPABASE_URL
 from backend.config.secrets import get_azure_secret
 from backend.services.telegram_notifier import notify_signal
 
 logger = setup_logger(__name__)
+
+def _admin_supabase():
+    key = get_azure_secret("SUPABASE-SERVICE-ROLE-KEY") or get_azure_secret("SUPABASE-KEY")
+    return create_client(SUPABASE_URL, key)
 
 Scenario = Literal[
     "london_bearish",
@@ -72,7 +78,7 @@ def save_verdict(verdict: Verdict):
     payload = asdict(verdict)
 
     try:
-        supabase.table("signals").insert(payload).execute()
+        _admin_supabase().table("signals").insert(payload).execute()
         logger.info(
             f"[VERDICT SAVED] signal_id={verdict.signal_id} "
             f"symbol={verdict.symbol} direction={verdict.direction} "

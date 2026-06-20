@@ -8,10 +8,12 @@ from typing import Any, Dict, Optional
 import MetaTrader5 as mt5
 import redis
 
+from supabase import create_client
+
 from backend.brokers.mt5_broker import MetaTrader5
 from backend.config.logger import setup_logger
 from backend.config.secrets import get_azure_secret
-from backend.config.supaclient import supabase
+from backend.config.supaclient import supabase, SUPABASE_URL
 from backend.strategies.common import _calculate_take_profit
 from backend.services.position_monitor import (
     HaltFlag,
@@ -30,6 +32,25 @@ from backend.services.telegram_notifier import (
 logger = setup_logger("workers")
 EXIT_CONFIG_ERROR = 78
 EXIT_RUNTIME_ERROR = 1
+
+def _get_admin_supabase():
+    """
+    Service-role client that bypasses RLS.
+    Used for all worker writes (executions, execution_events, broker_accounts status).
+    Falls back to the anon client if the secret hasn't been added yet.
+    """
+    url = SUPABASE_URL
+    key = get_azure_secret("SUPABASE-SERVICE-ROLE-KEY") or get_azure_secret("SUPABASE-KEY")
+    return create_client(url, key)
+
+_admin_db = None
+
+def _db():
+    """Lazy singleton for the admin Supabase client."""
+    global _admin_db
+    if _admin_db is None:
+        _admin_db = _get_admin_supabase()
+    return _admin_db
 
 def _parse_iso(ts: str) -> datetime:
     ts = ts.replace("Z", "+00:00")
@@ -59,7 +80,7 @@ def _now() -> str:
 
 def _resolve_account_config(account_id: str) -> Dict[str, Any]:
     row = (
-        supabase.table("broker_accounts")
+        _db().table("broker_accounts")
         .select("*")
         .eq("id", account_id)
         .limit(1)
@@ -107,7 +128,7 @@ def _set_account_status(account_id: str, status: str, detail: str = "") -> None:
     """
 
     try:
-        supabase.table("broker_accounts").update(
+        _db().table("broker_accounts").update(
             {
                 "status": status,
                 "status_detail": detail,
@@ -127,7 +148,7 @@ def _heartbeat_loop(account_id: str, stop_event: threading.Event) -> None:
     """
     while not stop_event.is_set():
         try:
-            supabase.table("broker_accounts").update(
+            _db().table("broker_accounts").update(
                 {"last_heartbeat": _now()}
             ).eq("id", account_id).execute()
         except Exception as e:
@@ -144,7 +165,7 @@ def _upsert_execution(signal_id: str, account_id: str, data: Dict[str, Any]) -> 
       pending → sent → filled | submitted | rejected | error
     """
     payload = {"signal_id": signal_id, "account_id": account_id, **data}
-    supabase.table("executions").upsert(
+    _db().table("executions").upsert(
         payload,
         on_conflict="signal_id,account_id",
     ).execute()
@@ -168,7 +189,7 @@ def _log_event(
     detail is a JSONB payload used by the Glass Box dashboard for chart replay.
     """
     try:
-        supabase.table("execution_events").insert(
+        _db().table("execution_events").insert(
             {
                 "signal_id": signal_id,
                 "account_id": account_id,
@@ -196,7 +217,7 @@ def _claim_signal(signal_id: str, account_id: str) -> bool:
     Returns True if THIS caller won the claim and should proceed to execute.
     """
     try:
-        supabase.table("executions").insert(
+        _db().table("executions").insert(
             {
                 "signal_id": signal_id,
                 "account_id": account_id,
@@ -613,7 +634,7 @@ def _backstop_loop(
                 datetime.now(timezone.utc) - timedelta(seconds=lookback_seconds)
             ).isoformat()
             rows = (
-                supabase.table("signals")
+                _db().table("signals")
                 .select("*")
                 .gte("created_at", cutoff)
                 .execute()
@@ -625,7 +646,7 @@ def _backstop_loop(
                 if not sid:
                     continue
                 existing = (
-                    supabase.table("executions")
+                    _db().table("executions")
                     .select("signal_id")
                     .eq("signal_id", sid)
                     .eq("account_id", account_id)
