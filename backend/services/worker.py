@@ -204,10 +204,19 @@ def _claim_signal(signal_id: str, account_id: str) -> bool:
             }
         ).execute()
         return True
-    except Exception:
-        # Most common cause: unique-constraint violation == already claimed.
-        # Any other insert error also means we should not execute right now;
-        # if no row actually landed, the backstop sweep will retry next cycle.
+    except Exception as e:
+        err_str = str(e)
+        # Unique-constraint violation = already claimed by another path — normal, skip silently.
+        # Anything else (RLS denial, network error, schema mismatch) = real problem — log it.
+        if "duplicate" in err_str.lower() or "unique" in err_str.lower() or "23505" in err_str:
+            logger.debug(f"[CLAIM] signal_id={signal_id} already claimed (duplicate key)")
+        else:
+            logger.error(
+                f"[CLAIM FAILED] signal_id={signal_id} account_id={account_id} "
+                f"— insert into executions was blocked: {e}. "
+                f"Check Supabase RLS on the executions table or confirm SUPABASE-KEY "
+                f"is the service_role key (not anon)."
+            )
         return False
 
 def _compute_lot_size(
