@@ -2,7 +2,7 @@ import uuid
 import json
 from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone, timedelta
-from typing import Literal
+from typing import Literal, Optional
 
 import redis
 
@@ -37,16 +37,38 @@ class Verdict:
     take_profit: float
     risk: float
     reward_risk_ratio: float
-    
+
     created_at: str
     execute_at: str
     scenario: Scenario
     signal_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
+    # ICT indicator state captured at signal generation time
+    pdh: Optional[float] = None
+    pdl: Optional[float] = None
+    swept_high: Optional[float] = None
+    swept_low: Optional[float] = None
+    mss_swing_high: Optional[float] = None
+    mss_swing_low: Optional[float] = None
+    fvg_top: Optional[float] = None
+    fvg_bottom: Optional[float] = None
+    fvg_confirmed: Optional[bool] = None
+    sweep_point: Optional[float] = None
+    daily_bias: Optional[str] = None
+    london_high: Optional[float] = None
+    london_low: Optional[float] = None
+
 def build_verdict(
-        symbol, direction, entry, sl, tp, risk, rr, scenario
+        symbol, direction, entry, sl, tp, risk, rr, scenario,
+        pdh=None, pdl=None,
+        swept_high=None, swept_low=None,
+        mss_swing_high=None, mss_swing_low=None,
+        fvg_top=None, fvg_bottom=None, fvg_confirmed=None,
+        sweep_point=None,
+        daily_bias=None,
+        london_high=None, london_low=None,
 ) -> Verdict:
-    """ Returns a clean verdict object"""
+    """Returns a clean verdict object with ICT indicator state."""
 
     if entry is None or sl is None or tp is None:
         raise ValueError(
@@ -69,7 +91,20 @@ def build_verdict(
         reward_risk_ratio=rr,
         execute_at=execute_time,
         scenario=scenario,
-        created_at=now.isoformat()
+        created_at=now.isoformat(),
+        pdh=pdh,
+        pdl=pdl,
+        swept_high=swept_high,
+        swept_low=swept_low,
+        mss_swing_high=mss_swing_high,
+        mss_swing_low=mss_swing_low,
+        fvg_top=fvg_top,
+        fvg_bottom=fvg_bottom,
+        fvg_confirmed=fvg_confirmed,
+        sweep_point=sweep_point,
+        daily_bias=daily_bias,
+        london_high=london_high,
+        london_low=london_low,
     )
 
 def save_verdict(verdict: Verdict):
