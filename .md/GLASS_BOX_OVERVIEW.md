@@ -127,11 +127,11 @@ You don't want to learn how to trade. You want a system that's running rules you
 
 | Plan | Price | Accounts | Features |
 |---|---|---|---|
-| **Starter** | $15/mo | 1 broker account | Live signals, Glass Box feed, basic analytics, shareable audit links |
-| **Pro** | $49/mo | Up to 10 accounts | Full visual debugger, trade replay, prop firm panel, priority execution |
+| **Starter** | $15/mo | 1 broker account | Auto-execution, full audit log, shareable audit link, Forex markets (EURUSD, XAUUSD, GBPUSD, USDJPY) |
+| **Pro** | $49/mo | Up to 10 accounts | Everything Starter + Replay Mode, full Prop Firm Panel, US Indices (NAS100, US30, SPX500), Live ICT condition feed |
 | **Enterprise** | Custom | 50+ accounts | Dedicated VM, custom risk configuration, SLA support, priority execution |
 
-> **Note:** Billing integration is not yet live. CTAs on the landing page are pending update to "Request Early Access" until Stripe ships.
+**30-day free trial on Pro — no credit card required.** Every new user starts on a full Pro trial. At Day 30, choose to stay on Pro ($49/mo), downgrade to Starter ($15/mo), or pause your account. Early access lifetime deals: Starter $99 / Pro $199 (limited 50–100 seats).
 
 ---
 
@@ -151,8 +151,11 @@ Glass Box is built on a production-grade technology stack designed for reliabili
 
 ## Frequently Asked Questions
 
+**Can I try Glass Box before paying?**
+Yes. Every new account starts on a 30-day free trial — no credit card required. During the trial, you get full Pro access: Replay Mode, US Indices, multi-account support, Prop Firm Panel, everything. At the end of 30 days, you choose your plan: stay on Pro ($49/mo), downgrade to Starter ($15/mo), or pause your account. Your trade history and any audit links you generated remain permanently.
+
 **Is this real trading or paper trading?**
-Glass Box executes real orders on your live MetaTrader 5 broker account. Paper trading / simulation mode is on the roadmap but not yet available. You can review the strategy in full using Replay Mode on historical sessions before going live.
+Glass Box executes real orders on your live MetaTrader 5 broker account. Paper trading / simulation mode is on the roadmap but not yet available. You can review the strategy in full using Replay Mode on historical sessions before going live. During your free trial, we recommend using a small risk amount per trade ($10–$25) while you get comfortable with the system.
 
 **Do I need to understand ICT to use Glass Box?**
 No. The bot handles everything. The dashboard is designed to be readable even if you've never heard of a Fair Value Gap — pattern names are color-coded and labeled, and hovering over any event shows a plain-English explanation. That said, if you want to understand what the bot is doing more deeply, the Replay Mode is an excellent learning tool.

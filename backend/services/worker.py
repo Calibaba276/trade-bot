@@ -91,7 +91,7 @@ def _resolve_account_config(account_id: str) -> Dict[str, Any]:
     )
     if not getattr(row, "data", None):
         raise RuntimeError(f"No broker_accounts row found for account_id={account_id}")
-    
+
     cfg = row.data[0]
 
     login = _pick(cfg, "login", "account_login", "account_number")
@@ -110,6 +110,7 @@ def _resolve_account_config(account_id: str) -> Dict[str, Any]:
     enabled_markets = cfg.get("enabled_markets") or []
     if not enabled_markets:
         enabled_markets = markets_for_plan(plan)
+
 
     cfg["_resolved"] = {
         "login": int(login),

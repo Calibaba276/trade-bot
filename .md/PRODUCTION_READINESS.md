@@ -66,15 +66,19 @@ About, Blog, Careers, Contact are all still `href="#"`. For a financial product 
 
 **4. Landing page CTAs promise "30-day free trial, no credit card required"** (`Landing.tsx`)
 
-This promise appears in the hero trust strip and in the pricing section footer. Billing isn't live. A promise that can't be honored at checkout kills trust harder than no promise at all.
+**✅ Strategy approved (2026-06-21) — keep this copy.** The 30-day Pro free trial is the confirmed acquisition strategy. The CTA is correct. What's missing is the *backend* to honour it: trial tracking in `user_profiles`, expiry cron, Day 30 plan selection screen, and Paystack billing. These are Week 5 engineering tasks. Do NOT change the CTA to "Request Early Access" — the free trial is the plan.
 
-**Fix required:** Change to "Request Early Access" or "Join Waitlist" until billing ships.
+**What still needs building (Week 5):**
+- `user_profiles.trial_expires_at` field + expiry cron (pg_cron hourly)
+- Trial countdown banner on dashboard
+- Day 30 plan selection screen (mandatory, cannot be dismissed)
+- Paystack subscription checkout for Starter ($15/mo) and Pro ($49/mo)
 
 ---
 
 **5. "Start Free Trial" in navbar** (`Landing.tsx` — NavBar)
 
-Same issue — links to `/sign-up` and implies a free trial that can't actually be activated.
+Same as above — keep this. The navbar CTA is correct for the approved trial strategy.
 
 ---
 
@@ -121,7 +125,7 @@ Stats ("340+ Traders", "12,000+ Trades executed", "68% win rate") and testimonia
 | Billing / tier gating | ⚠ Stub | **Yes** — tier switcher is accessible to real users |
 | Share link security | ✅ Fixed | Server-stored in `shared_sessions`; immutable; UUID-gated |
 | Footer dead links | ❌ Still `href="#"` | Trust issue for financial product |
-| Free trial CTA copy | ❌ Billing not live | Promise can't be honored at checkout |
+| Free trial CTA copy | ✅ Approved — keep it | Trial strategy confirmed (2026-06-21). Backend builds Week 5. |
 | Dashboard `Term` tooltips | ❌ Not ported | Nice-to-have for Starter tier UX |
 | Fabricated social proof | ❌ Placeholder | Must replace before marketing outreach |
 
@@ -141,7 +145,7 @@ Stats ("340+ Traders", "12,000+ Trades executed", "68% win rate") and testimonia
 - [ ] **Wire billing / Stripe** — `BillingTab` in `SettingsPage.tsx` is still a stub. Tier is toggled in-memory by a developer preview switch. No real subscription gate exists.
 - [ ] **Hide tier preview switcher from non-dev users** — or gate it behind `NODE_ENV === 'development'`.
 - [ ] **Replace footer dead links** — `Landing.tsx` About/Blog/Careers/Contact are all `href="#"`.
-- [ ] **Change "30-day free trial" landing page copy** to "Request Early Access" or "Join the Waitlist" until billing is live.
+- [ ] **Wire the 30-day free trial backend** — `user_profiles.trial_expires_at`, expiry cron, Day 30 plan selection screen, Paystack billing. The landing page CTA copy is correct and intentional — do not change it. (Week 5 task.)
 - [ ] **Replace placeholder social proof** in `Landing.tsx` (fabricated stats and testimonials) with real data before any marketing outreach.
 - [ ] **Port `Term` glossary tooltips to dashboard** — the ICT jargon tooltip component from the landing page is not used in the Live Feed or VerdictSidebar.
 - [ ] **Wire "?" Documentation link** in `DashboardLayout.tsx` sidebar — currently `href="#"`.
