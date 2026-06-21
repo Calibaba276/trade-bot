@@ -123,3 +123,39 @@ Strategy generates Verdict
 ### MT5 symbol naming
 
 Live trading uses broker-specific suffixes (e.g. `EURUSDm`). Backtest runners use the base symbol (`EURUSD`). Always parameterize the symbol and document which format is expected.
+
+---
+
+## .md files
+
+All product documentation lives in `.md/`. Summary:
+
+| File | Purpose |
+|------|---------|
+| `CLAUDE.md` | Claude Code instructions (this file) |
+| `PRODUCTION_READINESS.md` | GTM plan, pricing, 6-week roadmap, production status |
+| `TODOS.md` | Deferred items with full context |
+| `GLASS_BOX_OVERVIEW.md` | Product overview and pricing (user-facing copy reference) |
+| `DESIGN.md` | Frontend design guide: user archetypes, component specs, landing page + dashboard |
+| `FRONTEND.md` | TypeScript types, Supabase schema, live data subscription patterns, tech stack |
+
+---
+
+## Skill routing
+
+When the user's request matches an available skill, invoke it via the Skill tool.
+
+Key routing rules:
+- Product ideas/brainstorming → invoke /office-hours
+- Strategy/scope → invoke /plan-ceo-review
+- Architecture → invoke /plan-eng-review
+- Design system/plan review → invoke /design-consultation or /plan-design-review
+- Full review pipeline → invoke /autoplan
+- Bugs/errors → invoke /investigate
+- QA/testing site behavior → invoke /qa or /qa-only
+- Code review/diff check → invoke /review
+- Visual polish → invoke /design-review
+- Ship/deploy/PR → invoke /ship or /land-and-deploy
+- Save progress → invoke /context-save
+- Resume context → invoke /context-restore
+- Author a backlog-ready spec/issue → invoke /spec
