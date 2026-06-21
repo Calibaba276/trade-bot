@@ -1,10 +1,110 @@
-# Glass Box — TODOS
+# Glass Box — Master TODO
 
-Deferred items from planning. Pick up when the relevant milestone ships.
+All tasks from planning. Grouped by owner and delivery week.
+
+Legend: `[ ]` = not started · `[~]` = in progress · `[x]` = done · `[!]` = blocked
 
 ---
 
-## From 6-Week GTM Plan (2026-06-21)
+## YOUR TASKS (Human-Side)
+
+Things only you can do. No code required.
+
+| # | Task | Priority | When |
+|---|------|----------|------|
+| H-1 | DM 5 ICT signal providers on Telegram. Script: *"I'm building a transparency layer for MT5 execution — would you look at a demo? I think it could make your channel look more professional."* Goal: one "yes" = first real demand signal. | P0 | Week 1 |
+| H-2 | Set up a Paystack account and verify your business identity (required before billing integration can go live). | P0 | Week 1 |
+| H-3 | Legal/compliance check: consult a Nigerian fintech/SaaS lawyer on whether auto-executing third-party signals requires a SEC licence. Fallback already decided — "personal automation" framing if unfavourable. Cap public registration at 50 users until resolved. | P1 | Before public launch |
+| H-4 | Decide lifetime deal logistics: WHERE to sell ($99 Starter / $199 Pro lifetime, cap 50–100 users) — Gumroad or Lemon Squeezy. Manually provision lifetime tier in Supabase until billing ships. | P2 | After Week 5 billing |
+| H-5 | Write pricing page copy: one headline + one value prop per tier in ≤10 words each. Validate framing with first 5 users before finalising. Draft: Starter = "auto-execute ICT signals on your MT5 account" / Pro = "full ICT transparency for your prop firm challenge." | P3 | Week 6 |
+| H-6 | Establish at least one active signal provider partnership (the B2B2C flywheel doesn't start without this). | P1 | Week 4 |
+
+---
+
+## ENGINEERING BUILD QUEUE
+
+All code tasks, ordered by delivery week.
+
+---
+
+### WEEK 1 — Core Rewrite + Schema Foundation
+
+- [ ] **E-1-1** Rewrite `ict_model.py` EURUSD logic to fix the repainting/lookahead bug. Audit all calls to future candle data. Output must be strictly point-in-time.
+- [ ] **E-1-2** Create `user_profiles` Supabase table with columns: `id` (FK → auth.users), `plan_tier` (text, default `'starter'`), `created_at`. Add index on `plan_tier`.
+- [ ] **E-1-3** Denormalize `plan_tier` into `broker_accounts` table so `worker.py` can read tier without a JOIN. Add DB migration.
+- [ ] **E-1-4** Add three missing DB indexes: `broker_accounts(user_id)`, `signals(account_id, created_at DESC)`, `signals(symbol, created_at DESC)`.
+- [ ] **E-1-5** Landing page — fix pricing to $15 Starter / $49 Pro (currently shows $49/$99). File: `Landing.tsx` pricing section.
+- [ ] **E-1-6** Landing page — add two visible CTA tracks: "Auto-execute signals" (Starter) → `/signup?plan=starter` and "Prop firm challenge" (Pro) → `/signup?plan=pro`.
+- [ ] **E-1-7** Landing page — rename "Watch Live Demo" button. It currently scrolls to the features section, not a demo. Either link to a real demo video or rename to "See How It Works."
+- [ ] **E-1-8** Landing page — remove footer dead links (About, Blog, Careers) until those pages exist.
+- [ ] **E-1-9** Landing page — change "Start Free Trial" to "Request Early Access" (no billing live yet, no free tier planned).
+- [ ] **E-1-10** Fix `RiskTab` "Save Defaults" button: either wire it to persist to Supabase or add a "Coming soon" label.
+
+---
+
+### WEEK 2 — Onboarding + XAUUSD
+
+- [ ] **E-2-1** Build onboarding checklist for first-time users: Step 1 → Connect MT5 account, Step 2 → Set risk config, Step 3 → Wait for next London session. Show on dashboard until all steps complete.
+- [ ] **E-2-2** Add XAUUSD strategy runner. Run a second `ict_model.py` instance for XAUUSD (same London/NY session windows as EURUSD). XAUUSD is available on both Starter and Pro.
+- [ ] **E-2-3** Make `broker_accounts.symbol` store a comma-separated list (`"EURUSD,XAUUSD,GBPUSD"`). Worker reads the list and skips signals for symbols not in it. Backward compatible with existing single-value records.
+- [ ] **E-2-4** Auth pages — replace hardcoded hex colours (`#141921`, `#0f1419`) with design tokens (`bg-bg-surface`, `bg-bg-base`).
+- [ ] **E-2-5** Auth pages — add "Forgot password" link to Login page.
+- [ ] **E-2-6** Auth pages — add password length hint on SignUp page.
+- [ ] **E-2-7** Auth pages — fix post-signup redirect: after email confirmation, send user to `/dashboard`, not `/sign-in`.
+- [ ] **E-2-8** Rename "Chart Debugger" in sidebar nav to "Replay Mode" to match marketing copy.
+- [ ] **E-2-9** Standardise sidebar nav icons: pick either emoji OR Unicode icons, not both mixed.
+
+---
+
+### WEEK 3 — US Indices + Tier Enforcement
+
+- [ ] **E-3-1** Add NAS100, US30, SPX500 strategy runners (Pro-only). Session window: NYSE open 15:30–17:30 NGT. Separate runner from London/NY forex strategy.
+- [ ] **E-3-2** Tier enforcement in `worker.py`: read `plan_tier` from `broker_accounts` at startup. Starter accounts skip signals for Pro-only symbols (NAS100, US30, SPX500). Fail-closed: if tier read fails, halt and log `[TIER_GATE_ERROR]`.
+- [ ] **E-3-3** Dashboard market tabs: Starter view shows forex markets; Pro view adds `[NAS100 ⚡] [US30 ⚡] [SPX500 ⚡] [BTC 🔒 Soon]`. Pro-locked tabs show "Unlock with Pro" on hover for Starter users.
+- [ ] **E-3-4** Engine halt banner: full-width banner when engine is halted (daily loss limit hit). Impossible to miss. Include reason + estimated reset time (UTC midnight).
+- [ ] **E-3-5** Notification system for halt events: email user if engine is down >15 minutes. Log `[HALT_NOTIFY]`.
+- [ ] **E-3-6** Remove hardcoded "Uptime 99.7%" from Overview dashboard. Remove until real uptime data is available.
+- [ ] **E-3-7** PropFirmPanel: persist daily limit and consecutive losses config across page reloads (currently resets on every reload). Save to Supabase.
+
+---
+
+### WEEK 4 — Live Data + Shareable Audit Link
+
+- [ ] **E-4-1** Wire live verdict feed to Supabase realtime subscription. Currently polling — switch to `supabase.channel('signals').on('INSERT', ...)`. Reduces dashboard latency from ~2s to near-instant.
+- [ ] **E-4-2** Build shareable audit link feature: `POST /api/audit/generate` creates a UUID-keyed public record in Supabase. Returns `https://glassbox.io/audit/{uuid}`. Starter + Pro feature (generation is gated, viewing is public — no account needed to view).
+- [ ] **E-4-3** Audit link page (`/audit/{uuid}`): show trade entry/exit, ICT logic narrative, broker account name, timestamp. No auth required to view.
+- [ ] **E-4-4** Audit link empty state doubles as an acquisition page: session times (next London/NY scan), scanning in progress message, "Want your own Glass Box?" signup CTA for Telegram followers.
+- [ ] **E-4-5** Verdict sidebar trigger on Overview recent signals rows. Currently clicking a row does nothing — should open the VerdictSidebar.
+- [ ] **E-4-6** PropFirmPanel: add profit target tracker field (completes the Pro tier spec). Daily drawdown and profit target must both display in Pro view.
+- [ ] **E-4-7** Add date range filter to Trades page.
+- [ ] **E-4-8** Add "Explain this" tooltips for ICT terms in the dashboard (FVG, MSS, BOS, CHoCH, OB). Port the `Term` component from the landing page.
+
+---
+
+### WEEK 5 — Billing (Paystack)
+
+- [ ] **E-5-1** Integrate Paystack subscriptions for Starter ($15/mo) and Pro ($49/mo). Use Paystack's subscription API, not one-off charge.
+- [ ] **E-5-2** Paystack webhook handler (`POST /api/webhooks/paystack`): validate HMAC-SHA512 signature on every event. On `charge.success`: call Supabase RPC `activate_subscription(user_id, plan)` as an atomic transaction. Fail-closed if signature invalid (return 401, log `[WEBHOOK_INVALID]`).
+- [ ] **E-5-3** Add billing/subscription tab to Settings page. Show: current plan, next billing date, "Upgrade to Pro" CTA for Starter users, "Manage billing" link to Paystack customer portal.
+- [ ] **E-5-4** Plan tier gate in account creation: set `plan_tier` in `user_profiles` and `broker_accounts` from the `?plan=` query param at signup.
+- [ ] **E-5-5** Upgrade nudge: when a Starter user tries to add a second broker account, show modal — "Multiple accounts are a Pro feature. Upgrade to Pro ($49/mo) to add up to 10 accounts."
+- [ ] **E-5-6** Landing page — add social proof section before public launch. Placeholder copy until real testimonials available.
+- [ ] **E-5-7 STRETCH** FVG zones overlay on charts.
+
+---
+
+### WEEK 6 — Landing Page + QA
+
+- [ ] **E-6-1** Landing page final polish: two-track pricing cards fully matching the approved pricing ($15 Starter / $49 Pro), feature comparison table, social proof section live.
+- [ ] **E-6-2** Full end-to-end QA pass: Starter signup → MT5 connect → signal executes → audit link generated → audit link viewed without account → upgrade flow → Paystack billing → Pro features unlock.
+- [ ] **E-6-3 STRETCH** Session summary cards: auto-post to Overview after each London/NY session closes. Show: scan count, verdict count, trade count, session P&L, halt events.
+- [ ] **E-6-4 STRETCH** Date range filter on audit link page for signal providers reviewing their history.
+
+---
+
+## DEFERRED — Pick Up After Relevant Milestone Ships
+
+---
 
 ### T-DEFER-1: Lifetime Deal Logistics
 **What:** Spec how to sell lifetime accounts before Paystack monthly billing ships.
@@ -35,7 +135,7 @@ Deferred items from planning. Pick up when the relevant milestone ships.
 **Why:** Landing page is incomplete without clear tier differentiation.
 **Pros:** Improves conversion from landing page.
 **Cons:** Requires knowing which features resonate (validate with first users first).
-**Context:** Current plan: Starter = "auto-execute ICT signals on your MT5 account" / Pro = "full ICT transparency for your prop firm challenge." Validate with first 5 users which framing resonates before finalizing.
+**Context:** Current plan: Starter = "auto-execute ICT signals on your MT5 account" / Pro = "full ICT transparency for your prop firm challenge." Validate with first 5 users which framing resonates before finalising.
 **Effort:** XS (human)
 **Priority:** P3
 **Blocked by:** Week 6 landing page sprint
@@ -90,7 +190,7 @@ Deferred items from planning. Pick up when the relevant milestone ships.
 
 ---
 
-## Engineering Backlog
+## ENGINEERING BACKLOG
 
 ### T-ENG-1: Pattern Overlay Suite
 FVG zones in Week 5 (stretch). Full suite (OB blocks, MSS markers, BOS levels) post-launch.
