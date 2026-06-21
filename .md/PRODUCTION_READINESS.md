@@ -75,7 +75,16 @@ DM five ICT signal providers on Telegram. Not to sell. To ask: "I'm building a t
 
 ### Recommended Pricing Structure
 
-No free tier. A free tier would let people consume audit links and trade logs without converting — killing the upgrade incentive entirely.
+**30-day free trial on Pro — no credit card required.** (Updated 2026-06-21.)
+
+The original "no free tier" reasoning was correct for a *permanent* free tier. A time-limited 30-day trial is a different mechanic entirely — after Day 30, users pay or lock out. The trust barrier for a trading product (handing over MT5 credentials, real money at stake, new product with zero public social proof) requires a try-before-you-buy mechanism to convert.
+
+Trial structure:
+- Every signup gets 30 days of full **Pro** access — no credit card
+- 1 broker account during trial (same as Starter, prevents abuse)
+- At Day 30: choose Pro ($49/mo), Starter ($15/mo), or account pauses (read-only)
+- Audit links generated during trial remain live permanently regardless of plan chosen
+- Email drip campaign: Day 1, 7, 21, 28, 30
 
 | Tier | Price | Accounts | Core value |
 |---|---|---|---|
@@ -127,6 +136,7 @@ Cap at 50–100 users to create urgency. These early users become the word-of-mo
 | 1 | Landing page shows $49/$99 — strategy approved $15/$49 | Update `Landing.tsx` pricing section |
 | 2 | RiskTab "Save Defaults" button is non-functional | Wire it up or add "coming soon" label |
 | 3 | No onboarding flow for first-time users | Add checklist + empty-state CTA for new accounts |
+| 4 | CTA says "Start Free Trial" with no trial — change to "Start 30-Day Free Trial — No Credit Card Required" (trial is now approved and will be built in Week 5) |
 
 ### Build Next
 

@@ -37,7 +37,7 @@ All code tasks, ordered by delivery week.
 - [ ] **E-1-6** Landing page — add two visible CTA tracks: "Auto-execute signals" (Starter) → `/signup?plan=starter` and "Prop firm challenge" (Pro) → `/signup?plan=pro`.
 - [ ] **E-1-7** Landing page — rename "Watch Live Demo" button. It currently scrolls to the features section, not a demo. Either link to a real demo video or rename to "See How It Works."
 - [ ] **E-1-8** Landing page — remove footer dead links (About, Blog, Careers) until those pages exist.
-- [ ] **E-1-9** Landing page — change "Start Free Trial" to "Request Early Access" (no billing live yet, no free tier planned).
+- [ ] **E-1-9** Landing page — change CTA to "Start 30-Day Free Trial — No Credit Card Required." (Note: trial infrastructure ships Week 5 — in Week 1, the button links to /sign-up with a banner explaining trial is coming soon for early access users.)
 - [ ] **E-1-10** Fix `RiskTab` "Save Defaults" button: either wire it to persist to Supabase or add a "Coming soon" label.
 
 ---
@@ -90,6 +90,13 @@ All code tasks, ordered by delivery week.
 - [ ] **E-5-5** Upgrade nudge: when a Starter user tries to add a second broker account, show modal — "Multiple accounts are a Pro feature. Upgrade to Pro ($49/mo) to add up to 10 accounts."
 - [ ] **E-5-6** Landing page — add social proof section before public launch. Placeholder copy until real testimonials available.
 - [ ] **E-5-7 STRETCH** FVG zones overlay on charts.
+- [ ] **E-5-8** Add trial fields to `user_profiles`: `trial_tier TEXT DEFAULT 'pro'`, `trial_started_at TIMESTAMPTZ DEFAULT NOW()`, `trial_expires_at TIMESTAMPTZ DEFAULT NOW() + INTERVAL '30 days'`. Auto-set on new user creation trigger.
+- [ ] **E-5-9** Trial expiry cron job: Supabase pg_cron task runs every hour, finds users where `trial_expires_at < NOW()` and `plan_tier` is still null/trial, marks account as `trial_expired`. Worker stops executing signals for expired-trial accounts (same fail-closed logic as tier gate).
+- [ ] **E-5-10** Landing page CTA: change all instances of "Request Early Access" to "Start 30-Day Free Trial — No Credit Card Required." The trial is the primary acquisition hook.
+- [ ] **E-5-11** Trial countdown banner on dashboard: appears on all dashboard pages during trial. Shows "X days remaining in your Pro trial" with a soft upgrade CTA. Not alarming — informative. Disappears when user converts to a paid plan.
+- [ ] **E-5-12** Day 30 plan selection screen: full-page modal that appears when `trial_expires_at` is reached. Three clear paths: (1) Stay on Pro $49/mo, (2) Continue with Starter $15/mo, (3) Pause account (read-only). Cannot be dismissed without choosing a path.
+- [ ] **E-5-13** Trial email drip campaign (5 emails via Resend/SendGrid): Day 1 welcome, Day 7 check-in ("Your first week on Pro"), Day 21 nudge ("9 days left — here's what you'll lose"), Day 28 urgency ("2 days left — choose your plan"), Day 30 cutoff ("Your trial has ended").
+- [ ] **E-5-14** Audit link permanence post-trial: links generated during trial remain live permanently regardless of plan chosen. Add DB note to `audit_links` table: no cascade delete on user account changes.
 
 ---
 
