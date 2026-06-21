@@ -127,11 +127,11 @@ You don't want to learn how to trade. You want a system that's running rules you
 
 | Plan | Price | Accounts | Features |
 |---|---|---|---|
-| **Starter** | $20/mo | 1 broker account | Live signals, Glass Box feed, basic analytics |
-| **Pro** | COMING SOON | Up to 10 accounts | Full visual debugger, trade replay, prop firm panel, priority execution |
+| **Starter** | $15/mo | 1 broker account | Auto-execution, full audit log, shareable audit link, Forex markets (EURUSD, XAUUSD, GBPUSD, USDJPY) |
+| **Pro** | $49/mo | Up to 10 accounts | Everything Starter + Replay Mode, full Prop Firm Panel, US Indices (NAS100, US30, SPX500), Live ICT condition feed |
 | **Enterprise** | Custom | 50+ accounts | Dedicated VM, custom risk configuration, SLA support, priority execution |
 
-All plans include a **30-day free trial**. No credit card required to start.
+No free trial. Early access: Starter lifetime $99 / Pro lifetime $199 (limited 50-100 seats).
 
 ---
 
