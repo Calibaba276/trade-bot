@@ -94,6 +94,9 @@ def run():
                 # Gold-specific: dollar-based stop buffer and FVG noise filter
                 "buffer": 0.50,
                 "min_fvg_size": 0.50,
+                # Quality filters
+                "max_spread": 0.35,       # skip entry when spread > $0.35/oz
+                "min_profit_target": 3.00, # skip entry when TP < $3.00 from entry
             },
             polygon_api_key=polygon_api_key,
             quiet_logs=False,
@@ -123,6 +126,9 @@ def run():
                 # Gold-specific: dollar-based stop buffer and FVG noise filter
                 "buffer": 0.50,
                 "min_fvg_size": 0.50,
+                # Quality filters
+                "max_spread": 0.35,        # skip entry when spread > $0.35/oz
+                "min_profit_target": 3.00, # skip entry when TP < $3.00 from entry
                 # Frontend emitter identifiers (None in backtest / when account has no user yet)
                 "user_id": strategy_cfg.get("user_id"),
                 "account_id": strategy_cfg.get("account_id"),
