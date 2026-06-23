@@ -6,6 +6,7 @@ sends messages via the Telegram Bot API. All public functions fail silently
 so a Telegram outage never interrupts live trading.
 """
 
+import threading
 from functools import lru_cache
 
 import requests
@@ -46,11 +47,13 @@ def _send(text: str) -> None:
 
 
 def notify(text: str) -> None:
-    """Send a plain message. Never raises."""
-    try:
-        _send(text)
-    except Exception as exc:
-        logger.warning(f"[TELEGRAM] notify failed: {exc}")
+    """Send a plain message in a daemon thread so callers are never blocked. Never raises."""
+    def _run() -> None:
+        try:
+            _send(text)
+        except Exception as exc:
+            logger.warning(f"[TELEGRAM] notify failed: {exc}")
+    threading.Thread(target=_run, daemon=True).start()
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +78,7 @@ def notify_signal(
         f"Entry     : {entry}\n"
         f"SL        : {sl}\n"
         f"TP        : {tp}\n"
-        f"<code>{signal_id[:8]}</code>"
+        f"<code>{signal_id}</code>"
     )
     notify(msg)
 
@@ -102,7 +105,7 @@ def notify_order_filled(
         f"TP        : {tp}\n"
         f"Broker ID : {broker_order_id}\n"
         f"Latency   : {latency_ms}ms\n"
-        f"<code>{signal_id[:8]}</code>"
+        f"<code>{signal_id}</code>"
     )
     notify(msg)
 
@@ -120,7 +123,7 @@ def notify_order_rejected(
         f"Direction : {direction.upper()}\n"
         f"Retcode   : {retcode}\n"
         f"Error     : {error}\n"
-        f"<code>{signal_id[:8]}</code>"
+        f"<code>{signal_id}</code>"
     )
     notify(msg)
 
