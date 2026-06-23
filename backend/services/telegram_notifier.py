@@ -56,6 +56,15 @@ def notify(text: str) -> None:
     threading.Thread(target=_run, daemon=True).start()
 
 
+def _notify_blocking(text: str) -> None:
+    """Send synchronously in the calling thread. Use for shutdown/halt alerts where the
+    process may exit immediately after — daemon threads are killed before they can POST."""
+    try:
+        _send(text)
+    except Exception as exc:
+        logger.warning(f"[TELEGRAM] notify failed: {exc}")
+
+
 # ---------------------------------------------------------------------------
 # Typed helpers — one per key event
 # ---------------------------------------------------------------------------
@@ -146,7 +155,7 @@ def notify_drawdown_halt(
         f"Status    : No new trades until tomorrow (UTC)\n"
         f"<code>{account_id[:8]}</code>"
     )
-    notify(msg)
+    _notify_blocking(msg)
 
 
 def notify_worker_online(account_number: int, server: str, account_id: str) -> None:
@@ -175,7 +184,7 @@ def notify_worker_offline(account_number: int, reason: str, account_id: str) -> 
         f"Reason  : {reason}\n"
         f"<code>{account_id[:8]}</code>"
     )
-    notify(msg)
+    _notify_blocking(msg)
 
 
 def notify_strategy_active(
