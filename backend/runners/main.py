@@ -4,8 +4,11 @@ from lumibot.backtesting import PolygonDataBacktesting
 from lumibot.traders import Trader
 
 from backend.brokers.mt5_broker import MetaTrader5
+from backend.config.logger import setup_logger
 from backend.config.secrets import get_azure_secret
 from backend.strategies.liquidity_sweep import LiquiditySweep
+
+logger = setup_logger("liquidity_sweep")
 
 
 def run():

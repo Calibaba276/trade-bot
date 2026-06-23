@@ -24,7 +24,7 @@ from backend.services.frontend_emitter import (
 
 from ..config.logger import setup_logger
 
-logger = setup_logger(__name__)
+logger = setup_logger("xauusd")
 
 
 class XAUUSDModel(Strategy):
