@@ -14,7 +14,7 @@ from backend.config.secrets import get_azure_secret
 from backend.config.supaclient import supabase
 from backend.strategies.eurusd_model import EURUSDModel
 
-logger = setup_logger(__name__)
+logger = setup_logger("eurusd")
 
 
 def _get_account_strategy_config(account_login: str, server: str) -> dict:

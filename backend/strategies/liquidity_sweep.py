@@ -14,7 +14,7 @@ from backend.services.telegram_notifier import (
     notify_signal,
 )
 
-logger = setup_logger(__name__)
+logger = setup_logger("liquidity_sweep")
 
 
 class LiquiditySweep(Strategy):
