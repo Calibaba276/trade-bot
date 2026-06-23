@@ -26,7 +26,7 @@ from typing import Optional
 import MetaTrader5 as mt5
 
 from ..config.logger import setup_logger
-from .telegram_notifier import notify_drawdown_halt
+from .telegram_notifier import notify_drawdown_halt, notify_breakeven_moved
 
 logger = setup_logger(__name__)
 
@@ -436,6 +436,15 @@ class PositionMonitor(threading.Thread):
         logger.info(
             f"[BREAKEVEN] ticket={pos.ticket} {pos.side} {pos.symbol} "
             f"SL {old_sl:.5f} → {new_sl:.5f} (entry={pos.entry_price:.5f})"
+        )
+        notify_breakeven_moved(
+            symbol=pos.symbol,
+            side=pos.side,
+            ticket=pos.ticket,
+            entry_price=pos.entry_price,
+            old_sl=old_sl,
+            new_sl=new_sl,
+            account_number=self.config.account_number,
         )
 
         # Mark as done — one-shot

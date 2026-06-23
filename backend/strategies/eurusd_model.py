@@ -5,6 +5,16 @@ from lumibot.strategies.strategy import Strategy
 
 from .common import _calculate_take_profit, _manage_risk_controls
 from backend.services.verdict import build_verdict, save_verdict, publish_verdict
+from backend.services.telegram_notifier import (
+    notify_strategy_active,
+    notify_liquidity_swept,
+    notify_mss_confirmed,
+    notify_fvg_confirmed,
+    notify_ote_zone,
+    notify_ote_hit,
+    notify_ny_session_start,
+    notify_market_closed,
+)
 from backend.services.frontend_emitter import (
     _pair,
     emit_candle,
@@ -87,6 +97,13 @@ class EURUSDModel(Strategy):
         self._logged_ny_ote_hit_bullish = False
         self._logged_ny_ote_miss_bearish = False
         self._logged_ny_ote_miss_bullish = False
+
+        # One-shot Telegram notification guards (mirror the log guards)
+        self._notified_mss_bearish = False
+        self._notified_mss_bullish = False
+        self._notified_fvg_bearish = False
+        self._notified_fvg_bullish = False
+        self._notified_ny_session = False
 
         # Frontend emitter identifiers — None in backtest or when account has no user yet
         self.user_id: str | None = self.parameters.get("user_id")
@@ -237,6 +254,12 @@ class EURUSDModel(Strategy):
         self.ny_ote_hit_bearish = False
         self.daily_bias = None
 
+        self._notified_mss_bearish = False
+        self._notified_mss_bullish = False
+        self._notified_fvg_bearish = False
+        self._notified_fvg_bullish = False
+        self._notified_ny_session = False
+
         # --- SCENARIO B: RANGE VARIABLES ---
         self.session_scenario = None
         self.ny_range_high = None
@@ -286,9 +309,11 @@ class EURUSDModel(Strategy):
                 self._logged_ny_ote_miss_bearish = False
                 self._logged_ny_ote_miss_bullish = False
                 logger.info(f"--- {current_date} - {current_time} From 6:00 - 8:59am: High={self.pdh}, Low={self.pdl} | Daily bias: {self.daily_bias} ---")
+                notify_strategy_active(self.symbol, self.pdh, self.pdl, self.daily_bias, str(current_date))
             else:
                 if not self._logged_market_closed:
                     logger.warning(f" --- {current_date} Market is Closed (No Data) --- ")
+                    notify_market_closed(self.symbol, str(current_date))
                     self._logged_market_closed = True
                 return
 
@@ -315,6 +340,7 @@ class EURUSDModel(Strategy):
 
                     if not self._logged_swept_high:
                         logger.info(f" --- {current_time} - [BEARISH BIAS] -- Price wick swept the High ---")
+                        notify_liquidity_swept(self.symbol, "bearish", self.pdh, self.highest_sweep_point, "London", str(current_time))
                         self._logged_swept_high = True
 
                 # Step 2: Price reverses below high — scan for swing low
@@ -333,6 +359,9 @@ class EURUSDModel(Strategy):
                             self.mss_swing_low = float(lows[i])
                             logger.info(f" --- {current_time} -- Bearish MSS: Swing Low identified at {self.mss_swing_low} ---")
                             self._emit_mss(self.mss_swing_low, "bearish")
+                            if not self._notified_mss_bearish:
+                                notify_mss_confirmed(self.symbol, "bearish", self.mss_swing_low, "London", str(current_time))
+                                self._notified_mss_bearish = True
                             break
                     if self.mss_swing_low is None:
                         logger.warning(f"{current_time} -- [STEP 2 NOT COMPLETE - BEARISH] Price reversed below PDH but no valid swing low found, skipping")
@@ -365,6 +394,9 @@ class EURUSDModel(Strategy):
                         logger.info(f"--- MSS & FVG CONFIRMED ---")
                         logger.info(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}")
                         self._emit_fvg()
+                        if not self._notified_fvg_bearish:
+                            notify_fvg_confirmed(self.symbol, "bearish", self.fvg_top, self.fvg_bottom, "London", str(current_time))
+                            self._notified_fvg_bearish = True
                     else:
                         # If no FVG is formed, ICT traders usually wait for a secondary break
                         logger.warning("Price broke swing low but no displacement (FVG) found. Skipping entry.")
@@ -414,6 +446,7 @@ class EURUSDModel(Strategy):
 
                     if not self._logged_swept_low:
                         logger.info(f" --- {current_time} [BULLISH BIAS] Price wick swept the Low ---")
+                        notify_liquidity_swept(self.symbol, "bullish", self.pdl, self.lowest_sweep_point, "London", str(current_time))
                         self._logged_swept_low = True
 
                 # Step 2: Price reverses above low — scan for swing high
@@ -432,6 +465,9 @@ class EURUSDModel(Strategy):
                             self.mss_swing_high = float(highs[i])
                             logger.info(f" --- {current_time} [BULLISH MSS] Swing High identified at {self.mss_swing_high} ---")
                             self._emit_mss(self.mss_swing_high, "bullish")
+                            if not self._notified_mss_bullish:
+                                notify_mss_confirmed(self.symbol, "bullish", self.mss_swing_high, "London", str(current_time))
+                                self._notified_mss_bullish = True
                             break
                     if self.mss_swing_high is None:
                         logger.warning(f" --- {current_time} [STEP 2 NOT COMPLETE - BULLISH] Price reversed above PDL but no valid swing high found, skipping ---")
@@ -464,6 +500,9 @@ class EURUSDModel(Strategy):
                         logger.info(f" --- {current_time} [MSS & FVG CONFIRMED] ---")
                         logger.info(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}")
                         self._emit_fvg()
+                        if not self._notified_fvg_bullish:
+                            notify_fvg_confirmed(self.symbol, "bullish", self.fvg_top, self.fvg_bottom, "London", str(current_time))
+                            self._notified_fvg_bullish = True
                     else:
                         # If no FVG is formed, ICT traders usually wait for a secondary break
                         logger.warning(f" --- {current_time} [FVG NOT FOUND] Price broke swing high but no displacement (FVG) found. Skipping entry. ---")
@@ -531,7 +570,15 @@ class EURUSDModel(Strategy):
                 self.bullish_fvg_confirmed = False
                 self.fvg_top = None
                 self.fvg_bottom = None
+                # Reset notification flags so NY session events fire fresh
+                self._notified_mss_bearish = False
+                self._notified_mss_bullish = False
+                self._notified_fvg_bearish = False
+                self._notified_fvg_bullish = False
                 logger.info("--- NY Session Started: Technical Markers Reset ---")
+                if not self._notified_ny_session:
+                    notify_ny_session_start(self.symbol, str(current_time))
+                    self._notified_ny_session = True
 
             # Build the pre-NY range and keep it fixed once NY session starts.
             if time(5, 0) <= current_time < time(13, 30):
@@ -581,6 +628,7 @@ class EURUSDModel(Strategy):
 
                         if not self._logged_ny_ote_zone_bearish:
                             logger.info(f"NY Continuation Zone (OTE): {round(ote_79, 5)} - {round(ote_62, 5)}")
+                            notify_ote_zone(self.symbol, "bearish", ote_62, ote_79, str(current_time))
                             self._logged_ny_ote_zone_bearish = True
 
                         # Wait for price to reach the OTE Zone
@@ -588,6 +636,7 @@ class EURUSDModel(Strategy):
                             self.ny_ote_hit_bearish = True
                             if not self._logged_ny_ote_hit_bearish:
                                 logger.info(f"{current_time} -- NY Scenario A Bearish: Price entered Premium OTE Zone ({round(ote_62, 5)} - {round(ote_79, 5)}) --")
+                                notify_ote_hit(self.symbol, "bearish", ote_62, ote_79, str(current_time))
                                 self._logged_ny_ote_hit_bearish = True
                         else:
                             if not self._logged_ny_ote_miss_bearish:
@@ -604,6 +653,9 @@ class EURUSDModel(Strategy):
                                 if lows[i] < lows[i - 1] and lows[i] < lows[i + 1]:
                                     self.mss_swing_low = float(lows[i])
                                     self._emit_mss(self.mss_swing_low, "bearish")
+                                    if not self._notified_mss_bearish:
+                                        notify_mss_confirmed(self.symbol, "bearish", self.mss_swing_low, "New York", str(current_time))
+                                        self._notified_mss_bearish = True
                                     break
 
                         # Entry on MSS confirmation
@@ -654,6 +706,7 @@ class EURUSDModel(Strategy):
 
                         if not self._logged_ny_ote_zone_bullish:
                             logger.info(f"NY Continuation Zone (OTE): {round(ote_62, 5)} - {round(ote_79, 5)}")
+                            notify_ote_zone(self.symbol, "bullish", ote_62, ote_79, str(current_time))
                             self._logged_ny_ote_zone_bullish = True
 
                         # Wait for price to reach the OTE Zone
@@ -661,6 +714,7 @@ class EURUSDModel(Strategy):
                             self.ny_ote_hit_bullish = True
                             if not self._logged_ny_ote_hit_bullish:
                                 logger.info(f"{current_time} -- NY Scenario A Bullish: Price entered Premium OTE Zone ({round(ote_62, 5)} - {round(ote_79, 5)}) --")
+                                notify_ote_hit(self.symbol, "bullish", ote_62, ote_79, str(current_time))
                                 self._logged_ny_ote_hit_bullish = True
 
                         # Confirm MSS in Lower Timeframe (M1)
@@ -672,6 +726,9 @@ class EURUSDModel(Strategy):
                                 if highs[i] > highs[i - 1] and highs[i] > highs[i + 1]:
                                     self.mss_swing_high = float(highs[i])
                                     self._emit_mss(self.mss_swing_high, "bullish")
+                                    if not self._notified_mss_bullish:
+                                        notify_mss_confirmed(self.symbol, "bullish", self.mss_swing_high, "New York", str(current_time))
+                                        self._notified_mss_bullish = True
                                     break
 
                         if self.mss_swing_high is None:
@@ -758,6 +815,9 @@ class EURUSDModel(Strategy):
                                 self.mss_swing_low = float(lows[i])
                                 logger.info(f"{current_time} -- Bearish MSS: Swing Low identified at {self.mss_swing_low}")
                                 self._emit_mss(self.mss_swing_low, "bearish")
+                                if not self._notified_mss_bearish:
+                                    notify_mss_confirmed(self.symbol, "bearish", self.mss_swing_low, "New York", str(current_time))
+                                    self._notified_mss_bearish = True
                                 break
                         if self.mss_swing_low is None:
                             logger.warning(f"{current_time} -- [STEP 2 NOT COMPLETE - BEARISH] Price reversed below PDH but no valid swing low found, skipping")
@@ -790,6 +850,9 @@ class EURUSDModel(Strategy):
                                 logger.info(f"--- MSS & FVG CONFIRMED ---")
                                 logger.info(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}")
                                 self._emit_fvg()
+                                if not self._notified_fvg_bearish:
+                                    notify_fvg_confirmed(self.symbol, "bearish", self.fvg_top, self.fvg_bottom, "New York", str(current_time))
+                                    self._notified_fvg_bearish = True
                             else:
                                 # If no FVG is formed, ICT traders usually wait for a secondary break
                                 logger.warning("Price broke swing low but no displacement (FVG) found. Skipping entry.")
@@ -843,6 +906,9 @@ class EURUSDModel(Strategy):
                             if highs[i] > highs[i - 1] and highs[i] > highs[i + 1]:
                                 self.mss_swing_high = float(highs[i])
                                 self._emit_mss(self.mss_swing_high, "bullish")
+                                if not self._notified_mss_bullish:
+                                    notify_mss_confirmed(self.symbol, "bullish", self.mss_swing_high, "New York", str(current_time))
+                                    self._notified_mss_bullish = True
                                 break
 
                         # If MSS occurs, Locate PD Array (FVG)
@@ -861,6 +927,9 @@ class EURUSDModel(Strategy):
                                     logger.info(f"--- MSS & FVG CONFIRMED ---")
                                     logger.info(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}")
                                     self._emit_fvg()
+                                    if not self._notified_fvg_bullish:
+                                        notify_fvg_confirmed(self.symbol, "bullish", self.fvg_top, self.fvg_bottom, "New York", str(current_time))
+                                        self._notified_fvg_bullish = True
                                 else:
                                     # If no FVG is formed, ICT traders usually wait for a secondary break
                                     logger.warning("Price broke swing low but no displacement (FVG) found. Skipping entry.")
@@ -899,4 +968,5 @@ class EURUSDModel(Strategy):
         if current_time >= time(16, 0):
             if not self._logged_market_closed:
                 logger.info(f" --- {current_date} - Market is closed for the day --- ")
+                notify_market_closed(self.symbol, str(current_date))
                 self._logged_market_closed = True

@@ -173,3 +173,165 @@ def notify_worker_offline(account_number: int, reason: str, account_id: str) -> 
         f"<code>{account_id[:8]}</code>"
     )
     notify(msg)
+
+
+def notify_strategy_active(
+    symbol: str,
+    pdh: float,
+    pdl: float,
+    daily_bias: str | None,
+    date: str,
+) -> None:
+    """PDH/PDL captured and daily bias set — strategy is ready to trade."""
+    bias_icon = "🐂" if daily_bias == "bull" else ("🐻" if daily_bias == "bear" else "⚪")
+    bias_text = "Bullish" if daily_bias == "bull" else ("Bearish" if daily_bias == "bear" else "No Bias")
+    msg = (
+        f"📊 <b>STRATEGY ACTIVE — {symbol}</b>\n"
+        f"PDH   : {pdh}\n"
+        f"PDL   : {pdl}\n"
+        f"Bias  : {bias_icon} {bias_text}\n"
+        f"Date  : {date}"
+    )
+    notify(msg)
+
+
+def notify_liquidity_swept(
+    symbol: str,
+    direction: str,
+    reference_level: float,
+    sweep_point: float,
+    session: str,
+    current_time: str,
+) -> None:
+    """Price wick swept past a key liquidity level (PDH or PDL)."""
+    icon = "🔴" if direction == "bearish" else "🟢"
+    level_label = "PDH" if direction == "bearish" else "PDL"
+    wick_label = "Wick High" if direction == "bearish" else "Wick Low "
+    msg = (
+        f"{icon} <b>LIQUIDITY SWEPT — {symbol}</b>\n"
+        f"Setup      : {direction.capitalize()}\n"
+        f"{level_label}        : {reference_level}\n"
+        f"{wick_label} : {sweep_point}\n"
+        f"Session    : {session}\n"
+        f"Time       : {current_time} NGT"
+    )
+    notify(msg)
+
+
+def notify_mss_confirmed(
+    symbol: str,
+    direction: str,
+    swing_price: float,
+    session: str,
+    current_time: str,
+) -> None:
+    """Market Structure Shift confirmed — swing level identified after sweep."""
+    swing_label = "Swing Low " if direction == "bearish" else "Swing High"
+    msg = (
+        f"⚡ <b>MSS CONFIRMED — {symbol}</b>\n"
+        f"Direction  : {direction.capitalize()}\n"
+        f"{swing_label} : {swing_price}\n"
+        f"Session    : {session}\n"
+        f"Time       : {current_time} NGT"
+    )
+    notify(msg)
+
+
+def notify_fvg_confirmed(
+    symbol: str,
+    direction: str,
+    fvg_top: float,
+    fvg_bottom: float,
+    session: str,
+    current_time: str,
+) -> None:
+    """Fair Value Gap identified after MSS displacement."""
+    msg = (
+        f"📦 <b>FVG CONFIRMED — {symbol}</b>\n"
+        f"Direction : {direction.capitalize()}\n"
+        f"FVG Top   : {fvg_top}\n"
+        f"FVG Bot   : {fvg_bottom}\n"
+        f"Session   : {session}\n"
+        f"Time      : {current_time} NGT"
+    )
+    notify(msg)
+
+
+def notify_ote_zone(
+    symbol: str,
+    direction: str,
+    ote_62: float,
+    ote_79: float,
+    current_time: str,
+) -> None:
+    """OTE zone calculated for NY Continuation — waiting for price to enter."""
+    premium_label = "Premium" if direction == "bearish" else "Discount"
+    msg = (
+        f"📐 <b>OTE ZONE CALCULATED — {symbol}</b>\n"
+        f"Direction : {direction.capitalize()} ({premium_label})\n"
+        f"OTE 62%   : {round(ote_62, 5)}\n"
+        f"OTE 79%   : {round(ote_79, 5)}\n"
+        f"Time      : {current_time} NGT\n"
+        f"Waiting for price to reach zone..."
+    )
+    notify(msg)
+
+
+def notify_ote_hit(
+    symbol: str,
+    direction: str,
+    ote_62: float,
+    ote_79: float,
+    current_time: str,
+) -> None:
+    """Price entered the OTE zone — watching for MSS to confirm entry."""
+    msg = (
+        f"🎯 <b>OTE ZONE REACHED — {symbol}</b>\n"
+        f"Direction : {direction.capitalize()}\n"
+        f"Zone      : {round(ote_62, 5)} – {round(ote_79, 5)}\n"
+        f"Time      : {current_time} NGT\n"
+        f"Watching for MSS confirmation..."
+    )
+    notify(msg)
+
+
+def notify_ny_session_start(symbol: str, current_time: str) -> None:
+    """NY session started at 13:30 NGT — technical markers reset."""
+    msg = (
+        f"🗽 <b>NY SESSION START — {symbol}</b>\n"
+        f"Time   : {current_time} NGT\n"
+        f"Status : Technical markers reset, watching for NY setup"
+    )
+    notify(msg)
+
+
+def notify_market_closed(symbol: str, date: str) -> None:
+    """Market closed for the day at 16:00 NGT — no new trades."""
+    msg = (
+        f"🔒 <b>MARKET CLOSED — {symbol}</b>\n"
+        f"Date   : {date}\n"
+        f"Status : No new trades until tomorrow (09:00 NGT)"
+    )
+    notify(msg)
+
+
+def notify_breakeven_moved(
+    symbol: str,
+    side: str,
+    ticket: int,
+    entry_price: float,
+    old_sl: float,
+    new_sl: float,
+    account_number: int,
+) -> None:
+    """Stop loss moved to breakeven after trade moved in favour."""
+    msg = (
+        f"🛡️ <b>BREAKEVEN MOVED — {symbol}</b>\n"
+        f"Side    : {side.capitalize()}\n"
+        f"Ticket  : {ticket}\n"
+        f"Entry   : {entry_price:.5f}\n"
+        f"Old SL  : {old_sl:.5f}\n"
+        f"New SL  : {new_sl:.5f}\n"
+        f"Account : {account_number}"
+    )
+    notify(msg)
