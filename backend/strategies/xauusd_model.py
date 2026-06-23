@@ -453,6 +453,7 @@ class XAUUSDModel(Strategy):
 
                         self.bearish_fvg_confirmed = True
                         self.bullish_fvg_confirmed = False
+                        self._notified_fvg_bullish = False
                         logger.info(f"--- MSS & FVG CONFIRMED ---")
                         logger.info(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}")
                         self._emit_fvg()
@@ -556,6 +557,7 @@ class XAUUSDModel(Strategy):
 
                         self.bullish_fvg_confirmed = True
                         self.bearish_fvg_confirmed = False
+                        self._notified_fvg_bearish = False
                         logger.info(f" --- {current_time} [MSS & FVG CONFIRMED] ---")
                         logger.info(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}")
                         self._emit_fvg()
@@ -897,6 +899,7 @@ class XAUUSDModel(Strategy):
 
                                 self.bearish_fvg_confirmed = True
                                 self.bullish_fvg_confirmed = False
+                                self._notified_fvg_bullish = False
                                 logger.info(f"--- MSS & FVG CONFIRMED ---")
                                 logger.info(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}")
                                 self._emit_fvg()
@@ -971,6 +974,7 @@ class XAUUSDModel(Strategy):
 
                                     self.bearish_fvg_confirmed = False
                                     self.bullish_fvg_confirmed = True
+                                    self._notified_fvg_bearish = False
                                     logger.info(f"--- MSS & FVG CONFIRMED ---")
                                     logger.info(f"Entry Zone: {self.fvg_bottom} - {self.fvg_top}")
                                     self._emit_fvg()
