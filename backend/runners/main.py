@@ -57,7 +57,7 @@ def run():
             trader.add_strategy(strategy)
 
             logger.info(f"LiquiditySweep runner: broker connected, starting trader loop for account={account}")
-            notify_strategy_online(symbol="EURUSDm", account=str(account), server=server, mode=mode)
+            notify_strategy_online(symbol="EURUSDm", mode=mode)
 
             try:
                 trader.run_all()

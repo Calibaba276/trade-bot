@@ -187,7 +187,7 @@ def notify_worker_offline(account_number: int, reason: str, account_id: str) -> 
     _notify_blocking(msg)
 
 
-def notify_strategy_online(symbol: str, account: str, server: str, mode: str) -> None:
+def notify_strategy_online(symbol: str, mode: str) -> None:
     """Strategy runner process started — confirms the runner actually launched.
 
     Mirror of notify_worker_online: the worker and the strategy runner are
@@ -203,8 +203,6 @@ def notify_strategy_online(symbol: str, account: str, server: str, mode: str) ->
         )
     msg = (
         f"🟢 <b>STRATEGY ONLINE — {symbol}</b>\n"
-        f"Account : {account}\n"
-        f"Server  : {server}\n"
         f"Mode    : {mode}"
     )
     notify(msg)

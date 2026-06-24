@@ -136,7 +136,7 @@ def run():
             trader.add_strategy(strategy)
 
             logger.info(f"EURUSD runner: broker connected, starting trader loop for account={account}")
-            notify_strategy_online(symbol="EURUSDm", account=str(account), server=server, mode=mode)
+            notify_strategy_online(symbol="EURUSDm", mode=mode)
 
             trader.run_all()
         except Exception as exc:

@@ -148,7 +148,7 @@ def run():
             trader.add_strategy(strategy)
 
             logger.info(f"XAUUSD runner: broker connected, starting trader loop for account={account}")
-            notify_strategy_online(symbol="XAUUSDm", account=str(account), server=server, mode=mode)
+            notify_strategy_online(symbol="XAUUSDm", mode=mode)
 
             trader.run_all()
         except Exception as exc:
