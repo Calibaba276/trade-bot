@@ -187,6 +187,39 @@ def notify_worker_offline(account_number: int, reason: str, account_id: str) -> 
     _notify_blocking(msg)
 
 
+def notify_strategy_online(symbol: str, account: str, server: str, mode: str) -> None:
+    """Strategy runner process started — confirms the runner actually launched.
+
+    Mirror of notify_worker_online: the worker and the strategy runner are
+    SEPARATE processes, so a WORKER ONLINE message says nothing about whether the
+    strategy runner came up. Also validates Telegram credentials in this process."""
+    token = _bot_token()
+    chat_id = _chat_id()
+    if not token or not chat_id:
+        logger.error(
+            "[TELEGRAM] TELEGRAM-BOT-TOKEN or TELEGRAM-CHAT-ID missing from Key Vault — "
+            "no Telegram notifications will be sent from this strategy runner. "
+            "Add both secrets to calibabasecret vault."
+        )
+    msg = (
+        f"🟢 <b>STRATEGY ONLINE — {symbol}</b>\n"
+        f"Account : {account}\n"
+        f"Server  : {server}\n"
+        f"Mode    : {mode}"
+    )
+    notify(msg)
+
+
+def notify_strategy_offline(symbol: str, reason: str) -> None:
+    """Strategy runner crashed or exited. Sent synchronously because the process
+    typically exits immediately after, which would kill a daemon-thread send."""
+    msg = (
+        f"🔴 <b>STRATEGY OFFLINE — {symbol}</b>\n"
+        f"Reason  : {reason}"
+    )
+    _notify_blocking(msg)
+
+
 def notify_strategy_active(
     symbol: str,
     pdh: float,

@@ -12,6 +12,7 @@ from backend.brokers.mt5_broker import MetaTrader5
 from backend.config.logger import setup_logger
 from backend.config.secrets import get_azure_secret
 from backend.config.supaclient import supabase
+from backend.services.telegram_notifier import notify_strategy_online, notify_strategy_offline
 from backend.strategies.xauusd_model import XAUUSDModel
 
 logger = setup_logger("xauusd")
@@ -76,7 +77,13 @@ def run():
     password = get_azure_secret("PASSWORD")
     server = get_azure_secret("SERVER")
 
+    mode = "backtest" if str(is_backtesting).lower() == "true" else "live"
+    logger.info(
+        f"=== XAUUSD runner starting === mode={mode} account={account} server={server}"
+    )
+
     if str(is_backtesting).lower() == "true":
+        logger.info("XAUUSD runner: entering BACKTEST branch")
         start_date = datetime.strptime(backtesting_start, "%Y-%m-%d")
         end_date = datetime.strptime(backtesting_end, "%Y-%m-%d")
 
@@ -102,42 +109,52 @@ def run():
             quiet_logs=False,
         )
     else:
-        strategy_cfg = _get_account_strategy_config(str(account), server)
+        logger.info("XAUUSD runner: entering LIVE branch")
+        try:
+            strategy_cfg = _get_account_strategy_config(str(account), server)
 
-        broker = MetaTrader5(
-            {
-                "login": int(account),
-                "password": password,
-                "server": server,
-                "timezone": "Africa/Lagos",
-                "path": "C:\\Program Files\\ICT\\terminal64.exe",
-            }
-        )
+            broker = MetaTrader5(
+                {
+                    "login": int(account),
+                    "password": password,
+                    "server": server,
+                    "timezone": "Africa/Lagos",
+                    "path": "C:\\Program Files\\ICT\\terminal64.exe",
+                }
+            )
 
-        strategy = XAUUSDModel(
-            broker=broker,
-            parameters={
-                "symbol": "XAUUSDm",
-                "risk_amount": 500,
-                "rr_ratio": strategy_cfg["rr_ratio"],
-                "max_daily_drawdown_pct": strategy_cfg["max_daily_drawdown_pct"],
-                "breakeven_buffer_ticks": strategy_cfg["breakeven_buffer_ticks"],
-                "stop_buffer_pips": 2,
-                # Gold-specific: dollar-based stop buffer and FVG noise filter
-                "buffer": 0.50,
-                "min_fvg_size": 0.50,
-                # Quality filters
-                "max_spread": 0.35,        # skip entry when spread > $0.35/oz
-                "min_profit_target": 3.00, # skip entry when TP < $3.00 from entry
-                # Frontend emitter identifiers (None in backtest / when account has no user yet)
-                "user_id": strategy_cfg.get("user_id"),
-                "account_id": strategy_cfg.get("account_id"),
-            },
-        )
+            strategy = XAUUSDModel(
+                broker=broker,
+                parameters={
+                    "symbol": "XAUUSDm",
+                    "risk_amount": 500,
+                    "rr_ratio": strategy_cfg["rr_ratio"],
+                    "max_daily_drawdown_pct": strategy_cfg["max_daily_drawdown_pct"],
+                    "breakeven_buffer_ticks": strategy_cfg["breakeven_buffer_ticks"],
+                    "stop_buffer_pips": 2,
+                    # Gold-specific: dollar-based stop buffer and FVG noise filter
+                    "buffer": 0.50,
+                    "min_fvg_size": 0.50,
+                    # Quality filters
+                    "max_spread": 0.35,        # skip entry when spread > $0.35/oz
+                    "min_profit_target": 3.00, # skip entry when TP < $3.00 from entry
+                    # Frontend emitter identifiers (None in backtest / when account has no user yet)
+                    "user_id": strategy_cfg.get("user_id"),
+                    "account_id": strategy_cfg.get("account_id"),
+                },
+            )
 
-        trader = Trader()
-        trader.add_strategy(strategy)
-        trader.run_all()
+            trader = Trader()
+            trader.add_strategy(strategy)
+
+            logger.info(f"XAUUSD runner: broker connected, starting trader loop for account={account}")
+            notify_strategy_online(symbol="XAUUSDm", account=str(account), server=server, mode=mode)
+
+            trader.run_all()
+        except Exception as exc:
+            logger.exception(f"XAUUSD runner crashed: {type(exc).__name__}: {exc}")
+            notify_strategy_offline(symbol="XAUUSDm", reason=f"{type(exc).__name__}: {exc}"[:200])
+            raise
 
 
 if __name__ == "__main__":

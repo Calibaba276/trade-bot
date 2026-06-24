@@ -110,6 +110,14 @@ class EURUSDModel(Strategy):
         self.account_id: str | None = self.parameters.get("account_id")
         self.pair_normalized: str = _pair(self.symbol or "")
 
+        # Logged once on the first on_trading_iteration so an empty log file is
+        # unambiguous: empty => the loop never ran (process never launched/crashed).
+        self._started = False
+        logger.info(
+            f"EURUSDModel.initialize complete: symbol={self.symbol} rr_ratio={self.rr_ratio} "
+            f"max_daily_drawdown_pct={self.max_daily_drawdown_pct} sleeptime={self.sleeptime}"
+        )
+
     # ──────────────────────────────────────────────────────────────────────────
     # Frontend emit helpers (all no-ops when user_id is not configured)
     # ──────────────────────────────────────────────────────────────────────────
@@ -273,6 +281,15 @@ class EURUSDModel(Strategy):
         dt = self.get_datetime()
         current_time = dt.time()
         current_date = dt.date()
+
+        # First tick: prove Lumibot is actually driving the loop and surface the
+        # broker clock (the 09:00–16:00 NGT session gates depend on it).
+        if not self._started:
+            self._started = True
+            logger.info(
+                f"EURUSDModel first iteration: broker datetime={dt.isoformat()} "
+                f"(date={current_date} time={current_time}) — trading loop is live"
+            )
 
         # Emit latest 1m bar to frontend on every tick
         self._emit_bars()
