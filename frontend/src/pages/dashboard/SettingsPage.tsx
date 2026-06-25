@@ -205,7 +205,7 @@ function AccountsTab() {
             <table className="w-full text-xs">
               <thead>
                 <tr className="text-text-muted">
-                  {["Account", "Server", "Symbol", "Status", "Risk"].map((h) => (
+                  {["Account", "Server", "Status", "Risk"].map((h) => (
                     <th key={h} className="text-left font-normal font-mono px-4 py-2.5 border-b border-border-subtle">{h}</th>
                   ))}
                 </tr>
@@ -215,7 +215,6 @@ function AccountsTab() {
                   <tr key={r.id} className="border-b border-border-subtle/50 hover:bg-bg-elevated">
                     <td className="px-4 py-2.5 text-text-primary">{r.account_number ?? shortId(r.id)}</td>
                     <td className="px-4 py-2.5 text-text-secondary">{r.server ?? "—"}</td>
-                    <td className="px-4 py-2.5 text-text-secondary">{r.symbol ?? "EURUSD"}</td>
                     <td className="px-4 py-2.5">
                       <StatusBadge variant={STATUS_VARIANT[r.status ?? "pending"] ?? "pending"}>
                         {(r.status ?? "pending").toUpperCase()}

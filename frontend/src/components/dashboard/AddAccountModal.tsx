@@ -12,7 +12,6 @@ interface Props {
 const FIELDS = [
   { key: "account_number", label: "Account Number", type: "text", placeholder: "12345678", def: "" },
   { key: "server", label: "Server", type: "text", placeholder: "ICMarkets-Demo01", def: "" },
-  { key: "symbol", label: "Symbol", type: "text", placeholder: "EURUSD", def: "EURUSD" },
   { key: "risk_amount", label: "Risk Amount", type: "number", placeholder: "500", def: "500" },
   { key: "rr_ratio", label: "R:R Ratio", type: "number", placeholder: "2.0", def: "2.0" },
   { key: "breakeven_buffer_ticks", label: "Breakeven Buffer (ticks)", type: "number", placeholder: "10", def: "10" },
@@ -50,7 +49,6 @@ export function AddAccountModal({ open, onClose, onSaved }: Props) {
       user_id: user?.id,
       account_number: form.account_number,
       server: form.server,
-      symbol: form.symbol || "EURUSD",
       risk_amount: Number(form.risk_amount) || 0,
       risk_currency: currency,
       rr_ratio: Number(form.rr_ratio) || 2,
