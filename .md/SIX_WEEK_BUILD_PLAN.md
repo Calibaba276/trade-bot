@@ -96,10 +96,16 @@ Gold is the most-traded instrument by Nigerian retail traders. The Telegram sign
 ---
 
 ### WEEK 3 · NAS100, US30, SPX500 Runners (Pro-Only)
-**Owner:** ENG · **Estimate:** L · **Files:** `backend/runners/ict_indices.py` (new)
+**Owner:** ENG · **Estimate:** L · **Files:** `backend/runners/nas100.py`, `backend/runners/us30.py`, `backend/runners/spx500.py` (new), `backend/services/orchestrator.py`
+
+**Prerequisite (sequencing):** Finish the EURUSD model modification first — it is the reference implementation these runners copy. Indices are the next strategy work *after* EURUSD is done.
 
 **What:**
 Three new strategy runners for US Indices. These are Pro-only instruments (and accessible to trial users since trial = Pro). Session window is NYSE open: 15:30–17:30 WAT.
+
+**Wiring (new orchestrator model — no Task Scheduler):** Adding a runner is now a 2-step job:
+1. Create the runner module (e.g. `backend/runners/nas100.py`) following the `eurusd.py` / `xauusd.py` shape.
+2. Add one entry to `MARKET_RUNNER_CATALOGUE` in `orchestrator.py` — canonical market name + a staggered WAT launch time (e.g. NAS100 08:50). It spawns only for accounts whose `enabled_markets`/`plan` include that market, and is supervised/restarted like the other runners.
 
 **Why it matters:**
 US Indices complete the Pro tier value proposition. The prop firm trader persona — the primary Pro target — often runs NAS100 or US30 challenges alongside forex. During the 30-day trial, showing users that US Indices work increases the likelihood they stay on Pro rather than downgrading to Starter at Day 30.
@@ -306,22 +312,20 @@ CREATE INDEX IF NOT EXISTS idx_signals_symbol_created
 
 ---
 
-### WEEK 2 · `broker_accounts.symbol` Multi-Value Support
-**Owner:** ENG · **Estimate:** S · **Files:** `backend/services/worker.py`, `backend/services/orchestrator.py`
+### WEEK 2 · ~~`broker_accounts.symbol` Multi-Value Support~~ — SUPERSEDED (2026-06-25)
+**Owner:** ENG · **Files:** `backend/config/markets.py`, `backend/services/worker.py`
 
-**What:**
-Change `broker_accounts.symbol` to accept a comma-separated list (`"EURUSD,XAUUSD,GBPUSD"`). Worker reads the list and skips signals for symbols not in it.
+**Superseded:** Multi-market access is now implemented via the `enabled_markets` (text[]) + `plan` columns, not a comma-separated `symbol` string. The worker gates each signal through `is_market_enabled(symbol, enabled_markets)`; the orchestrator launches runners from the union of `enabled_markets`. Plan ceilings live in `backend/config/markets.py` (Starter = EURUSD/XAUUSD; Pro adds NAS100/US30/SPX500/BTCUSD/ETHUSD).
 
-**Trial user defaults:** New accounts created during trial get all Pro-eligible symbols:
-`"EURUSD,XAUUSD,GBPUSD,USDJPY,NAS100,US30,SPX500"`
-
-When a user converts to Starter at Day 30, their symbol list is updated to Starter-eligible only:
-`"EURUSD,XAUUSD,GBPUSD,USDJPY"`
+**Remaining cleanup:** The old `symbol` column is vestigial — the backend never reads it and the frontend no longer writes it. Drop it once the two frontend market tasks (Section 6) are deployed:
+```sql
+alter table public.broker_accounts drop column if exists symbol;
+```
 
 **Acceptance criteria:**
-- Worker with `symbol = "EURUSD,XAUUSD"` executes verdicts for both
-- Trial user receives NAS100 signals correctly
-- Starter conversion at Day 30 removes NAS100/US30/SPX500 from symbol list
+- Worker with `enabled_markets = {EURUSD,XAUUSD}` executes verdicts for both and skips others with `[MARKET SKIP]`
+- Trial/Pro account with NAS100 enabled receives NAS100 signals once that runner ships
+- Starter conversion at Day 30 narrows `enabled_markets` to the Starter set
 
 ---
 
@@ -720,6 +724,26 @@ After email confirmation, redirect to `/dashboard` (not `/sign-in`). Set in `<Au
 **Owner:** ENG · **Estimate:** S · **File:** `RiskTab.tsx` or `Settings.tsx`
 
 Wire to save `risk_amount`, `rr_ratio`, `breakeven_buffer`, `max_daily_drawdown_pct` to the broker_accounts row. Show a success toast on save. Values persist on page reload.
+
+---
+
+### WEEK 2 · Market Selection in Add Account Flow
+**Owner:** ENG · **Estimate:** S–M · **Files:** `frontend/src/components/dashboard/AddAccountModal.tsx` (+ onboarding Step 3, Section 8)
+
+**What:**
+The legacy single "Symbol" field was removed from `AddAccountModal`; new accounts currently fall back to the `plan` default for `enabled_markets`. Add a market multi-select so the user explicitly picks which of their plan-permitted markets to trade, writing the choice to `broker_accounts.enabled_markets`. Gate the selectable set by plan (Starter → EURUSD/XAUUSD; Pro → full set). This is the same selection surfaced by onboarding Step 3 ("Choose your markets").
+
+**Acceptance:** creating an account with a custom selection writes those values to `enabled_markets`; the orchestrator then launches only the corresponding runners.
+
+---
+
+### WEEK 3 · Replace "Symbol" Column With Enabled Markets
+**Owner:** ENG · **Estimate:** S · **File:** `frontend/src/pages/dashboard/SettingsPage.tsx`
+
+**What:**
+The accounts table's single "Symbol" column was removed (the backend routes by `enabled_markets`, and the `symbol` column is being dropped). Replace it with a **"Markets"** column that renders the account's `enabled_markets` as chips (e.g. `EURUSD` `XAUUSD`), since an account now trades multiple markets, not one symbol.
+
+**Acceptance:** each account row shows its enabled markets; an account with the full Pro set renders all of them legibly.
 
 ---
 
@@ -1144,6 +1168,20 @@ Suggested pricing: Starter lifetime $99 / Pro lifetime $199. Cap 50–100 seats.
 
 ---
 
+### WEEK 2 · Orchestrator Supervises Strategy Runners ✅ DONE (2026-06-25)
+**Owner:** ENG · **Files:** `backend/services/orchestrator.py`, `backend/runners/__init__.py`
+
+**What shipped:**
+- The orchestrator now spawns AND supervises the strategy runners, not just the per-account workers. Workers spawn immediately at startup (08:30 WAT); strategy runners spawn on a staggered schedule — **EURUSD 08:40 WAT, XAUUSD 08:45 WAT** — with crash-restart backoff like workers.
+- Which runners launch is derived from the **union of all accounts' `enabled_markets`** (falling back to `plan` defaults). A market with no runner module yet (NAS100, US30, …) is logged and skipped.
+- The Windows Task Scheduler `.bat` files (`run_eurusd.bat`, `run_xauusd.bat`, `run_liquidity_sweep.bat`) and the retired LiquiditySweep strategy/runners were deleted. **Task Scheduler now runs only the orchestrator at 08:30** — the per-strategy tasks must be removed on the VM.
+
+**Why it mattered:** Previously the runners were launched by separate Task Scheduler tasks with no supervision. A missed trigger left the signal side silently dead while `WORKER ONLINE` still reported healthy — the exact failure that produced "only WORKER ONLINE, no STRATEGY ACTIVE."
+
+**Known limitation:** the schedule fires once per orchestrator lifetime. This is correct because the orchestrator is restarted daily at 08:30. If it is ever left running across multiple days, add a daily reset so runners re-arm each morning.
+
+---
+
 ### WEEK 4 · Audit Link API Endpoint
 **Owner:** ENG · **Estimate:** M · **File:** `backend/api/audit.py` (new)
 
@@ -1410,7 +1448,9 @@ Manual check on all pre-existing features:
 
 ### Week 2 — XAUUSD + Auth + Trial Abuse Prevention
 - [ ] XAUUSD strategy runner
-- [ ] `broker_accounts.symbol` multi-value support (trial users get all Pro symbols)
+- [x] Orchestrator supervises strategy runners (staggered 08:40/08:45 WAT, .bat files removed) — DONE 2026-06-25
+- [ ] ~~`broker_accounts.symbol` multi-value support~~ — superseded by `enabled_markets` + `plan`; drop the `symbol` column after frontend market tasks ship
+- [ ] Market selection in Add Account flow (writes `enabled_markets`)
 - [ ] Trial abuse prevention (1 account during trial, email verification gating)
 - [ ] Beta registration cap (50 users)
 - [ ] Auth pages: design tokens, forgot password, password hint, post-signup redirect
@@ -1422,7 +1462,8 @@ Manual check on all pre-existing features:
 - [ ] **[YOU]** Week 2 Telegram content post (XAUUSD live)
 
 ### Week 3 — Indices + Tier Enforcement + Trial Worker Logic
-- [ ] NAS100/US30/SPX500 runners
+- [ ] NAS100/US30/SPX500 runners (after EURUSD model changes; add each via `MARKET_RUNNER_CATALOGUE`)
+- [ ] Replace "Symbol" column with enabled-markets chips on the accounts table
 - [ ] Tier enforcement in worker.py (trial_expired halts all execution; trial='pro' executes all)
 - [ ] Dashboard market tabs (trial users see all Pro markets unlocked)
 - [ ] Engine halt banner (all pages)
@@ -1477,66 +1518,5 @@ Manual check on all pre-existing features:
 
 ---
 
-## ADDENDUM — Orchestrator Consolidation & Follow-Ups (2026-06-25)
-
-Captured after the orchestrator/strategy-runner consolidation and the removal of the legacy `symbol` column. These items extend (and in places supersede) tasks above; recorded here so nothing is lost.
-
----
-
-### DONE (2026-06-25) · Strategy Runners Folded Into Orchestrator
-**Owner:** ENG · **Files:** `backend/services/orchestrator.py`, `backend/runners/__init__.py`
-
-**What shipped:**
-- The orchestrator now spawns AND supervises the strategy runners, not just the per-account workers. Workers spawn immediately at startup (08:30 WAT); strategy runners spawn on a staggered schedule — **EURUSD 08:40 WAT, XAUUSD 08:45 WAT** — with crash-restart backoff like workers.
-- Which runners launch is derived from the **union of all accounts' `enabled_markets`** (falling back to `plan` defaults). A market with no runner module yet (NAS100, US30, …) is logged and skipped.
-- The Windows Task Scheduler `.bat` files (`run_eurusd.bat`, `run_xauusd.bat`, `run_liquidity_sweep.bat`) and the retired LiquiditySweep strategy/runners were deleted. **Task Scheduler should now run only the orchestrator at 08:30** — the per-strategy tasks must be removed.
-
-**Why it matters:** Previously the runners were launched by separate Task Scheduler tasks with no supervision. A missed trigger left the signal side silently dead while `WORKER ONLINE` still reported healthy — the exact failure that produced "only WORKER ONLINE, no STRATEGY ACTIVE."
-
-**Note on the daily restart assumption:** the schedule fires once per orchestrator lifetime. This is correct because the orchestrator is restarted daily at 08:30. If it is ever left running across multiple days, add a daily reset so runners re-arm each morning.
-
----
-
-### NEXT · Indices Strategies (EURUSD modification is the precursor)
-**Owner:** ENG · **Sequence:** finish EURUSD model changes → then build indices runners
-
-**What:** The immediate next strategy work is to finish modifying the EURUSD model. **Once that is done, the indices strategies (NAS100, US30, SPX500) are next.** This aligns with "WEEK 3 · NAS100, US30, SPX500 Runners" above.
-
-**With the new orchestrator, adding an indices runner is now a 2-step job (no Task Scheduler work):**
-1. Create the runner module (e.g. `backend/runners/nas100.py`) following the `eurusd.py` / `xauusd.py` shape.
-2. Add one entry to `MARKET_RUNNER_CATALOGUE` in `orchestrator.py` with the canonical market name + a staggered WAT launch time (e.g. NAS100 08:50). It will only spawn for accounts whose `enabled_markets`/`plan` include that market.
-
-**Acceptance:** a Pro account with NAS100 enabled causes the NAS100 runner to spawn at its scheduled time; a Starter account does not trigger it.
-
----
-
-### FRONTEND FOLLOW-UP 1 · Replace "Symbol" Column With Enabled Markets
-**Owner:** ENG · **Estimate:** S · **Files:** `frontend/src/pages/dashboard/SettingsPage.tsx`
-
-**What:** The accounts table's single "Symbol" column was removed (the backend routes by `enabled_markets` now, and the `symbol` column is being dropped). Replace it with a **"Markets"** column that renders the account's `enabled_markets` (e.g. chips: `EURUSD` `XAUUSD`), since an account now trades multiple markets, not one symbol.
-
-**Acceptance:** each account row shows its enabled markets; an account with the full Pro set renders all of them legibly.
-
----
-
-### FRONTEND FOLLOW-UP 2 · Market Selection in Add Account Flow
-**Owner:** ENG · **Estimate:** S–M · **Files:** `frontend/src/components/dashboard/AddAccountModal.tsx`, onboarding "Choose your markets" step
-
-**What:** `AddAccountModal` no longer writes `symbol`; new accounts currently fall back to the `plan` default for `enabled_markets`. Add a market multi-select to the modal (and wire the onboarding Step 3 "Choose your markets") so the user explicitly picks which of their plan-permitted markets to trade. Gate the selectable set by plan (Starter → EURUSD/XAUUSD; Pro → full set).
-
-**Acceptance:** creating an account with a custom market selection writes those values to `broker_accounts.enabled_markets`; the orchestrator then launches only the corresponding runners.
-
----
-
-### SUPERSEDED · `broker_accounts.symbol` (Week 2 task above)
-The "WEEK 2 · `broker_accounts.symbol` Multi-Value Support" task is **superseded**. Multi-market access is implemented via the `enabled_markets` (text[]) + `plan` columns (`backend/config/markets.py`, `backend/services/worker.py`), not a comma-separated `symbol` string. The `symbol` column is vestigial and slated for removal:
-```sql
-alter table public.broker_accounts drop column if exists symbol;
-```
-Run only after the two frontend follow-ups above are deployed (so account creation never writes a dropped column).
-
----
-
 *Glass Box 6-Week Build Plan · Updated 2026-06-21 · 30-day Pro trial decision incorporated throughout.*
-*Addendum 2026-06-25 · Orchestrator consolidation + frontend market-selection follow-ups.*
 *Planning only — implementation begins on your signal.*
