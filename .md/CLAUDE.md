@@ -27,13 +27,8 @@ python -m backend.runners.eurusd
 # Run XAUUSD (Gold) ICT strategy (backtest or live)
 python -m backend.runners.xauusd
 
-# Run LiquiditySweep live (MT5)
-python -m backend.runners.liquidity_sweep
-
-# Run main entry point (routes based on ISBACKTESTING secret)
-python -m backend.runners.main
-
-# Multi-account orchestrator (Azure VM deployment)
+# Multi-account orchestrator (Azure VM deployment) — also launches the
+# strategy runners on a staggered schedule (EURUSD 08:40, XAUUSD 08:45 WAT)
 python -m backend.services.orchestrator
 
 # Single account worker (spawned by orchestrator, or run manually)
@@ -53,7 +48,6 @@ The codebase is organized as a three-layer system with a multi-account execution
 
 All strategies inherit from Lumibot's `Strategy` base class. They are pure trading logic:
 
-- `liquidity_sweep.py`: Detects Asian session (01:00–07:00 NGT) high/low, waits for a price sweep, then enters on the reversal swing break. Risk: $25/trade, RR: 3.0.
 - `eurusd_model.py`: 8-phase ICT institutional order flow. London session (09:00–11:00 NGT) and NY session (13:00–17:00 NGT). Uses fair value gaps and market structure shifts. Risk: $500/trade, RR: 3.0.
 - `xauusd_model.py`: Gold (XAUUSD) variant of the ICT order-flow model. Same sweep → MSS → FVG → OTE structure as `eurusd_model.py`, but tuned for Gold's dollar-denominated scale: stop `buffer` and `min_fvg_size` are in USD (~$0.50) rather than pips, so noise FVGs are filtered out. Symbol: `C:XAUUSD` (backtest) / `XAUUSDm` (live).
 - `common.py`: Shared `calculate_quantity()` (risk-based position sizing), `_calculate_take_profit()`, and `_manage_risk_controls()`.
