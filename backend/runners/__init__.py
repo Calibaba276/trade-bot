@@ -1,7 +1,7 @@
-from .eurusd import run as run_eurusd
-from .xauusd import run as run_xauusd
-from .liquidity_sweep import run as run_liquidity_sweep
-from .main import run as run_main
+"""Strategy runner entry points.
 
-__all__ = ["run_main", "run_eurusd", "run_xauusd", "run_liquidity_sweep"]
-
+Each runner is launched directly as a module (``python -m backend.runners.eurusd``)
+by the orchestrator, so this package intentionally performs no eager imports —
+importing one runner must not drag in the others (or their heavy dependencies),
+and removing a retired runner must not break the package.
+"""
