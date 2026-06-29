@@ -150,6 +150,80 @@ verdict = {
 
 ---
 
+### WEEK 1 · Backtest Bias-Strength Thresholds (Gate for the Bias-Mode Feature)
+**Owner:** ENG · **Estimate:** S · **Files:** `backend/backtest/xauusd_backtest.py`, `backend/strategies/xauusd_model.py`
+
+**What:**
+Before any "trade selectivity" UI is built, backtest the daily-bias threshold at three levels on the **same** XAUUSD period and record real metrics. This task produces the numbers that the Pro UI will display — the feature must not ship with invented labels.
+
+**Background — what exists today:**
+`_compute_daily_bias()` in `xauusd_model.py` currently uses a **50% midpoint**: `mid = (hi + lo) / 2.0; return "bull" if close >= mid else "bear"`. That means a bias is set every day (a trade can fire every day). The proposed *strict* default tightens this: a bias is only set when the prior daily candle closed in the **top/bottom 30%** of its range; a mid-range close (middle 40%) returns `None`, and `_bias_allows()` returns `False` for both directions — so **no trade fires that day at all**.
+
+**The three thresholds to test:**
+| Mode (working name) | Threshold | Meaning |
+|---|---|---|
+| Strict | 0.70 / 0.30 | Close in top/bottom 30% only — high-conviction days |
+| Balanced | 0.60 / 0.40 | Close in top/bottom 40% |
+| Active | 0.50 (midpoint) | Current behaviour — a bias every day |
+
+**Compare on risk-adjusted metrics, NOT raw trade count:**
+- Total trades (context only)
+- Profit factor
+- Win rate
+- Max drawdown
+- Expectancy per trade
+- Net P&L over the period
+
+**Why it matters:**
+The Pro UI will show these numbers next to each mode (see Section 6). A user choosing a selectivity mode with real backtested figures in front of them is making an informed choice; a user choosing "Aggressive" off a vibe is a future support ticket and a trust liability for a financial product. **This backtest is the gate** — the bias-mode feature does not ship until these numbers exist.
+
+**Acceptance criteria:**
+- A results table (3 rows, the metrics above) is committed to the backtest output / a short markdown note
+- The strict (0.70/0.30) row is confirmed as the shipped default
+- Numbers are real, from one backtest run over one period — not estimated
+
+---
+
+### WEEK 2 · Configurable Bias-Mode Parameter (Strict Default)
+**Owner:** ENG · **Estimate:** S · **Files:** `backend/strategies/xauusd_model.py`, `backend/runners/xauusd.py`
+
+**What:**
+Replace the hardcoded midpoint in `_compute_daily_bias()` with a configurable threshold read from `self.parameters`, defaulting to the strict end. The strategy already reads every other tunable this way (`buffer`, `min_fvg_size`, `rr_ratio`, `htf_bias_period`, `trade_london`) — this is the same pattern.
+
+**Target implementation (illustrative — engineering owns final form):**
+```python
+# initialize()
+BIAS_MODES = {"strict": 0.70, "balanced": 0.60, "active": 0.50}
+self.bias_mode = str(self.parameters.get("bias_mode", "strict") or "strict").lower()
+self.bias_threshold = BIAS_MODES.get(self.bias_mode, 0.70)
+
+# _compute_daily_bias()
+span = hi - lo
+if span <= 0:
+    return None
+pos = (close - lo) / span          # 0.0 = closed at low, 1.0 = closed at high
+if pos >= self.bias_threshold:
+    return "bull"
+if pos <= (1.0 - self.bias_threshold):
+    return "bear"
+return None                         # mid-range → no trade that day
+```
+
+**Defaults & rationale:**
+- Default is `"strict"` (0.70/0.30) — the highest-conviction, lowest-spread-bleed setting. This is the confirmed product default. No behaviour regresses to "trade every day" unless a user explicitly opts in.
+- `active` (0.50) reproduces today's midpoint behaviour exactly, for users who want maximum activity and understand the tradeoff.
+
+**Plumbing:** The runner passes `bias_mode` into the strategy `parameters` dict, sourced from the account config the worker already loads (see Section 2 — `broker_accounts.bias_mode`).
+
+**Open decision (flag to the team):** per-symbol vs global-per-account. The bias filter is a *Gold* concern (XAUUSD chop characteristics). A single global dial may be too blunt across instruments. **v1 recommendation: global-per-account** (one `bias_mode` per account, applied to whichever symbols run the bias filter) to ship faster; revisit per-symbol once EURUSD/indices have their own bias logic.
+
+**Acceptance criteria:**
+- `bias_mode` absent → strict (0.70) applied; behaviour is the strict filter, not the old midpoint
+- `bias_mode = "active"` → reproduces the current midpoint behaviour
+- Threshold is read once in `initialize()`, never hardcoded in `_compute_daily_bias()`
+
+---
+
 ## SECTION 2 — DATABASE & SCHEMA ARCHITECTURE
 
 ---
@@ -326,6 +400,37 @@ alter table public.broker_accounts drop column if exists symbol;
 - Worker with `enabled_markets = {EURUSD,XAUUSD}` executes verdicts for both and skips others with `[MARKET SKIP]`
 - Trial/Pro account with NAS100 enabled receives NAS100 signals once that runner ships
 - Starter conversion at Day 30 narrows `enabled_markets` to the Starter set
+
+---
+
+### WEEK 2 · `broker_accounts.bias_mode` Column (Pro Trade-Selectivity)
+**Owner:** ENG · **Estimate:** XS · **Files:** Supabase migration SQL, `backend/services/worker.py`, `backend/runners/xauusd.py`
+
+**What:**
+Store the per-account bias selectivity mode so the runner can pass it into the strategy without a code change.
+
+```sql
+ALTER TABLE broker_accounts
+ADD COLUMN bias_mode TEXT NOT NULL DEFAULT 'strict'
+  CHECK (bias_mode IN ('strict', 'balanced', 'active'));
+```
+
+**Plumbing chain:**
+1. `worker.py` already loads the account config (`cfg`). Read `bias_mode` from it (default `'strict'` if absent — backward compatible with pre-migration rows).
+2. Pass it through into the strategy `parameters` dict alongside the existing fields the runner constructs (`risk_amount`, `rr_ratio`, `buffer`, etc.).
+3. `xauusd_model.py` reads `self.parameters.get("bias_mode", "strict")` (see Section 1).
+
+**Tier gate (important):** `bias_mode` is a **Pro-only** control. Starter accounts are always `'strict'` and the value is ignored/locked. Enforce this in two places:
+- DB/RPC: when a user converts to Starter, reset `bias_mode = 'strict'`.
+- UI: the selector is only rendered for Pro/trial accounts (see Section 6).
+
+**Why denormalized onto `broker_accounts`:** the worker already reads this row per account at startup — no extra query, same pattern as `plan_tier` and `enabled_markets`.
+
+**Acceptance criteria:**
+- New accounts default to `'strict'`
+- Pre-migration rows (no column) behave as `'strict'`
+- Worker passes the account's `bias_mode` into the XAUUSD strategy parameters
+- Starter accounts are forced to `'strict'` regardless of stored value
 
 ---
 
@@ -939,6 +1044,58 @@ When a Starter user (post-trial) tries to add a second broker account, show the 
 
 ---
 
+### WEEK 3 · Pro Trade-Selectivity Mode Selector (Gold Bias Mode)
+**Owner:** ENG · **Estimate:** S · **Files:** `SettingsPage.tsx` (Risk tab), `ProGuard.tsx`
+**Depends on:** Week 1 bias-threshold backtest (numbers must be real) + Week 2 `broker_accounts.bias_mode` column
+
+**What:**
+A Pro-only control in Settings → Risk that lets the user choose how selective the Gold engine is about which days it trades. Persists to `broker_accounts.bias_mode`. Wrapped in `<ProGuard>` so Starter accounts never see it (they are locked to `strict`).
+
+**The design principle that makes this safe: numbers, not adjectives.** Each option shows the *real backtested metrics* from the Week 1 task — not vibes. This turns the settings screen itself into a Glass Box transparency artifact.
+
+**Design:**
+```
+TRADE SELECTIVITY — GOLD (XAUUSD)                          [Pro]
+How selective should Glass Box be about which days it trades?
+
+  ◉  Strict        (default)   41 trades · PF 2.1 · max DD 6%
+     Only trades days with a clear institutional draw. Skips
+     choppy, mid-range days entirely. Fewest trades, least
+     spread bleed. Some days no trade fires — that's by design.
+
+  ○  Balanced                  73 trades · PF 1.7 · max DD 9%
+     Trades on moderately directional days too. More activity.
+
+  ○  Active                    134 trades · PF 1.3 · max DD 14%
+     Trades every day a bias exists. Maximum activity — includes
+     marginal setups. For users who want the bot always working.
+
+  (Metrics from our XAUUSD backtest, [period]. Past performance
+   does not guarantee future results.)
+```
+*(Replace the example numbers with the real Week-1 backtest output before shipping.)*
+
+**Behavioural rules:**
+- Default selection: **Strict**. The product never silently trades more than the conservative default.
+- Pro / trial only. `<ProGuard>` hides the entire control for Starter; show a locked teaser: "Trade selectivity is a Pro feature. [Upgrade →]"
+- Saving writes `bias_mode` to `broker_accounts` and shows a confirmation toast. The change applies from the next daily bias computation (~next session), not retroactively — make this explicit: "Applies from your next trading session."
+- **Audit trail:** log the change (`[BIAS_MODE] account {id}: strict → active by user {id} at {ts}`). The selection is the user's recorded, visible choice — same accountability model as every other risk parameter (risk amount, drawdown limit). If a user picks Active and loses on a chop day, the audit log shows it was their setting.
+
+**Pairing requirement — the "explain the silence" feed line (mandatory with this feature):**
+If you give the user a selectivity dial, you owe them visibility into its consequence. The Live Logic Feed (Section 6 realtime feed) and the cold-start state (Section 8) must surface a no-trade-day explanation when bias is `None`:
+> *"Gold closed mid-range yesterday — no clear institutional draw. You're on Strict selectivity, so Glass Box is standing aside today to avoid choppy-day spread bleed. Switch to Balanced in Settings for more setups."*
+
+This converts every "is the bot broken?" moment into "this is the choice I made," and doubles as the support-deflection script.
+
+**Acceptance criteria:**
+- Selector renders for Pro/trial accounts only; Starter sees the locked teaser
+- Each option displays real backtested numbers from the Week 1 task
+- Default is Strict; changing + saving persists to `broker_accounts.bias_mode` with a toast
+- Change is logged with `[BIAS_MODE]` audit entry
+- No-trade-day explanation appears in the Live Feed / cold-start state when bias is `None`
+
+---
+
 ## SECTION 7 — FRONTEND: CHARTS & TRADING VISUALIZATION
 
 ---
@@ -1399,6 +1556,10 @@ Test the full Pro journey for a user who converted to Pro at Day 30:
 3. Halt event: banner appears + email after 15 minutes
 4. Halt reset: banner disappears
 5. Billing tab shows "Pro — $49/mo" with Manage Billing link
+6. Trade-selectivity selector visible with real backtested numbers; default is Strict
+7. Change to Active → saves to `broker_accounts.bias_mode`, toast confirms, `[BIAS_MODE]` audit entry logged
+8. Confirm a Starter account does NOT see the selector (locked teaser instead) and is forced to `strict`
+9. On a simulated mid-range bias day, confirm the no-trade-day explanation appears in the Live Feed
 
 ---
 
@@ -1443,6 +1604,7 @@ Manual check on all pre-existing features:
 - [ ] Landing page: fix "Watch Live Demo" button
 - [ ] Landing page: add ICT term tooltips
 - [ ] Wire RiskTab "Save Defaults" button
+- [ ] Backtest bias-strength thresholds (strict 0.70 / balanced 0.60 / active 0.50) — produces the real numbers the Pro UI displays; GATE for the bias-mode feature
 - [ ] **[YOU]** DM 5 Telegram signal providers (new angle: "followers get 30-day free trial")
 - [ ] **[YOU]** Set up Paystack account and submit verification
 
@@ -1451,6 +1613,8 @@ Manual check on all pre-existing features:
 - [x] Orchestrator supervises strategy runners (staggered 08:40/08:45 WAT, .bat files removed) — DONE 2026-06-25
 - [ ] ~~`broker_accounts.symbol` multi-value support~~ — superseded by `enabled_markets` + `plan`; drop the `symbol` column after frontend market tasks ship
 - [ ] Market selection in Add Account flow (writes `enabled_markets`)
+- [ ] Configurable `bias_mode` parameter in xauusd_model + runner (strict default; replaces hardcoded midpoint)
+- [ ] `broker_accounts.bias_mode` column (default 'strict', Pro-only, worker passes it through)
 - [ ] Trial abuse prevention (1 account during trial, email verification gating)
 - [ ] Beta registration cap (50 users)
 - [ ] Auth pages: design tokens, forgot password, password hint, post-signup redirect
@@ -1472,6 +1636,8 @@ Manual check on all pre-existing features:
 - [ ] Remove hardcoded "Uptime 99.7%"
 - [ ] Verdict sidebar trigger on Overview rows
 - [ ] Pro-locked market tab overlay (for post-trial Starter users only)
+- [ ] Pro Trade-Selectivity mode selector in Settings (Strict/Balanced/Active, real backtested numbers, Pro-gated)
+- [ ] No-trade-day explanation line in Live Feed + cold-start (pairs with bias mode)
 - [ ] Cold-start UX (post-onboarding)
 - [ ] **[YOU]** Legal consultation complete, decision documented
 - [ ] **[YOU]** Terms of Service + Privacy Policy published
@@ -1508,7 +1674,7 @@ Manual check on all pre-existing features:
 - [ ] Landing page final polish (trial CTA prominent, pricing with trial badge)
 - [ ] Full trial-to-paid journey test (all 29 steps)
 - [ ] Trial email drip QA (all 5 emails)
-- [ ] Full Pro journey test
+- [ ] Full Pro journey test (includes bias-mode selector + no-trade-day explanation)
 - [ ] Regression pass on existing features
 - [ ] Performance check (all 5 metrics)
 - [ ] Session summary cards (stretch)
@@ -1518,5 +1684,5 @@ Manual check on all pre-existing features:
 
 ---
 
-*Glass Box 6-Week Build Plan · Updated 2026-06-21 · 30-day Pro trial decision incorporated throughout.*
+*Glass Box 6-Week Build Plan · Updated 2026-06-21 · 30-day Pro trial + Pro trade-selectivity (Gold bias mode) decisions incorporated throughout.*
 *Planning only — implementation begins on your signal.*
