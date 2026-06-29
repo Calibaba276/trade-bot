@@ -53,6 +53,9 @@ All code tasks, ordered by delivery week.
 - [ ] **E-2-7** Auth pages — fix post-signup redirect: after email confirmation, send user to `/dashboard`, not `/sign-in`.
 - [ ] **E-2-8** Rename "Chart Debugger" in sidebar nav to "Replay Mode" to match marketing copy.
 - [ ] **E-2-9** Standardise sidebar nav icons: pick either emoji OR Unicode icons, not both mixed.
+- [ ] **E-2-10** Backtest bias-strength thresholds on XAUUSD (strict 0.70/0.30, balanced 0.60/0.40, active 0.50). Record profit factor, win rate, max drawdown, expectancy, net P&L per mode. **GATE:** these real numbers populate the Pro selectivity UI — feature does not ship without them. (Week 1 dependency, listed here with the Gold work.)
+- [ ] **E-2-11** Replace the hardcoded 50% midpoint in `xauusd_model.py` `_compute_daily_bias()` with a configurable `bias_mode` parameter (`strict`/`balanced`/`active` → 0.70/0.60/0.50). Default `strict`. Read via `self.parameters.get("bias_mode", "strict")`, same pattern as `buffer`/`rr_ratio`. Runner passes it through.
+- [ ] **E-2-12** Add `broker_accounts.bias_mode` column (`TEXT DEFAULT 'strict' CHECK IN ('strict','balanced','active')`). Worker reads it from the account config and passes into strategy params. Pre-migration rows behave as `strict`. **Pro-only** — Starter accounts forced to `strict`.
 
 ---
 
@@ -65,6 +68,8 @@ All code tasks, ordered by delivery week.
 - [ ] **E-3-5** Notification system for halt events: email user if engine is down >15 minutes. Log `[HALT_NOTIFY]`.
 - [ ] **E-3-6** Remove hardcoded "Uptime 99.7%" from Overview dashboard. Remove until real uptime data is available.
 - [ ] **E-3-7** PropFirmPanel: persist daily limit and consecutive losses config across page reloads (currently resets on every reload). Save to Supabase.
+- [ ] **E-3-8** Pro Trade-Selectivity mode selector in Settings → Risk. Three options (Strict default / Balanced / Active), each showing **real backtested numbers** from E-2-10 — not adjectives. Pro/trial only, wrapped in `<ProGuard>`; Starter sees a locked teaser. Persists to `broker_accounts.bias_mode` with a confirmation toast ("Applies from your next trading session"). Log changes as `[BIAS_MODE]` audit entries.
+- [ ] **E-3-9** No-trade-day explanation in the Live Logic Feed + cold-start state. When daily bias is `None` (mid-range close), surface: "Gold closed mid-range — no clear institutional draw. You're on Strict selectivity, so Glass Box is standing aside today. Switch to Balanced for more setups." Mandatory companion to E-3-8 — a selectivity dial requires showing its consequence.
 
 ---
 

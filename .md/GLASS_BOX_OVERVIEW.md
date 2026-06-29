@@ -105,6 +105,7 @@ Risk is managed at the account level, not the strategy level. For each connected
 - **Risk-reward ratio** (default 3:1)
 - **Breakeven buffer** (ticks of profit before SL moves to entry)
 - **Max daily drawdown %** (engine halts if this is breached)
+- **Trade selectivity** *(Pro)* — choose how selective the Gold engine is about which days it trades: Strict (default — only high-conviction, clearly directional days), Balanced, or Active. On a directionless, choppy day the Strict engine deliberately stands aside rather than pay the spread on a low-conviction setup — and the dashboard tells you exactly why no trade fired.
 
 Position sizes are calculated automatically. If you're running multiple accounts (e.g., different prop firm accounts at different challenge phases), each has its own independent risk configuration.
 
