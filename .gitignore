@@ -12,3 +12,4 @@ logs/
 # Local backtest data (large, fetched on demand)
 _fxdata/
 /.claude
+/supabase
