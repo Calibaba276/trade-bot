@@ -1,0 +1,7 @@
+{
+  "include": ["backend/strategies", "backend/services", "tests"],
+  "exclude": ["**/__pycache__"],
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "none",
+  "reportMissingModuleSource": "none"
+}
