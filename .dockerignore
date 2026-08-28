@@ -1,0 +1,36 @@
+# Source-control and CI metadata
+.git
+.github
+
+# Local Python artefacts and test output
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyright/
+.venv/
+venv/
+
+# Local runtime state and data
+logs/
+_fxdata/
+*.log
+
+# Secrets and machine-specific configuration
+.env
+.env.*
+!.env.example
+!.env.local.example
+*.pem
+*.key
+*.pfx
+
+# Frontend dependencies and editor/agent state are not part of this backend
+# quality image.
+frontend/node_modules/
+node_modules/
+.vscode/
+.agents/
+.claude/

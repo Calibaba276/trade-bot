@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 import MetaTrader5 as mt5
 import redis
 
-from supabase import create_client
+from supabase import create_client  # pyright: ignore[reportAttributeAccessIssue]
 
 from backend.brokers.mt5_broker import MetaTrader5
 from backend.config.logger import setup_logger
@@ -78,6 +78,22 @@ def _pick(cfg: Dict[str, Any], *keys: str, default=None):
             return cfg[k]
     return default
 
+def _as_float(value: Any, field: str) -> float:
+    if value in (None, ""):
+        raise RuntimeError(f"Missing numeric value for {field}")
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f"Invalid numeric value for {field}: {value!r}") from exc
+
+def _as_int(value: Any, field: str) -> int:
+    if value in (None, ""):
+        raise RuntimeError(f"Missing integer value for {field}")
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f"Invalid integer value for {field}: {value!r}") from exc
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -118,8 +134,8 @@ def _resolve_account_config(account_id: str) -> Dict[str, Any]:
         "server": server,
         "path": path,
         "timezone": timezone_name,
-        "risk_amount": float(_pick(cfg, "risk_amount", default=25)),
-        "rr_ratio": float(_pick(cfg, "rr_ratio", default=3.0)),
+        "risk_amount": _as_float(_pick(cfg, "risk_amount", default=25), "risk_amount"),
+        "rr_ratio": _as_float(_pick(cfg, "rr_ratio", default=3.0), "rr_ratio"),
         "plan": plan,
         "enabled_markets": list(enabled_markets),
     }
@@ -309,9 +325,15 @@ def _start_monitor(account: Dict[str, Any], halt_flag: HaltFlag) -> PositionMoni
         account_id=str(account["id"]),
         account_number=account_number,
         symbol=symbol,
-        rr_ratio=float(_pick(account, "rr_ratio", default=3.0)),
-        breakeven_buffer_ticks=int(_pick(account, "breakeven_buffer_ticks", default=10)),
-        max_daily_drawdown_pct=float(_pick(account, "max_daily_drawdown_pct", default=0.02)),
+        rr_ratio=_as_float(_pick(account, "rr_ratio", default=3.0), "rr_ratio"),
+        breakeven_buffer_ticks=_as_int(
+            _pick(account, "breakeven_buffer_ticks", default=10),
+            "breakeven_buffer_ticks",
+        ),
+        max_daily_drawdown_pct=_as_float(
+            _pick(account, "max_daily_drawdown_pct", default=0.02),
+            "max_daily_drawdown_pct",
+        ),
         poll_interval_seconds=5.0,
     )
 
@@ -396,7 +418,11 @@ def _execute_signal(
     # markets its plan permits and the user has left enabled. Skip silently
     # before claiming so an out-of-plan signal stays available to other
     # accounts and leaves no execution row here.
-    if not is_market_enabled(signal.get("symbol"), enabled_markets):
+    signal_symbol = signal.get("symbol")
+    if not isinstance(signal_symbol, str) or not signal_symbol.strip():
+        logger.warning(f"[MARKET SKIP] signal_id={signal_id} missing valid symbol")
+        return
+    if not is_market_enabled(signal_symbol, enabled_markets):
         logger.debug(
             f"[MARKET SKIP] signal_id={signal_id} symbol={signal.get('symbol')} "
             f"not in enabled_markets={enabled_markets}"
@@ -435,7 +461,7 @@ def _execute_signal(
         return
  
     # --- Symbol ---
-    symbol_raw = str(signal.get("symbol", ""))
+    symbol_raw = signal_symbol
     symbol     = broker._symbol(symbol_raw)
     broker.select_symbol(symbol)
  
@@ -448,12 +474,17 @@ def _execute_signal(
     # verdict carries risk_in_price for lot sizing transparency but
     # the account's configured risk_amount is the authoritative sizing input
     risk_amount = default_risk
-    rr_ratio = float(_pick(signal, "rr_ratio", "reward_risk_ratio", default=default_rr_ratio))
+    rr_ratio = _as_float(
+        _pick(signal, "rr_ratio", "reward_risk_ratio", default=default_rr_ratio),
+        "reward_risk_ratio",
+    )
  
     if stop_loss in (None, ""):
         _upsert_execution(signal_id, account_id, {"status": "error", "symbol": symbol, "error": "missing stop_loss"})
         _log_event(signal_id, account_id, "error", {"error": "missing stop_loss"})
         return
+
+    stop_loss = _as_float(stop_loss, "stop_loss")
  
     if entry_price <= 0:
         _upsert_execution(signal_id, account_id, {"status": "error", "symbol": symbol, "error": "missing entry_price"})
@@ -461,7 +492,7 @@ def _execute_signal(
         return
 
     if take_profit in (None, ""):
-        take_profit = _calculate_take_profit(entry_price, float(stop_loss), direction, rr_ratio)
+        take_profit = _calculate_take_profit(entry_price, stop_loss, direction, rr_ratio)
         if take_profit is None:
             _upsert_execution(signal_id, account_id, {"status": "error", "symbol": symbol, "error": "invalid take_profit calculation"})
             _log_event(signal_id, account_id, "error", {"error": "invalid take_profit calculation"})

@@ -428,9 +428,11 @@ def run(channel: str, restart_limit: int) -> None:
         for wp in workers.values():
             if wp.disabled:
                 continue
-            exit_code = wp.process.poll() if wp.process else -1
+            process = wp.process
+            exit_code = process.poll() if process else -1
             if exit_code is not None:
-                logger.warning(f"[DEAD] account={wp.account_num} pid={wp.process.pid} exit_code={exit_code}")
+                pid = process.pid if process else "-"
+                logger.warning(f"[DEAD] account={wp.account_num} pid={pid} exit_code={exit_code}")
                 if exit_code in NON_RETRYABLE_EXIT_CODES:
                     wp.disabled = True
                     logger.error(f"[DISABLED] account={wp.account_num} non-retryable exit code={exit_code} — restart skipped")
@@ -443,9 +445,11 @@ def run(channel: str, restart_limit: int) -> None:
         for sp in strategies:
             if not sp.spawned or sp.disabled:
                 continue
-            exit_code = sp.process.poll() if sp.process else -1
+            process = sp.process
+            exit_code = process.poll() if process else -1
             if exit_code is not None:
-                logger.warning(f"[STRATEGY DEAD] market={sp.name} pid={sp.process.pid} exit_code={exit_code}")
+                pid = process.pid if process else "-"
+                logger.warning(f"[STRATEGY DEAD] market={sp.name} pid={pid} exit_code={exit_code}")
                 _restart_strategy(sp, restart_limit)
                 restarted = True
 
