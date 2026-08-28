@@ -55,7 +55,7 @@ export function TradesPage() {
   const filtered = useMemo(
     () =>
       all.filter((t) => {
-        const tDate = t.time ? t.time.slice(0, 10) : "";
+        const tDate = t.time ? toDateInputValue(new Date(t.time)) : "";
         return (
           (dir === "All" || t.direction === dir) &&
           (status === "All" || t.status === status) &&

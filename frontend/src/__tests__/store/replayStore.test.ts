@@ -19,7 +19,6 @@ function makeEvent(overrides: Partial<TradeEvent>): TradeEvent {
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const reset = () => useReplayStore.setState({
   selectedTimeframe: "5m",
   currentTime: 0,
@@ -30,7 +29,7 @@ const reset = () => useReplayStore.setState({
   events: [],
   priceData: {},
   dateRange: { start: new Date(0), end: new Date() },
-} as any);
+});
 
 beforeEach(reset);
 

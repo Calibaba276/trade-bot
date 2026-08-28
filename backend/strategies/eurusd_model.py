@@ -421,7 +421,7 @@ class EURUSDModel(Strategy):
                         return
 
                 # Trade Execution (BEARISH)
-                if self.bearish_fvg_confirmed and self.highest_sweep_point is not None and self._bias_allows("sell"):
+                if self.bearish_fvg_confirmed and self.fvg_bottom is not None and self.highest_sweep_point is not None and self._bias_allows("sell"):
                     entry_price = self.fvg_bottom
                     sl = self.highest_sweep_point + self.buffer
                     tp = _calculate_take_profit(entry_price, sl, "sell", self.rr_ratio)
@@ -528,7 +528,7 @@ class EURUSDModel(Strategy):
                         return
 
                 # Trade Execution (BULLISH)
-                elif self.bullish_fvg_confirmed and self.lowest_sweep_point is not None and self._bias_allows("buy"):
+                elif self.bullish_fvg_confirmed and self.fvg_top is not None and self.lowest_sweep_point is not None and self._bias_allows("buy"):
                     entry_price = self.fvg_top
                     sl = self.lowest_sweep_point - self.buffer
                     risk = entry_price - sl
@@ -808,11 +808,16 @@ class EURUSDModel(Strategy):
                             return
 
                     # Wait for sweep of the absolute 06:00-14:00 range high or low (wick-based)
+                    ny_range_high = self.ny_range_high
+                    ny_range_low = self.ny_range_low
+                    if ny_range_high is None or ny_range_low is None:
+                        logger.warning("NY Scenario B Range: NOT FOUND")
+                        return
                     nb_high, nb_low = self._current_bar_hl()
-                    if nb_high is not None and nb_high > self.ny_range_high:
+                    if nb_high is not None and nb_high > ny_range_high:
                         self.ny_sweep_high = True
                         self.sweep_peak = max(self.sweep_peak if self.sweep_peak else 0, nb_high)
-                    elif nb_low is not None and nb_low < self.ny_range_low:
+                    elif nb_low is not None and nb_low < ny_range_low:
                         self.ny_sweep_low = True
                         self.sweep_trough = min(self.sweep_trough if self.sweep_trough else float("inf"), nb_low)
 
@@ -878,7 +883,7 @@ class EURUSDModel(Strategy):
                                 logger.warning("Price broke swing low but no displacement (FVG) found. Skipping entry.")
                                 return
 
-                        if self.bearish_fvg_confirmed and self._bias_allows("sell"):
+                        if self.bearish_fvg_confirmed and self.mss_swing_low is not None and self.sweep_peak is not None and self._bias_allows("sell"):
                             entry_price = self.mss_swing_low
                             sl = self.sweep_peak + self.buffer
                             risk = sl - entry_price
@@ -955,7 +960,7 @@ class EURUSDModel(Strategy):
                                     # If no FVG is formed, ICT traders usually wait for a secondary break
                                     logger.warning("Price broke swing low but no displacement (FVG) found. Skipping entry.")
                                     return
-                            if self.bullish_fvg_confirmed and self._bias_allows("buy"):
+                            if self.bullish_fvg_confirmed and self.mss_swing_high is not None and self.sweep_trough is not None and self._bias_allows("buy"):
                                 entry_price = self.mss_swing_high
                                 sl = self.sweep_trough - self.buffer  # SL below OB/Sweep Low
                                 risk = entry_price - sl
