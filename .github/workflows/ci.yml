@@ -36,7 +36,9 @@ jobs:
         run: pyright backend/strategies backend/services tests
 
       - name: Run deterministic unit tests
-        run: pytest -q tests
+        # Running through the selected interpreter keeps the repository root on
+        # sys.path, so the checked-out `backend` package resolves consistently.
+        run: python -m pytest -q tests
 
   frontend-quality:
     runs-on: ubuntu-latest
