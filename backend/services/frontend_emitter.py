@@ -6,9 +6,17 @@ All functions fail silently — a network/DB error must never interrupt live tra
 """
 
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
-from backend.config.supaclient import supabase
 from backend.config.logger import setup_logger
+from backend.config.supaclient import supabase
+
+if TYPE_CHECKING:
+    import pandas as pd
+
+
+class _TimestampLike(Protocol):
+    def timestamp(self) -> float: ...
 
 logger = setup_logger(__name__)
 
@@ -105,7 +113,7 @@ def emit_candles_from_df(
     user_id: str,
     account_id: str | None,
     pair: str,
-    df: "import pandas; pandas.DataFrame",  # noqa: F821
+    df: "pd.DataFrame",
 ) -> None:
     """
     Resample a 1-minute OHLCV DataFrame (DatetimeIndex) into 1m/5m/15m/1h candles
@@ -123,12 +131,15 @@ def emit_candles_from_df(
 
     for tf_label, rule in [("1m", "1min"), ("5m", "5min"), ("15m", "15min"), ("1h", "60min")]:
         try:
-            rs = df.resample(rule).agg(agg).dropna(subset=["open"])
+            rs = df.resample(rule).agg(agg)
+            open_values = cast(Any, rs["open"])
+            rs = rs.loc[open_values.notna()]
             if rs.empty:
                 continue
 
             bar = rs.iloc[-1]
-            bar_ms = int(rs.index[-1].timestamp() * 1000)
+            bar_time = cast(_TimestampLike, rs.index[-1])
+            bar_ms = int(bar_time.timestamp() * 1000)
             emit_candle(
                 user_id, account_id, pair, tf_label, bar_ms,
                 float(bar["open"]), float(bar["high"]),

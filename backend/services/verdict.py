@@ -4,18 +4,17 @@ from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone, timedelta
 from typing import Literal, Optional
 
-import redis
-
-from supabase import create_client
-
 from backend.config.logger import setup_logger
-from backend.config.supaclient import supabase, SUPABASE_URL
-from backend.config.secrets import get_azure_secret
-from backend.services.telegram_notifier import notify_signal
 
 logger = setup_logger(__name__)
 
 def _admin_supabase():
+    # Keep cloud integrations out of the module import path.  Verdict creation
+    # is deterministic and must be unit-testable without Azure credentials.
+    from supabase import create_client  # pyright: ignore[reportAttributeAccessIssue]
+    from backend.config.secrets import get_azure_secret
+    from backend.config.supaclient import SUPABASE_URL
+
     key = get_azure_secret("SUPABASE-SERVICE-ROLE-KEY") or get_azure_secret("SUPABASE-KEY")
     return create_client(SUPABASE_URL, key)
 
@@ -110,6 +109,8 @@ def build_verdict(
 def save_verdict(verdict: Verdict):
     """Saves the verdict to Supabase Signals table and returns the data for Redis broadcasting"""
 
+    from backend.services.telegram_notifier import notify_signal
+
     payload = asdict(verdict)
 
     try:
@@ -139,6 +140,9 @@ def publish_verdict(payload: dict):
     Accepts the dictionary returned by save_verdict.
     """
     try:
+        import redis
+        from backend.config.secrets import get_azure_secret
+
         # Pull your connection string straight from Azure Key Vault
         redis_url = get_azure_secret("REDIS-URL")
         if not redis_url:

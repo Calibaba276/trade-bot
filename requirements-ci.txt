@@ -1,0 +1,4 @@
+# CI-only tooling.  These checks must run without Azure, MT5, Redis, or Supabase.
+pytest==9.0.2
+ruff>=0.8,<1
+pyright>=1.1,<2

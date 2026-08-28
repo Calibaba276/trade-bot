@@ -1,4 +1,6 @@
-from .secrets import get_azure_secret
+"""Configuration package.
 
-__all__ = ["get_azure_secret"]
+Cloud integrations are deliberately imported from their concrete modules.  This
+keeps importing unrelated local modules free of Azure SDK and credential setup.
+"""
 

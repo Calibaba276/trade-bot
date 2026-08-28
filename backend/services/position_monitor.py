@@ -141,10 +141,10 @@ class DailyEquityTracker:
                 logger.debug("DailyEquityTracker: mt5.account_info() returned None")
                 return False, 0.0, 0.0
 
-            current_balance = info.balance
+            current_balance = float(info.balance)
 
             # New day — refresh snapshot
-            if self._snapshot_date != today:
+            if self._snapshot_date != today or self._day_start_balance is None:
                 self._day_start_balance = current_balance
                 self._snapshot_date = today
                 logger.info(
@@ -153,11 +153,12 @@ class DailyEquityTracker:
                 )
                 return False, current_balance, current_balance
 
-            loss = self._day_start_balance - current_balance
-            loss_pct = loss / self._day_start_balance if self._day_start_balance else 0.0
+            day_start_balance = self._day_start_balance
+            loss = day_start_balance - current_balance
+            loss_pct = loss / day_start_balance if day_start_balance else 0.0
             breached = loss_pct >= self._max_drawdown_pct
 
-            return breached, current_balance, self._day_start_balance
+            return bool(breached), current_balance, day_start_balance
 
     def force_snapshot(self, balance: float) -> None:
         """Called by worker at startup to seed today's snapshot from a known value."""
