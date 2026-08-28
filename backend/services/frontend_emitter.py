@@ -6,9 +6,13 @@ All functions fail silently — a network/DB error must never interrupt live tra
 """
 
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
-from backend.config.supaclient import supabase
 from backend.config.logger import setup_logger
+from backend.config.supaclient import supabase
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = setup_logger(__name__)
 
@@ -105,7 +109,7 @@ def emit_candles_from_df(
     user_id: str,
     account_id: str | None,
     pair: str,
-    df: "import pandas; pandas.DataFrame",  # noqa: F821
+    df: "pd.DataFrame",
 ) -> None:
     """
     Resample a 1-minute OHLCV DataFrame (DatetimeIndex) into 1m/5m/15m/1h candles
