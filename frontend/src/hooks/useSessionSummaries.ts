@@ -72,5 +72,5 @@ export function useSessionSummaries(limit = 5): SessionSummary[] {
           halted: v.ev.some((e) => (e.metadata as Record<string, unknown>)?.halted === true),
         } satisfies SessionSummary;
       });
-  }, [events]);
+  }, [events, limit]);
 }

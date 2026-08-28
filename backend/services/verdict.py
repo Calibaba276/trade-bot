@@ -11,7 +11,7 @@ logger = setup_logger(__name__)
 def _admin_supabase():
     # Keep cloud integrations out of the module import path.  Verdict creation
     # is deterministic and must be unit-testable without Azure credentials.
-    from supabase import create_client
+    from supabase import create_client  # pyright: ignore[reportAttributeAccessIssue]
     from backend.config.secrets import get_azure_secret
     from backend.config.supaclient import SUPABASE_URL
 
