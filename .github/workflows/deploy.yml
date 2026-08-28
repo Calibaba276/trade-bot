@@ -1,0 +1,43 @@
+name: Deploy approved release to Azure VM
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: glassbox-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy native Windows engine
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      vars.ENABLE_VM_DEPLOYMENT == 'true'
+    runs-on: [self-hosted, windows, x64]
+    environment: production
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out the exact CI-approved commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Deploy versioned native Windows release
+        shell: powershell
+        run: |
+          & .\scripts\deploy_windows.ps1 `
+            -SourcePath "${{ github.workspace }}" `
+            -CommitSha "${{ github.event.workflow_run.head_sha }}" `
+            -RunId "${{ github.run_id }}-${{ github.run_attempt }}" `
+            -RootPath "${{ vars.GLASSBOX_ROOT || 'C:\GlassBox' }}" `
+            -ServiceName "${{ vars.GLASSBOX_SERVICE_NAME || 'GlassBoxOrchestrator' }}" `
+            -PythonExecutable "${{ vars.GLASSBOX_PYTHON || 'python.exe' }}" `
+            -NssmExecutable "${{ vars.GLASSBOX_NSSM || 'nssm.exe' }}"
