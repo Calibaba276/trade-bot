@@ -2,7 +2,7 @@
 Test signal injector — fires one fake EURUSD signal through the full pipeline.
 
 Usage (from the repo root on the VM):
-    python scripts/inject_test_signal.py
+    python tests/inject_test_signal.py
 
 What it does:
   1. Builds a Verdict with realistic EURUSD prices

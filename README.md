@@ -2,6 +2,19 @@
 
 An automated forex trading system built on the ICT (Inner Circle Trader) institutional order-flow model, paired with a real-time "Glass Box" dashboard that lets you watch every pattern detection, entry, and exit as it happens — or replay any past session candle-by-candle.
 
+## Recent additions
+
+Last updated **29 August 2026**.
+
+| Date | Addition |
+|------|----------|
+| 29 Aug 2026 | Replaced the Windows PowerShell deployment helpers with Command Prompt-native `deploy_windows.cmd` and `enter_release.cmd` scripts. |
+| 29 Aug 2026 | Updated production deployment to run through CMD after CI approves the exact commit. |
+| 29 Aug 2026 | Added versioned releases, isolated virtual environments, NSSM service management, health observation, release markers, logs, and automatic rollback. |
+| 29 Aug 2026 | Added this from-scratch Windows VM, GitHub Actions runner, Key Vault, deployment, verification, and push guide. |
+| 29 Aug 2026 | Moved the manual end-to-end signal injector from `scripts\inject_test_signal.py` to `tests\inject_test_signal.py`. |
+| Earlier deployment work | Added Python compilation, Ruff, Pyright, Pytest, frontend linting, Vitest, and production frontend build checks to CI. |
+
 ---
 
 ## What it does
@@ -40,8 +53,11 @@ trade-bot/
 │   │   └── utils/            # patternRenderer (canvas overlay)
 │   ├── e2e/                  # Playwright end-to-end tests
 │   └── src/__tests__/        # Vitest unit tests
+├── scripts/                  # CMD-native Windows deployment and release-entry helpers
+├── tests/                    # Backend tests and the manual pipeline signal injector
+├── .github/workflows/        # CI gate and gated Windows VM deployment
 └── supabase/
-    └── migrations/           # SQL schema applied to Supabase (three migrations)
+    └── migrations/           # Versioned SQL schema applied to Supabase
 ```
 
 ---
@@ -151,6 +167,176 @@ python -m backend.services.worker --account-id <broker_accounts.id>
 python -m backend.config.latency
 ```
 
+## Windows VM setup from scratch
+
+The production engine must run natively on Windows because it connects to MetaTrader 5. These instructions use **Command Prompt**. Run installation and service commands from **Command Prompt as Administrator**.
+
+### 1. Create and secure the Azure VM
+
+1. Create a 64-bit Windows Azure VM with enough CPU/RAM for MT5, Python, and the enabled strategy processes.
+2. Enable the VM's **system-assigned managed identity** under Azure Portal → VM → Identity.
+3. Restrict RDP (`3389`) to your own public IP. The engine does not need a public inbound application port; it needs outbound HTTPS access to GitHub, Azure Key Vault, Supabase, Upstash Redis, Telegram, and market-data providers.
+4. Install Windows updates and reboot before installing the trading stack.
+
+The VM identity needs the **Key Vault Secrets User** role on both vaults:
+
+- `calibabasecret`: Supabase, Redis, Telegram, runner/backtest settings, and the current single-runner MT5 secrets.
+- `glass-box`: per-account MT5 password secrets referenced by the `password` field in `broker_accounts`.
+
+Assign these roles in Azure Portal → each Key Vault → Access control (IAM). Managed identity avoids storing an Azure client secret on the VM.
+
+### 2. Install the required software
+
+Install Git, 64-bit Python 3.10, and Azure CLI:
+
+```bat
+winget install --exact --id Git.Git
+winget install --exact --id Python.Python.3.10
+winget install --exact --id Microsoft.AzureCLI
+```
+
+Close and reopen Command Prompt, then verify:
+
+```bat
+git --version
+python --version
+az --version
+where python
+```
+
+Also install:
+
+- **MetaTrader 5** at `C:\Program Files\ICT\terminal64.exe`. Log in to the broker account, enable algorithmic trading, and confirm the required symbols are visible. The EURUSD and XAUUSD runners currently use this exact terminal path.
+- **NSSM** (the Non-Sucking Service Manager). Put `nssm.exe` in a stable location such as `C:\Tools\nssm\nssm.exe`; the GitHub variable can point directly to it, so changing the system `PATH` is optional.
+
+### 3. Configure Azure Key Vault secrets
+
+The existing code expects these general secrets in `calibabasecret`:
+
+| Secret | Purpose |
+|--------|---------|
+| `SUPABASE-URL` | Supabase project URL |
+| `SUPABASE-KEY` | Supabase service-role key |
+| `SUPABASE-SERVICE-ROLE-KEY` | Preferred explicit service-role key for workers/verdicts |
+| `REDIS-URL` | Upstash `rediss://` connection string |
+| `ACCOUNT`, `PASSWORD`, `SERVER` | Current runner-level MT5 login settings |
+| `ISBACKTESTING` | `false` for production |
+| `BACKTESTING-START`, `BACKTESTING-END` | Backtest date range |
+| `POLYGON-API-KEY` | Historical market-data key |
+| `TELEGRAM-BOT-TOKEN`, `TELEGRAM-CHAT-ID` | Telegram notifications |
+
+For each Supabase `broker_accounts` row, store the actual MT5 password as a secret in `glass-box`, then put only that secret's **name** in the row's `password` field. Do not put the plaintext broker password in Supabase or Git.
+
+From an authenticated administrator machine, secrets can be created with:
+
+```bat
+az login
+az keyvault secret set --vault-name calibabasecret --name REDIS-URL --value "YOUR_VALUE"
+az keyvault secret set --vault-name glass-box --name "mt5-YOUR_ACCOUNT-password" --value "YOUR_MT5_PASSWORD"
+```
+
+Repeat for every required secret. Avoid placing real secret values in command history on shared machines; the Azure Portal is safer for manual entry.
+
+### 4. Prepare Supabase
+
+Apply all migrations in `supabase\migrations` in filename order. There are currently six migrations, covering the Glass Box frontend schema, onboarding, shared sessions, forced worker respawn, account plans/enabled markets, and signal indicator columns.
+
+Then confirm each production `broker_accounts` row has the correct:
+
+- `user_id`, MT5 login/account number, broker server, and password **secret name**;
+- runnable status and `force_spawn = false` unless a one-time respawn is intended;
+- `plan` and `enabled_markets` (EURUSD and/or XAUUSD currently have runners).
+
+### 5. Install the GitHub Actions runner
+
+Keep the repository private: a self-hosted runner executes workflow code on your VM. In GitHub, open repository **Settings → Actions → Runners → New self-hosted runner**, choose Windows x64, and follow the generated commands. GitHub recommends installing it under `C:\actions-runner`.
+
+During `config.cmd`, install the runner as a Windows service so it starts after a reboot. This deployment workflow installs and reconfigures another Windows service, so run the Actions runner service under a dedicated Windows account that has the required local permissions. Do not reuse your everyday administrator account.
+
+Verify the runner appears **Idle** in GitHub and has the default labels `self-hosted`, `windows`, and `x64`, which match `.github\workflows\deploy.yml`.
+
+### 6. Configure GitHub deployment controls
+
+In GitHub → repository **Settings → Secrets and variables → Actions → Variables**, add:
+
+| Variable | Value |
+|----------|-------|
+| `ENABLE_VM_DEPLOYMENT` | `true` when the VM is ready; omit it or use `false` while preparing |
+| `GLASSBOX_ROOT` | `C:\GlassBox` |
+| `GLASSBOX_SERVICE_NAME` | `GlassBoxOrchestrator` |
+| `GLASSBOX_PYTHON` | Full result from `where python`, or `python.exe` if reliably on the runner service's `PATH` |
+| `GLASSBOX_NSSM` | `C:\Tools\nssm\nssm.exe` |
+
+Create or review the GitHub `production` environment if you want approval rules before deployment.
+
+### 7. Deploy
+
+The recommended path is automatic:
+
+1. Push a feature branch and open a pull request into `main`.
+2. Wait for the `CI` workflow to pass.
+3. Merge into `main`.
+4. CI runs again on `main`; after it succeeds, `deploy.yml` checks out that exact approved commit on the Windows runner and calls `scripts\deploy_windows.cmd`.
+
+For a deliberate manual deployment from a checked-out repository on the VM:
+
+```bat
+cd C:\path\to\trade-bot
+git rev-parse HEAD
+scripts\deploy_windows.cmd --source "%CD%" --commit FULL_40_CHARACTER_SHA --run-id 1-1 --nssm "C:\Tools\nssm\nssm.exe"
+```
+
+The deployer creates an immutable folder under `C:\GlassBox\releases`, creates its own `.venv`, installs dependencies, compiles the backend, configures the `GlassBoxOrchestrator` NSSM service, waits for it to remain healthy, and records `current-release.txt`. If service activation fails, it restores the previous NSSM application, directory, and parameters.
+
+### 8. Verify and operate the service
+
+```bat
+sc query GlassBoxOrchestrator
+type C:\GlassBox\current-release.txt
+type C:\GlassBox\logs\orchestrator-service-stderr.log
+type C:\GlassBox\logs\orchestrator-service-stdout.log
+```
+
+Enter the active release and keep its virtual environment in your current Command Prompt:
+
+```bat
+call C:\GlassBox\Enter-GlassBox.cmd
+```
+
+The `call` keyword is required. Do not manually start a second orchestrator while the service is running. For an intentional interactive engine session:
+
+```bat
+net stop GlassBoxOrchestrator
+call C:\GlassBox\Enter-GlassBox.cmd
+python -m backend.services.orchestrator
+```
+
+When finished, stop the interactive process with `Ctrl+C`, then restore the service:
+
+```bat
+net start GlassBoxOrchestrator
+```
+
+### 9. Optional end-to-end signal test
+
+This command writes to Supabase, publishes to Redis, and may cause a live worker to submit an MT5 order. Use it only with a demo/test account or when you intentionally want that behavior:
+
+```bat
+call C:\GlassBox\Enter-GlassBox.cmd
+python tests\inject_test_signal.py
+```
+
+Check `signals`, `executions`, and `execution_events` in Supabase plus the service logs and Telegram. A rejection while the market is closed still proves that the message reached MT5.
+
+### 10. VM recovery checklist
+
+- Runner offline: check the GitHub Actions runner service in `services.msc` and confirm outbound GitHub access.
+- Deployment disabled: confirm `ENABLE_VM_DEPLOYMENT` is exactly `true`.
+- Key Vault authentication failure: confirm system-assigned identity is enabled and has `Key Vault Secrets User` on both vaults.
+- `python.exe` or `nssm.exe` not found: use full executable paths in the GitHub variables.
+- MT5 initialization failure: confirm terminal path, broker login/server, algorithmic trading, symbol names/suffixes, and that the service account can access the terminal installation.
+- New service repeatedly stops: inspect `C:\GlassBox\logs\orchestrator-service-stderr.log`; the deployer should roll an existing service back automatically.
+
 ### How signals flow
 
 ```
@@ -178,15 +364,15 @@ position_monitor.py (background thread)
 
 ### 1. Install dependencies
 
-```bash
+```bat
 cd frontend
 npm install
 ```
 
 ### 2. Create your environment file
 
-```bash
-cp .env.local.example .env.local
+```bat
+copy .env.local.example .env.local
 ```
 
 Edit `.env.local` and fill in:
@@ -200,26 +386,29 @@ Use the **anon (publishable) key** here — never the service role key. Row-leve
 
 ### 3. Apply the database migrations
 
-Three migration files live under `supabase/migrations/`. Run them all at once with the Supabase CLI:
+Six migration files currently live under `supabase/migrations/`. Apply them in filename order, or let the Supabase CLI push all pending migrations:
 
-```bash
-# With the Supabase CLI (recommended)
+```bat
+rem With the Supabase CLI (recommended)
 supabase db push
-
-# Or paste each SQL file directly in the Supabase SQL editor
 ```
+
+Alternatively, paste each file into the Supabase SQL editor in filename order.
 
 | Migration file | What it creates |
 |---------------|----------------|
 | `20260612000000_glassbox_frontend_schema.sql` | `candles`, `trade_events`, `replay_sessions`, `signals`; adds `user_id` to `broker_accounts`; enables Realtime |
 | `20260617000000_user_onboarding.sql` | `user_onboarding` — wizard step + completion flag, synced across devices |
 | `20260618000000_shared_sessions.sql` | `shared_sessions` — immutable audit snapshots for public share links |
+| `20260619000000_broker_accounts_force_spawn.sql` | Adds the indexed one-time `force_spawn` worker-respawn override |
+| `20260620000000_account_plans_and_markets.sql` | Adds account plans and per-account enabled-market selection |
+| `20260620000001_signals_indicator_columns.sql` | Adds structured indicator/context columns to signals |
 
 ### 4. Start the dev server
 
-```bash
+```bat
 npm run dev
-# → http://localhost:5173
+rem Open http://localhost:5173
 ```
 
 Sign up at `/signup`, then log in. The onboarding wizard runs on first login. The dashboard loads immediately — candles and events appear once the ICT strategy starts emitting data.
@@ -274,21 +463,31 @@ Hover the `?` button in the topbar to see this list at any time.
 
 ## Testing
 
+### Backend checks used by CI
+
+```bat
+python -m pip install -r requirements-ci.txt
+python -m compileall -q backend\strategies backend\services tests
+ruff check --select=E9,F63,F7,F82 backend\strategies backend\services tests
+pyright backend\strategies backend\services tests
+python -m pytest -q tests
+```
+
 ### Unit tests (Vitest)
 
-```bash
+```bat
 cd frontend
-npm test          # run once
-npm run test:watch  # watch mode
+npm test
+npm run test:watch
 ```
 
 Covers: Zustand store actions, `usePerformanceStats` calculations, Context Cascade parent-timeframe logic.
 
 ### End-to-end tests (Playwright)
 
-```bash
+```bat
 cd frontend
-npm run test:e2e  # starts dev server automatically, runs Chromium
+npm run test:e2e
 ```
 
 Covers: login page UI, signup form, unauthenticated redirect.
@@ -324,6 +523,38 @@ Covers: login page UI, signup form, unauthenticated redirect.
 | [React Router v7](https://reactrouter.com/) | Client-side routing |
 | [Vitest](https://vitest.dev/) | Unit tests |
 | [Playwright](https://playwright.dev/) | End-to-end tests |
+
+---
+
+## Commit, push, and release this work
+
+The current working branch is `vm-deploy`. Review and push all tracked deletions, modifications, and new files together so the PowerShell-to-CMD replacement and test-file move are recorded correctly:
+
+```bat
+git status
+git add -A
+git diff --cached --stat
+git diff --cached
+git commit -m "Document and finalize CMD Windows VM deployment"
+git push -u origin vm-deploy
+```
+
+Then open a pull request from `vm-deploy` into `main`. Do not bypass a failing CI check. After review:
+
+1. Merge the pull request into `main`.
+2. Confirm `CI` passes on the resulting `main` commit.
+3. Confirm **Deploy approved release to Azure VM** starts only after CI succeeds.
+4. Verify `GlassBoxOrchestrator`, `current-release.txt`, logs, Telegram startup notifications, and the dashboard before considering the release complete.
+
+If Git reports that the remote branch moved, fetch and inspect before pushing:
+
+```bat
+git fetch origin
+git status
+git log --oneline --decorate --graph --all -20
+```
+
+Do not use `git push --force` on `main` or the deployment branch unless you intentionally understand and approve rewriting its history.
 
 ---
 

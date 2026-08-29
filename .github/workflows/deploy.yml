@@ -31,13 +31,6 @@ jobs:
           persist-credentials: false
 
       - name: Deploy versioned native Windows release
-        shell: powershell
+        shell: cmd
         run: |
-          & .\scripts\deploy_windows.ps1 `
-            -SourcePath "${{ github.workspace }}" `
-            -CommitSha "${{ github.event.workflow_run.head_sha }}" `
-            -RunId "${{ github.run_id }}-${{ github.run_attempt }}" `
-            -RootPath "${{ vars.GLASSBOX_ROOT || 'C:\GlassBox' }}" `
-            -ServiceName "${{ vars.GLASSBOX_SERVICE_NAME || 'GlassBoxOrchestrator' }}" `
-            -PythonExecutable "${{ vars.GLASSBOX_PYTHON || 'python.exe' }}" `
-            -NssmExecutable "${{ vars.GLASSBOX_NSSM || 'nssm.exe' }}"
+          scripts\deploy_windows.cmd --source "${{ github.workspace }}" --commit "${{ github.event.workflow_run.head_sha }}" --run-id "${{ github.run_id }}-${{ github.run_attempt }}" --root "${{ vars.GLASSBOX_ROOT || 'C:\GlassBox' }}" --service "${{ vars.GLASSBOX_SERVICE_NAME || 'GlassBoxOrchestrator' }}" --python "${{ vars.GLASSBOX_PYTHON || 'python.exe' }}" --nssm "${{ vars.GLASSBOX_NSSM || 'nssm.exe' }}"
