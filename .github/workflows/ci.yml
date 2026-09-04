@@ -2,7 +2,6 @@ name: CI
 
 on:
   push:
-  pull_request:
 
 permissions:
   contents: read
@@ -28,16 +27,12 @@ jobs:
         run: python -m compileall -q backend/strategies backend/services tests
 
       - name: Lint strategy and service code
-        # Start with correctness rules.  Style rules can be introduced later
-        # without blocking deployment on pre-existing formatting debt.
         run: ruff check --select=E9,F63,F7,F82 backend/strategies backend/services tests
 
       - name: Static type analysis
         run: pyright backend/strategies backend/services tests
 
       - name: Run deterministic unit tests
-        # Running through the selected interpreter keeps the repository root on
-        # sys.path, so the checked-out `backend` package resolves consistently.
         run: python -m pytest -q tests
 
   frontend-quality:
