@@ -115,3 +115,14 @@ Frontend naming can be idiomatic TypeScript, but JSON contracts must exactly pre
 - Use fixtures that look like production events; never use real credentials/account numbers.
 - Before handoff run the narrowest relevant test, then `npm run lint` and `npm run build` for frontend changes when feasible. For backend logic, add/run focused pytest tests.
 - Do not “fix” type/lint failures by disabling rules globally or widening core types.
+
+## Note for the Implementing Agent — Verify Against Current Library Docs
+
+Before implementing against any of the following, pull the current, latest documentation directly rather than relying on training data — library APIs shift between versions and stale assumptions here are a common source of subtle bugs:
+
+- **Lumibot** (strategy framework — `Strategy` base class, lifecycle methods, broker/data source integration) — confirm current class structure, method signatures, and MT5/broker integration patterns against the live Lumibot docs before writing `EURUSDModel(Strategy)`.
+- **Pydantic** (v1 vs v2 syntax differs significantly — `Field`, `model_config`, `.model_dump()` vs `.dict()`, validators) — confirm which major version is installed in this project and match syntax exactly; v1/v2 APIs are not interchangeable.
+- **Supabase Python client** (`supabase-py`) — confirm current method signatures for `.table().insert().execute()` and any auth/connection setup, as client APIs have changed across versions.
+- **`zoneinfo`** (standard library, stable) — lower risk, but confirm Python version compatibility (3.9+) and IANA tzdata availability on the target OS (Windows VM may need the `tzdata` package installed separately, since Windows doesn't ship its own IANA tz database the way Linux does).
+
+If there's any mismatch between what this spec assumes and what current documentation shows, defer to the documentation and flag the discrepancy rather than silently reconciling it — the spec's logic/architecture should hold, but exact method names, import paths, or config syntax may need adjusting to match the actual installed library versions.
