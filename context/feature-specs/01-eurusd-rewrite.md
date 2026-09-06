@@ -568,7 +568,7 @@ create table if not exists audit_log (
     entry_zone              text check (entry_zone in ('premium', 'discount')),
     target_liquidity_type   text,
     sweep_level_type        text,
-    pd_array_type           text check (pd_array_type in ('fvg_only', 'ob_only', 'both')),
+    extract_fvg_and_order_block           text check (extract_fvg_and_order_block in ('fvg_only', 'ob_only', 'both')),
     entry_price             double precision,
     stop_price              double precision,
     target_price            double precision,
