@@ -8,32 +8,35 @@ permissions:
 
 jobs:
   backend-quality:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - name: Check out code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Python 3.13.5
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.10"
-          cache: pip
-          cache-dependency-path: requirements-ci.txt
+          python-version-file: .python-version
 
-      - name: Install CI tooling
-        run: python -m pip install --upgrade pip -r requirements-ci.txt
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Install locked backend dependencies
+        run: uv sync --project backend --locked --all-groups
 
       - name: Check Python syntax
-        run: python -m compileall -q backend/strategies backend/services tests
+        run: uv run --project backend python -m compileall -q backend/strategies backend/services tests
 
       - name: Lint strategy and service code
-        run: ruff check --select=E9,F63,F7,F82 backend/strategies backend/services tests
+        run: uv run --project backend ruff check --select=E9,F63,F7,F82 backend/strategies backend/services tests
 
       - name: Static type analysis
-        run: pyright backend/strategies backend/services tests
+        run: uv run --project backend pyright backend/strategies backend/services tests
 
       - name: Run deterministic unit tests
-        run: python -m pytest -q tests
+        run: uv run --project backend python -m pytest -q tests
 
   frontend-quality:
     runs-on: ubuntu-latest
