@@ -11,7 +11,7 @@ if __package__ in (None, ""):
 from backend.brokers.mt5_broker import MetaTrader5
 from backend.config.logger import setup_logger
 from backend.config.secrets import get_azure_secret
-from backend.config.supaclient import get_supabase_client
+from backend.config.supaclient import supabase
 from backend.services.telegram_notifier import notify_strategy_online, notify_strategy_offline
 from backend.strategies.xauusd_model import XAUUSDModel
 
@@ -31,7 +31,7 @@ def _get_account_strategy_config(account_login: str, server: str) -> dict:
 
     try:
         row = (
-            get_supabase_client().table("broker_accounts")
+            supabase.table("broker_accounts")
             .select("*")
             .eq("account_number", str(account_login))
             .eq("server", server)
