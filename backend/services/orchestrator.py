@@ -35,7 +35,7 @@ from typing import Dict, List, Optional, Set
 
 from backend.config.logger import setup_logger
 from backend.config.markets import markets_for_plan
-from backend.config.supaclient import get_supabase_client
+from backend.config.supaclient import supabase
 
 logger = setup_logger("orchestrator")
 
@@ -106,7 +106,7 @@ class StrategyProcess:
 def _load_runnable_accounts() -> list[dict]:
     """Fetch all broker_accounts rows in a runnable state or force_spawn=true."""
     res = (
-        get_supabase_client().table("broker_accounts")
+        supabase.table("broker_accounts")
         .select("id, account_number, status, force_spawn, plan, enabled_markets")
         .or_("status.in.(provisioned,authenticated,ready),force_spawn.eq.true")
         .execute()
@@ -132,7 +132,7 @@ def _union_enabled_markets(accounts: list[dict]) -> Set[str]:
 
 def _clear_force_spawn_flag(account_id: str) -> None:
     try:
-        get_supabase_client().table("broker_accounts").update(
+        supabase.table("broker_accounts").update(
             {"force_spawn": False}
         ).eq("id", account_id).execute()
     except Exception as e:
@@ -143,7 +143,7 @@ def _mark_account_error(account_id: str, detail: str) -> None:
     try:
         existing_detail = ""
         current = (
-            get_supabase_client().table("broker_accounts")
+            supabase.table("broker_accounts")
             .select("status_detail")
             .eq("id", account_id)
             .limit(1)
@@ -156,7 +156,7 @@ def _mark_account_error(account_id: str, detail: str) -> None:
         if existing_detail and detail not in existing_detail:
             final_detail = f"{existing_detail} | {detail}"
 
-        get_supabase_client().table("broker_accounts").update(
+        supabase.table("broker_accounts").update(
             {"status": "error", "status_detail": final_detail[:500]}
         ).eq("id", account_id).execute()
     except Exception as e:
@@ -169,7 +169,7 @@ def _check_stale_heartbeats(workers: Dict[str, WorkerProcess]) -> None:
         return
     try:
         res = (
-            get_supabase_client().table("broker_accounts")
+            supabase.table("broker_accounts")
             .select("id, last_heartbeat")
             .in_("id", account_ids)
             .execute()
