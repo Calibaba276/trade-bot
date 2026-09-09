@@ -187,7 +187,7 @@ State resets to `AWAITING_BIAS` at the start of each new trading day (00:00 NY l
 - FVG: on the MSS displacement leg, take the 3-candle sequence. Bullish FVG = gap between candle 1 high and candle 3 low (candle 2 the impulsive one). Bearish = mirror.
 - Compute `fvg_high`, `fvg_low`, `fvg_ce = (fvg_high + fvg_low) / 2`.
 - Order Block: walk backward from the MSS displacement candle to the last opposing candle. Bullish OB = last bearish candle before the bullish impulse; mark its high/low.
-- Both FVG and OB should exist for a clean setup — if only one exists, still proceed but tag `pd_array_type` so the filter's confluence count can weigh it correctly (see §4.4 — these are correlated, not independent, signals).
+- Both FVG and OB should exist for a clean setup — if only one exists, still proceed but tag `extract_fvg_and_order_block` so the filter's confluence count can weigh it correctly (see §4.4 — these are correlated, not independent, signals).
 
 **Step 7 — Await Retracement (`check_retracement`)**
 - Watch for price returning into the FVG or OB zone.
@@ -632,7 +632,7 @@ comment on table audit_log is
 | `entry_zone` | text, nullable | `"premium"` / `"discount"` |
 | `target_liquidity_type` | text, nullable | e.g. `"prev_day_high"` |
 | `sweep_level_type` | text, nullable | |
-| `pd_array_type` | text, nullable | `"fvg_only"` / `"ob_only"` / `"both"` |
+| `extract_fvg_and_order_block` | text, nullable | `"fvg_only"` / `"ob_only"` / `"both"` |
 | `entry_price` | float, nullable | |
 | `stop_price` | float, nullable | |
 | `target_price` | float, nullable | |
@@ -669,7 +669,7 @@ def log_filter_result(result: FilterResult, account_id: str, supabase_client) ->
         "entry_zone": setup.entry_zone,
         "target_liquidity_type": setup.target_liquidity_type,
         "sweep_level_type": setup.sweep_level_type,
-        "pd_array_type": setup.pd_array_type,
+        "extract_fvg_and_order_block": setup.extract_fvg_and_order_block,
         "entry_price": setup.entry_price,
         "stop_price": setup.stop_price,
         "target_price": setup.target_price,

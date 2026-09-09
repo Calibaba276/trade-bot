@@ -8,12 +8,10 @@ from typing import Any, Dict, Optional
 import MetaTrader5 as mt5
 import redis
 
-from supabase import create_client  # pyright: ignore[reportAttributeAccessIssue]
-
 from backend.brokers.mt5_broker import MetaTrader5
 from backend.config.logger import setup_logger
 from backend.config.secrets import get_azure_secret
-from backend.config.supaclient import supabase, SUPABASE_URL
+from backend.config.supaclient import get_supabase_client, supabase
 from backend.config.markets import is_market_enabled, markets_for_plan
 from backend.strategies.common import _calculate_take_profit
 from backend.services.position_monitor import (
@@ -36,24 +34,9 @@ logger = setup_logger("worker", rotate=False)
 EXIT_CONFIG_ERROR = 78
 EXIT_RUNTIME_ERROR = 1
 
-def _get_admin_supabase():
-    """
-    Service-role client that bypasses RLS.
-    Used for all worker writes (executions, execution_events, broker_accounts status).
-    Falls back to the anon client if the secret hasn't been added yet.
-    """
-    url = SUPABASE_URL
-    key = get_azure_secret("SUPABASE-SERVICE-ROLE-KEY") or get_azure_secret("SUPABASE-KEY")
-    return create_client(url, key)
-
-_admin_db = None
-
 def _db():
-    """Lazy singleton for the admin Supabase client."""
-    global _admin_db
-    if _admin_db is None:
-        _admin_db = _get_admin_supabase()
-    return _admin_db
+    """Return the centralized service-role client for worker writes."""
+    return get_supabase_client(service_role=True)
 
 def _parse_iso(ts: str) -> datetime:
     ts = ts.replace("Z", "+00:00")

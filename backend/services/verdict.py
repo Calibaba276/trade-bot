@@ -1,22 +1,17 @@
+from __future__ import annotations
+
 import uuid
 import json
 from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone, timedelta
-from typing import Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
 from backend.config.logger import setup_logger
 
+if TYPE_CHECKING:
+    from supabase import Client
+
 logger = setup_logger(__name__)
-
-def _admin_supabase():
-    # Keep cloud integrations out of the module import path.  Verdict creation
-    # is deterministic and must be unit-testable without Azure credentials.
-    from supabase import create_client  # pyright: ignore[reportAttributeAccessIssue]
-    from backend.config.secrets import get_azure_secret
-    from backend.config.supaclient import SUPABASE_URL
-
-    key = get_azure_secret("SUPABASE-SERVICE-ROLE-KEY") or get_azure_secret("SUPABASE-KEY")
-    return create_client(SUPABASE_URL, key)
 
 Scenario = Literal[
     "london_bearish",
@@ -106,15 +101,17 @@ def build_verdict(
         london_low=london_low,
     )
 
-def save_verdict(verdict: Verdict):
+def save_verdict(verdict: Verdict, supabase_client: Client | None = None):
     """Saves the verdict to Supabase Signals table and returns the data for Redis broadcasting"""
 
     from backend.services.telegram_notifier import notify_signal
+    from backend.config.supaclient import get_supabase_client
 
     payload = asdict(verdict)
+    client = supabase_client or get_supabase_client(service_role=True)
 
     try:
-        _admin_supabase().table("signals").insert(payload).execute()
+        client.table("signals").insert(payload).execute()
         logger.info(
             f"[VERDICT SAVED] signal_id={verdict.signal_id} "
             f"symbol={verdict.symbol} direction={verdict.direction} "
