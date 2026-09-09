@@ -52,7 +52,7 @@ trade-bot/
 
 | Requirement | Notes |
 |-------------|-------|
-| Python 3.10 | See `.python-version` |
+| Python 3.13.5 | Managed by `uv`; see `.python-version` |
 | Windows machine | MetaTrader 5 only runs on Windows |
 | MetaTrader 5 terminal | Installed at `C:\Program Files\ICT\terminal64.exe` by default |
 | Azure subscription | Key Vault holds all secrets — no `.env` file used |
@@ -72,9 +72,15 @@ trade-bot/
 
 ### 1. Install dependencies
 
+From the repository root, install the locked backend environment:
+
 ```bash
-pip install -r requirements.txt
+uv sync --project backend --all-groups
 ```
+
+This creates `backend/.venv` using Python 3.13.5. The generated
+`backend/requirements.txt` remains available only for pip-compatible tooling;
+`backend/pyproject.toml` and `backend/uv.lock` are authoritative.
 
 ### 2. Authenticate with Azure
 

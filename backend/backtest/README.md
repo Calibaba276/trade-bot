@@ -34,8 +34,8 @@ cp -r pyfinancialdata/data/currencies/oanda/EUR_USD/{2018,2019,2020} <repo>/_fxd
 ## Run
 
 ```bash
-pip install pandas numpy
-python -m backend.backtest.ict_backtest
+uv sync --project backend --all-groups
+uv run --project backend python -m backend.backtest.ict_backtest
 ```
 
 ## Modelling assumptions
