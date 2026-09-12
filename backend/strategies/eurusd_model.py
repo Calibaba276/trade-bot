@@ -8,10 +8,12 @@ explicit first.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import date, datetime, time, timedelta, timezone
 from enum import Enum
+from itertools import pairwise
 from math import isfinite
-from typing import Literal, Sequence
+from typing import ClassVar, Literal
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -69,16 +71,16 @@ class ClosedCandle(BaseModel):
 
         if self.high < self.low:
             raise ValueError("high must be greater than or equal to low")
-        
+
         if not self.low <= self.open <= self.high:
             raise ValueError("open must be within the candle high/low")
-        
+
         if not self.low <= self.close <= self.high:
             raise ValueError("close must be within the candle high/low")
-        
+
         if self.volume < 0:
             raise ValueError("volume must not be negative")
-        
+
         return self
 
 
@@ -93,6 +95,28 @@ class EURUSDModelState(BaseModel):
     range_low: float | None = None
     range_mid: float | None = None
     last_processed_candle_time: datetime | None = None
+    processed_bar_count: int = 0
+    target_liquidity_level: float | None = None
+    target_liquidity_type: str | None = None
+    sweep_time: datetime | None = None
+    sweep_extreme_price: float | None = None
+    sweep_level_type: str | None = None
+    sweep_candle_index: int | None = None
+    sweep_in_killzone: bool = False
+    killzone_label: str | None = None
+    mss_time: datetime | None = None
+    mss_candle_index: int | None = None
+    mss_displacement_atr_multiple: float | None = None
+    pre_mss_candle: ClosedCandle | None = None
+    mss_candle: ClosedCandle | None = None
+    mss_order_block_candle: ClosedCandle | None = None
+    displacement_swing_price: float | None = None
+    fvg_high: float | None = None
+    fvg_low: float | None = None
+    fvg_ce: float | None = None
+    ob_high: float | None = None
+    ob_low: float | None = None
+    imbalance_kind: Literal["fvg_only", "ob_only", "both"] | None = None
 
     @model_validator(mode="after")
     def validate_state(self) -> EURUSDModelState:
@@ -103,7 +127,9 @@ class EURUSDModelState(BaseModel):
 
         if self.bias_swing_count < 0:
             raise ValueError("bias_swing_count must not be negative")
-        
+        if self.processed_bar_count < 0:
+            raise ValueError("processed_bar_count must not be negative")
+
         return self
 
 
@@ -232,9 +258,9 @@ class ImbalanceSet(BaseModel):
 def _ordered(candles: Sequence[ClosedCandle]) -> list[ClosedCandle]:
     result = list(candles)
 
-    if any(left.timestamp >= right.timestamp for left, right in zip(result, result[1:])):
+    if any(left.timestamp >= right.timestamp for left, right in pairwise(result)):
         raise ValueError("candles must be strictly chronological")
-    
+
     return result
 
 
@@ -263,7 +289,7 @@ def determine_bias(
 
     if len(ordered) < 7:
         return BiasEvidence(bias=None, swing_count=0)
-    
+
     highs = [ordered[i].high for i in range(1, len(ordered) - 1) if ordered[i].high > ordered[i - 1].high and ordered[i].high > ordered[i + 1].high]
 
     lows = [ordered[i].low for i in range(1, len(ordered) - 1) if ordered[i].low < ordered[i - 1].low and ordered[i].low < ordered[i + 1].low]
@@ -290,20 +316,20 @@ def build_ranges(candles: Sequence[ClosedCandle], reference_date_utc: datetime) 
 
     if reference_date_utc < end:
         raise ValueError("midnight range is not complete")
-    
+
     midnight = [c for c in ordered if start <= c.timestamp < end]
 
     if len(midnight) < 2 or midnight[0].timestamp != start:
         raise ValueError("midnight range requires complete candle coverage")
-    
+
     interval = midnight[1].timestamp - midnight[0].timestamp
 
     if interval <= timedelta(0) or any(
         right.timestamp - left.timestamp != interval
-        for left, right in zip(midnight, midnight[1:])
+        for left, right in pairwise(midnight)
     ) or midnight[-1].timestamp + interval != end:
         raise ValueError("midnight range requires complete candle coverage")
-    
+
     ny_date = reference_date_utc.astimezone(NY_TZ).date()
     asian_start = datetime.combine(ny_date - timedelta(days=1), time(19), tzinfo=NY_TZ).astimezone(UTC)
     asian_end = datetime.combine(ny_date, time.min, tzinfo=NY_TZ).astimezone(UTC)
@@ -311,13 +337,13 @@ def build_ranges(candles: Sequence[ClosedCandle], reference_date_utc: datetime) 
     ah = max(c.high for c in asian) if asian else None
     al = min(c.low for c in asian) if asian else None
     mh, ml = max(c.high for c in midnight), min(c.low for c in midnight)
-    
+
     return RangeLevels(
-        midnight_high=mh, 
-        midnight_low=ml, 
-        midnight_mid=(mh + ml) / 2, 
-        asian_high=ah, 
-        asian_low=al, 
+        midnight_high=mh,
+        midnight_low=ml,
+        midnight_mid=(mh + ml) / 2,
+        asian_high=ah,
+        asian_low=al,
         asian_mid=None if ah is None or al is None else (ah + al) / 2)
 
 
@@ -328,10 +354,10 @@ def select_liquidity_target(*, direction: Literal["long", "short"], previous_day
 
     if level is None:
         raise ValueError("a liquidity target is required")
-    
+
     return LiquidityTarget(
-        level=level, 
-        level_type=label, 
+        level=level,
+        level_type=label,
         direction=direction)
 
 
@@ -341,11 +367,11 @@ def detect_sweep(candles: Sequence[ClosedCandle], *, level: float, level_type: s
 
         if swept:
             return Sweep(
-                timestamp=candle.timestamp, 
-                candle_index=index, 
-                level=level, 
-                level_type=level_type, 
-                direction=direction, 
+                timestamp=candle.timestamp,
+                candle_index=index,
+                level=level,
+                level_type=level_type,
+                direction=direction,
                 extreme_price=candle.low if direction == "long" else candle.high)
     return None
 
@@ -386,28 +412,376 @@ def confirm_mss(candles: Sequence[ClosedCandle], *, counter_trend_swing: float, 
 def extract_imbalances(candles: Sequence[ClosedCandle], *, mss_index: int, direction: Literal["long", "short"]) -> ImbalanceSet:
     ordered = _ordered(candles)
 
-    if mss_index < 2 or mss_index >= len(ordered):
+    if mss_index < 1 or mss_index + 1 >= len(ordered):
         raise ValueError("invalid MSS index")
 
-    current, first = ordered[mss_index], ordered[mss_index - 2]
-
-    fvg_low, fvg_high = (first.high, current.low) if direction == "long" and current.low > first.high else (current.high, first.low) if direction == "short" and current.high < first.low else (None, None)
-
+    first, current = ordered[mss_index - 1], ordered[mss_index + 1]
     opposing = next((c for c in reversed(ordered[:mss_index]) if (c.close < c.open if direction == "long" else c.close > c.open)), None)
+    return _extract_imbalance_values(
+        first=first,
+        third=current,
+        opposing=opposing,
+        direction=direction,
+    )
+
+
+def _extract_imbalance_values(
+    *,
+    first: ClosedCandle,
+    third: ClosedCandle,
+    opposing: ClosedCandle | None,
+    direction: Literal["long", "short"],
+) -> ImbalanceSet:
+    fvg_low, fvg_high = (
+        (first.high, third.low)
+        if direction == "long" and third.low > first.high
+        else (third.high, first.low)
+        if direction == "short" and third.high < first.low
+        else (None, None)
+    )
     ob_high, ob_low = (opposing.high, opposing.low) if opposing else (None, None)
 
     kind = "both" if fvg_low is not None and opposing else "fvg_only" if fvg_low is not None else "ob_only" if opposing else None
 
     if kind is None:
         raise ValueError("MSS impulse contains no FVG or opposing order block")
-    
+
     return ImbalanceSet(
-        fvg_high=fvg_high, 
-        fvg_low=fvg_low, 
+        fvg_high=fvg_high,
+        fvg_low=fvg_low,
         fvg_ce=None if fvg_low is None else (fvg_low + fvg_high) / 2, #type:ignore
-        ob_high=ob_high, 
-        ob_low=ob_low, 
+        ob_high=ob_high,
+        ob_low=ob_low,
         kind=kind)
+
+
+class EURUSDModel:
+    """Closed-candle state machine for one EURUSD ICT setup at a time."""
+
+    _STOP_OFFSET = 0.0003
+    _MAX_STOP_DISTANCE = 0.0020
+    _BAR_INTERVALS: ClassVar[dict[Literal["M5", "M3", "M1"], timedelta]] = {
+        "M5": timedelta(minutes=5),
+        "M3": timedelta(minutes=3),
+        "M1": timedelta(minutes=1),
+    }
+    _LONDON_KILLZONE = (time(2), time(5))
+    _NY_AM_KILLZONE = (time(7), time(10))
+
+    def __init__(self) -> None:
+        self.state = EURUSDModelState()
+
+    def reset(self, trading_date_ny: date | None = None) -> None:
+        """Discard an incomplete setup without retaining trade-affecting context."""
+        self.state = EURUSDModelState(trading_date_ny=trading_date_ny)
+
+    def process_closed_candles(
+        self,
+        candles: Sequence[ClosedCandle],
+        *,
+        bias_evidence: BiasEvidence | None,
+        ranges: RangeLevels | None,
+        liquidity_target: LiquidityTarget | None,
+        sweep_level: float | None,
+        sweep_level_type: str | None,
+        counter_trend_swing: float | None,
+        timeframe: Literal["M5", "M3", "M1"] = "M5",
+        m5_confirmed: bool = False,
+    ) -> Setup | None:
+        """Advance using only a chronological sequence ending in one closed candle."""
+        ordered = _ordered(candles)
+        if not ordered:
+            return None
+        candle = ordered[-1]
+        last_processed = self.state.last_processed_candle_time
+        if last_processed is not None and candle.timestamp <= last_processed:
+            return None
+        ny_date = candle.timestamp.astimezone(NY_TZ).date()
+        if (
+            last_processed is not None
+            and self.state.trading_date_ny == ny_date
+            and candle.timestamp - last_processed != self._BAR_INTERVALS[timeframe]
+        ):
+            self.reset(ny_date)
+            self.state.last_processed_candle_time = candle.timestamp
+            return None
+        if self.state.trading_date_ny != ny_date:
+            self.reset(ny_date)
+        self.state.last_processed_candle_time = candle.timestamp
+        bar_index = self.state.processed_bar_count
+        self.state.processed_bar_count += 1
+
+        if bias_evidence is not None and bias_evidence.dxy_conflict:
+            self.reset(ny_date)
+            self.state.last_processed_candle_time = candle.timestamp
+            return None
+
+        if self.state.state == SetupState.AWAITING_BIAS:
+            if bias_evidence is None or bias_evidence.bias is None:
+                return None
+            self.state.bias = bias_evidence.bias
+            self.state.bias_swing_count = bias_evidence.swing_count
+            self.state.state = SetupState.AWAITING_RANGE
+
+        if self.state.state == SetupState.AWAITING_RANGE:
+            if ranges is None:
+                return None
+            self.state.range_high = ranges.midnight_high
+            self.state.range_low = ranges.midnight_low
+            self.state.range_mid = ranges.midnight_mid
+            self.state.state = SetupState.AWAITING_SWEEP
+
+        direction: Literal["long", "short"] = (
+            "long" if self.state.bias == "bullish" else "short"
+        )
+        if self.state.state == SetupState.AWAITING_SWEEP:
+            if (
+                liquidity_target is None
+                or liquidity_target.direction != direction
+                or sweep_level is None
+                or sweep_level_type is None
+            ):
+                return None
+            sweep = detect_sweep(
+                [candle],
+                level=sweep_level,
+                level_type=sweep_level_type,
+                direction=direction,
+            )
+            if sweep is None or not self._is_entry_zone(sweep.extreme_price, direction):
+                return None
+
+            self.state.target_liquidity_level = liquidity_target.level
+            self.state.target_liquidity_type = liquidity_target.level_type
+            self.state.sweep_time = sweep.timestamp
+            self.state.sweep_extreme_price = sweep.extreme_price
+            self.state.sweep_level_type = sweep.level_type
+            self.state.sweep_candle_index = bar_index
+            self.state.displacement_swing_price = sweep.extreme_price
+            self.state.killzone_label = self._killzone_label(candle.timestamp)
+            self.state.sweep_in_killzone = self.state.killzone_label is not None
+            self.state.state = SetupState.SWEPT_AWAITING_MSS
+            return None
+
+        if self.state.state == SetupState.SWEPT_AWAITING_MSS:
+            if self._sweep_invalidated(candle, direction):
+                self._reset_to_awaiting_sweep(candle.timestamp)
+                return None
+
+            self._extend_displacement_swing(candle, direction)
+
+            if counter_trend_swing is None or len(ordered) < 16:
+                return None
+
+            mss = confirm_mss(
+                ordered,
+                counter_trend_swing=counter_trend_swing,
+                direction=direction,
+                timeframe=timeframe,
+                m5_confirmed=m5_confirmed,
+            )
+
+            if mss is None:
+                return None
+
+            self.state.mss_time = mss.timestamp
+            self.state.mss_candle_index = bar_index
+            self.state.mss_displacement_atr_multiple = mss.displacement_atr_multiple
+            self.state.pre_mss_candle = ordered[-2]
+            self.state.mss_candle = ordered[-1]
+            self.state.mss_order_block_candle = next(
+                (
+                    item
+                    for item in reversed(ordered[:-1])
+                    if (item.close < item.open if direction == "long" else item.close > item.open)
+                ),
+                None,
+            )
+            self.state.state = SetupState.MSS_CONFIRMED_AWAITING_FVG
+            return None
+
+        if self.state.state == SetupState.MSS_CONFIRMED_AWAITING_FVG:
+            if self.state.mss_time is None:
+                self.reset(ny_date)
+                self.state.last_processed_candle_time = candle.timestamp
+                return None
+            if self.state.pre_mss_candle is None or self.state.mss_candle is None:
+                return None
+            try:
+                imbalance = _extract_imbalance_values(
+                    first=self.state.pre_mss_candle,
+                    third=candle,
+                    opposing=self.state.mss_order_block_candle,
+                    direction=direction,
+                )
+            except ValueError:
+                return None
+
+            self.state.fvg_high = imbalance.fvg_high
+            self.state.fvg_low = imbalance.fvg_low
+            self.state.fvg_ce = imbalance.fvg_ce
+            self.state.ob_high = imbalance.ob_high
+            self.state.ob_low = imbalance.ob_low
+            self.state.imbalance_kind = imbalance.kind
+            self.state.state = SetupState.AWAITING_RETRACEMENT
+            return None
+
+        if self.state.state == SetupState.AWAITING_RETRACEMENT:
+            boundary = self.state.fvg_ce
+            if boundary is None:
+                boundary = self.state.ob_high if direction == "long" else self.state.ob_low
+
+            if boundary is None:
+                self.reset(ny_date)
+                self.state.last_processed_candle_time = candle.timestamp
+                return None
+
+            if not (
+                candle.low <= boundary <= candle.high
+                and self._closes_with_bias(candle, direction)
+            ):
+                return None
+
+            setup = self._build_setup(candle, direction, boundary)
+
+            if setup is None:
+                self.reset(ny_date)
+                self.state.last_processed_candle_time = candle.timestamp
+                return None
+
+            self.state.state = SetupState.SETUP_READY
+            return setup
+        return None
+
+    def _is_entry_zone(self, price: float, direction: Literal["long", "short"]) -> bool:
+        if self.state.range_mid is None:
+            return False
+        return price <= self.state.range_mid if direction == "long" else price >= self.state.range_mid
+
+    def _sweep_invalidated(
+        self, candle: ClosedCandle, direction: Literal["long", "short"]
+    ) -> bool:
+        extreme = self.state.sweep_extreme_price
+        if extreme is None:
+            return True
+        return candle.close < extreme if direction == "long" else candle.close > extreme
+
+    def _extend_displacement_swing(
+        self, candle: ClosedCandle, direction: Literal["long", "short"]
+    ) -> None:
+        anchor = self.state.displacement_swing_price
+        if anchor is None:
+            return
+        self.state.displacement_swing_price = (
+            min(anchor, candle.low) if direction == "long" else max(anchor, candle.high)
+        )
+
+    def _reset_to_awaiting_sweep(self, timestamp: datetime) -> None:
+        if (
+            self.state.trading_date_ny is None
+            or self.state.bias is None
+            or self.state.range_high is None
+            or self.state.range_low is None
+            or self.state.range_mid is None
+        ):
+            self.reset(timestamp.astimezone(NY_TZ).date())
+            self.state.last_processed_candle_time = timestamp
+            return
+        self.state = EURUSDModelState(
+            state=SetupState.AWAITING_SWEEP,
+            trading_date_ny=self.state.trading_date_ny,
+            bias=self.state.bias,
+            bias_swing_count=self.state.bias_swing_count,
+            range_high=self.state.range_high,
+            range_low=self.state.range_low,
+            range_mid=self.state.range_mid,
+            last_processed_candle_time=timestamp,
+            processed_bar_count=self.state.processed_bar_count,
+        )
+
+    @staticmethod
+    def _closes_with_bias(candle: ClosedCandle, direction: Literal["long", "short"]) -> bool:
+        return candle.close > candle.open if direction == "long" else candle.close < candle.open
+
+    @classmethod
+    def _killzone_label(cls, timestamp: datetime) -> str | None:
+        london_start, london_end = ny_killzone_window_utc(timestamp, *cls._LONDON_KILLZONE)
+        if london_start <= timestamp < london_end:
+            return "london"
+        ny_am_start, ny_am_end = ny_killzone_window_utc(timestamp, *cls._NY_AM_KILLZONE)
+        if ny_am_start <= timestamp < ny_am_end:
+            return "ny_am"
+        return None
+
+    def _build_setup(
+        self,
+        candle: ClosedCandle,
+        direction: Literal["long", "short"],
+        entry_price: float,
+    ) -> Setup | None:
+        if (
+            self.state.range_high is None
+            or self.state.range_low is None
+            or self.state.range_mid is None
+            or self.state.target_liquidity_level is None
+            or self.state.target_liquidity_type is None
+            or self.state.sweep_time is None
+            or self.state.sweep_extreme_price is None
+            or self.state.sweep_level_type is None
+            or self.state.sweep_candle_index is None
+            or self.state.mss_time is None
+            or self.state.mss_candle_index is None
+            or self.state.mss_displacement_atr_multiple is None
+            or self.state.displacement_swing_price is None
+            or self.state.imbalance_kind is None
+            or self.state.bias is None
+        ):
+            return None
+
+        stop = (
+            self.state.displacement_swing_price - self._STOP_OFFSET
+            if direction == "long"
+            else self.state.displacement_swing_price + self._STOP_OFFSET
+        )
+        if abs(entry_price - stop) > self._MAX_STOP_DISTANCE:
+            return None
+        prices_are_ordered = (
+            stop < entry_price < self.state.target_liquidity_level
+            if direction == "long"
+            else self.state.target_liquidity_level < entry_price < stop
+        )
+        if not prices_are_ordered:
+            return None
+        return Setup(
+            timestamp=candle.timestamp,
+            direction=direction,
+            bias=self.state.bias,
+            bias_swing_count=self.state.bias_swing_count,
+            range_high=self.state.range_high,
+            range_low=self.state.range_low,
+            range_mid=self.state.range_mid,
+            entry_zone="discount" if direction == "long" else "premium",
+            target_liquidity_level=self.state.target_liquidity_level,
+            target_liquidity_type=self.state.target_liquidity_type,
+            sweep_time=self.state.sweep_time,
+            sweep_extreme_price=self.state.sweep_extreme_price,
+            sweep_level_type=self.state.sweep_level_type,
+            sweep_in_killzone=self.state.sweep_in_killzone,
+            killzone_label=self.state.killzone_label,
+            mss_time=self.state.mss_time,
+            mss_candle_index=self.state.mss_candle_index,
+            sweep_candle_index=self.state.sweep_candle_index,
+            mss_displacement_atr_multiple=self.state.mss_displacement_atr_multiple,
+            fvg_high=self.state.fvg_high,
+            fvg_low=self.state.fvg_low,
+            fvg_ce=self.state.fvg_ce,
+            ob_high=self.state.ob_high,
+            ob_low=self.state.ob_low,
+            extract_fvg_and_order_block=self.state.imbalance_kind,
+            entry_price=entry_price,
+            stop_price=stop,
+            target_price=self.state.target_liquidity_level,
+        )
 
 
 def ny_killzone_window_utc(

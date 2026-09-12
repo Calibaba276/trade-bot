@@ -3,7 +3,7 @@
 ## Current state
 
 - [x] The live Supabase `audit_log` table is ready: required columns, constraints, indexes, RLS, and account-owner read policy were verified on 2026-09-09.
-- [x] Step 2 pure EURUSD ICT detection rules completed and verified on 2026-09-12; Step 3 remains pending.
+- [x] Steps 2–3 of `backend/strategies/eurusd_model.py` are completed and verified on 2026-09-12; Step 4 remains pending.
 - [ ] Do not modify or use `backend/backtest/ict_backtest.py` for this work.
 
 ## Build order
@@ -53,6 +53,14 @@ Continue in `backend/strategies/eurusd_model.py`. Add deterministic functions th
 Verify every rule with fixtures, including future-candle sentinels that prove no lookahead is possible.
 
 ### 3. Complete the `EURUSDModel` state machine
+
+Status: complete (2026-09-12).
+
+Changed files: `backend/strategies/eurusd_model.py`, `tests/test_eurusd_model.py`.
+
+Added the pure `EURUSDModel` closed-candle state machine. It rejects duplicate and stale bars before state changes; fails closed when the selected M5, M3, or M1 interval is skipped; resets at the New York trading-date boundary; preserves confirmed bias/range context after an invalidated same-session sweep; enforces bullish-discount and bearish-premium sweep context; tags London/NY-AM killzones through the DST-aware NY-to-UTC helper; retains only the candle immediately before MSS, the MSS displacement candle, and the last opposing candle needed for order-block extraction; confirms the FVG with the following closed candle; requires the same retracement candle to touch the FVG CE or OB boundary and close with bias; falls back to the order-block boundary only when no FVG exists; validates directional stop/entry/target ordering; tracks a model-local bar sequence and the MSS displacement-leg swing as the 3-pip stop anchor, rejecting stops over 20 pips; and emits only one immutable `Setup` per trigger. M5 remains the primary MSS timeframe; M3/M1 continuity is supported only as optional refinement and still requires explicit prior M5/context confirmation.
+
+Verification: `$env:PYTHONPATH='.'; python -m pytest -q tests/test_eurusd_model.py` passed (25 tests), including M3/M1 interval-continuity coverage; `python -m ruff check backend/strategies/eurusd_model.py tests/test_eurusd_model.py`, `python -m compileall -q backend/strategies/eurusd_model.py`, and `git diff --check` passed. Pyright could not run in the sandbox because Node was denied access to the user-profile parent directory.
 
 Still in `backend/strategies/eurusd_model.py`, add the complete strategy flow:
 
@@ -111,4 +119,4 @@ Do not tune these values or alter hard/soft filter status during this implementa
 
 ## Next step
 
-Implement Step 3, the complete `EURUSDModel` state machine, while retaining the existing `audit_log` and `setup_filter.py` requirements.
+Implement Step 4, `setup_filter.py`, while retaining the existing `audit_log` requirements.
