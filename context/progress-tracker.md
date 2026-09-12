@@ -115,4 +115,5 @@
 
 | Date | Change area | Verification performed | Result | Follow-up |
 | --- | --- | --- | --- | --- |
+| 2026-09-09 | EURUSD rewrite, Step 1 foundation | `uv run --project backend python -m pytest tests/test_eurusd_model.py` (8 passed); Ruff and Pyright on the new model/tests | UTC-only timestamp contract, immutable handoff model, and DST-aware NY/WAT helpers verified | Implement pure detection rules only after explicit `NEXT`. |
 |  |  |  |  |  |
