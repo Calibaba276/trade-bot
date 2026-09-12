@@ -4,6 +4,35 @@
 
 The frontend is TypeScript + React + Vite, not Next.js. Apply modern TypeScript/React conventions below; do not introduce Next-specific routing, API routes, server components, or environment conventions without an approved architectural migration.
 
+## Readable vertical formatting
+
+Favor code that can be scanned vertically. Do not compress several operations, function calls, conditionals, or meaningful values onto one line merely because the formatter permits it.
+
+- Put one meaningful operation on each line. Use intermediate variables when they clarify what a value represents or why it is being computed.
+- Expand function calls across multiple lines when they have multiple arguments, nested expressions, callbacks, comprehensions, or business-significant values. Keep one argument per line when the call is expanded.
+- Expand compound boolean conditions and chained transformations when they are difficult to read inline. Align continuation lines with the surrounding expression.
+- Prefer an explicit multi-line return for domain records and configuration objects. Group related fields and give each field its own line.
+- Keep short, obvious expressions inline only when they contain one simple operation and remain easy to scan.
+- Do not use semicolon-separated statements, dense one-line control flow, or clever compression to reduce line count.
+- Preserve blank lines between logical phases of a function: input validation, derived values, external work, and the returned result.
+
+Python example:
+
+```python
+return RangeLevels(
+    midnight_high=midnight_high,
+    midnight_low=midnight_low,
+    midnight_mid=(midnight_high + midnight_low) / 2,
+    asian_high=asian_high,
+    asian_low=asian_low,
+    asian_mid=(asian_high + asian_low) / 2
+    if asian_high is not None and asian_low is not None
+    else None,
+)
+```
+
+Avoid compressed forms such as a long constructor call, nested conditional, or several assignments on one line. Readability takes precedence over minimizing lines, while imports and formatter-required layout may remain compact when they are still clear.
+
 ## TypeScript and React
 
 - Keep `strict` TypeScript intent: no `any`, unsafe casts, or non-null assertions unless an external API boundary is validated immediately before use.

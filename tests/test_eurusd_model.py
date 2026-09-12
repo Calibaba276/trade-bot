@@ -1,4 +1,4 @@
-from datetime import datetime, time, timezone
+from datetime import datetime, timedelta, time, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -9,6 +9,12 @@ from backend.strategies.eurusd_model import (
     ny_killzone_window_utc,
     ny_midnight_range_window_utc,
     to_wat_for_display,
+    build_ranges,
+    confirm_mss,
+    detect_sweep,
+    determine_bias,
+    extract_imbalances,
+    select_liquidity_target,
 )
 
 UTC = timezone.utc
@@ -116,3 +122,74 @@ def test_wat_display_conversion() -> None:
     assert to_wat_for_display(datetime(2026, 6, 1, 4, tzinfo=UTC)).isoformat() == (
         "2026-06-01T05:00:00+01:00"
     )
+
+
+def _candles(count: int = 20) -> list[ClosedCandle]:
+    start = datetime(2026, 6, 1, tzinfo=UTC)
+    return [ClosedCandle(timestamp=start + timedelta(minutes=5 * i), open=1.1000 + i * 0.0001, high=1.1010 + i * 0.0001, low=1.0990 + i * 0.0001, close=1.1005 + i * 0.0001) for i in range(count)]
+
+
+def test_sweep_requires_close_back_inside_level() -> None:
+    candles = _candles(1)
+    candle = candles[0].model_copy(update={"low": 1.098, "close": 1.100})
+    assert detect_sweep([candle], level=1.099, level_type="range_low", direction="long") is not None
+    breakout = candle.model_copy(update={"close": 1.0985})
+    assert detect_sweep([breakout], level=1.099, level_type="range_low", direction="long") is None
+
+
+def test_mss_requires_primary_m5_and_displacement() -> None:
+    candles = _candles()
+    impulse = candles[-1].model_copy(update={"open": 1.101, "close": 1.106, "high": 1.1062, "low": 1.1009})
+    assert confirm_mss(candles[:-1] + [impulse], counter_trend_swing=1.102, direction="long") is not None
+    assert confirm_mss(candles[:-1] + [impulse], counter_trend_swing=1.102, direction="long", timeframe="M1", m5_confirmed=False) is None
+    assert confirm_mss(candles[:-1] + [impulse], counter_trend_swing=1.102, direction="long", timeframe="M1") is None
+    assert confirm_mss(candles[:-1] + [impulse], counter_trend_swing=1.102, direction="long", timeframe="M1", m5_confirmed=True) is not None
+
+
+def test_mss_evaluates_only_the_latest_closed_candle() -> None:
+    candles = _candles()
+    earlier_impulse = candles[-2].model_copy(
+        update={"open": 1.101, "close": 1.106, "high": 1.1062, "low": 1.1009}
+    )
+    latest_non_confirmation = candles[-1].model_copy(
+        update={"open": 1.101, "close": 1.1012, "high": 1.1014, "low": 1.1008}
+    )
+    assert (
+        confirm_mss(
+            candles[:-2] + [earlier_impulse, latest_non_confirmation],
+            counter_trend_swing=1.102,
+            direction="long",
+        )
+        is None
+    )
+
+
+def test_liquidity_priority_and_range_split() -> None:
+    target = select_liquidity_target(direction="long", previous_day_high=1.12, asian_high=1.115, opposite_range_side=1.11)
+    assert target.level_type == "pdh"
+    midnight_candles = [
+        candle.model_copy(update={"timestamp": candle.timestamp + timedelta(hours=4)})
+        for candle in _candles(36)
+    ]
+    ranges = build_ranges(midnight_candles, datetime(2026, 6, 1, 12, tzinfo=UTC))
+    assert ranges.midnight_high >= ranges.midnight_low
+
+
+def test_range_rejects_incomplete_midnight_data() -> None:
+    partial = [
+        candle.model_copy(update={"timestamp": candle.timestamp + timedelta(hours=4)})
+        for candle in _candles(20)
+    ]
+    with pytest.raises(ValueError, match="complete candle coverage"):
+        build_ranges(partial, datetime(2026, 6, 1, 12, tzinfo=UTC))
+
+
+def test_imbalance_extracts_fvg_and_order_block_without_future_candles() -> None:
+    candles = _candles()
+    impulse = candles[-1].model_copy(update={"open": 1.101, "close": 1.106, "high": 1.1062, "low": 1.103})
+    result = extract_imbalances(candles[:-1] + [impulse], mss_index=len(candles) - 1, direction="long")
+    assert result.kind in {"fvg_only", "both"}
+
+
+def test_bias_is_unknown_for_chop() -> None:
+    assert determine_bias(_candles(7)).bias is None

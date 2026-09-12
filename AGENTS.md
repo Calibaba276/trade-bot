@@ -56,6 +56,7 @@ If a user requests revisions, make only those revisions, verify them, and pause 
 - Make additive migrations for persistent-contract changes; do not alter migrations that may already be applied.
 - Provide loading, empty, error, access-locked, and degraded/reconnecting states for asynchronous UI.
 - Use existing Tailwind design tokens and accessibility patterns. Do not add a new component library or design system without approval.
+- Prefer vertically readable code: one meaningful operation per line, expanded multi-argument or nested function calls, explicit intermediate variables for non-trivial expressions, and blank lines between logical phases. Do not squeeze assignments, conditions, or calls onto one line just to reduce line count.
 - Run focused verification first. Frontend changes normally use relevant Vitest/Playwright checks, then `npm run lint` / `npm run build` when appropriate. Backend changes normally use focused pytest, then `ruff check backend tests` and `pyright` when appropriate. Report any check not run.
 
 ## Ambiguity and escalation

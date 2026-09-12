@@ -104,6 +104,15 @@ No `.env` file is used in production. Locally, run `az login` — `DefaultAzureC
 
 ## Key Patterns
 
+### Readable code layout
+
+Write code in a vertically readable style similar to the repository's expanded strategy examples:
+
+- Keep one meaningful operation per line and separate logical phases with blank lines.
+- Expand multi-argument calls, nested expressions, comprehensions, and domain-record construction across lines, using one argument or field per line.
+- Use intermediate variables when they make a calculation or business rule easier to understand.
+- Avoid semicolon-separated statements, dense one-line control flow, and long inline conditionals. Do not optimize for fewer lines at the expense of scanability.
+
 ### New strategy
 
 1. Add class to `backend/strategies/` inheriting `lumibot.strategies.strategy.Strategy`
