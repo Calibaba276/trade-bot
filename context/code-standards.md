@@ -76,8 +76,8 @@ Frontend naming can be idiomatic TypeScript, but JSON contracts must exactly pre
 
 ### Typing, naming, and API contracts
 
-- Target Python 3.10 syntax. Type all new function parameters and return values, including `-> None` for side-effect functions. Use built-in generic forms (`dict[str, object]`, `list[str]`) and `X | None` rather than `typing.Dict`, `typing.List`, or `Optional[X]` in new code.
-- Use `dataclass` for stable, in-process domain records such as a Verdict; use `Literal` for constrained fields such as direction, scenario, status, and timeframe when the allowed set is known.
+- Target Python 3.13.5 syntax. Type all new function parameters and return values, including `-> None` for side-effect functions. Use built-in generic forms (`dict[str, object]`, `list[str]`) and `X | None` rather than `typing.Dict`, `typing.List`, or `Optional[X]` in new code.
+- Use `Pydantic` models for stable, in-process domain records like a Verdict; use `Literal` for constrained fields like direction, scenario, status, and timeframe when the allowed set is known.
 - Name modules, functions, variables, and arguments in `snake_case`; classes and protocols in `PascalCase`; module constants in `UPPER_SNAKE_CASE`; private implementation details with a leading underscore.
 - Name boolean predicates/actions clearly: `is_market_enabled`, `has_halted`, `should_execute`, `can_trade`. Do not encode a boolean as an ambiguous noun.
 - Use explicit keyword-only arguments (`*`) for optional inputs that affect a record or execution outcome, as `emit_trade_event()` does. This prevents positional-argument mistakes in financial data.
@@ -125,4 +125,4 @@ Before implementing against any of the following, pull the current, latest docum
 - **Supabase Python client** (`supabase-py`) — confirm current method signatures for `.table().insert().execute()` and any auth/connection setup, as client APIs have changed across versions.
 - **`zoneinfo`** (standard library, stable) — lower risk, but confirm Python version compatibility (3.9+) and IANA tzdata availability on the target OS (Windows VM may need the `tzdata` package installed separately, since Windows doesn't ship its own IANA tz database the way Linux does).
 
-If there's any mismatch between what this spec assumes and what current documentation shows, defer to the documentation and flag the discrepancy rather than silently reconciling it — the spec's logic/architecture should hold, but exact method names, import paths, or config syntax may need adjusting to match the actual installed library versions.
+- If there's any mismatch between what this spec assumes and what current documentation shows, defer to the documentation and flag the discrepancy rather than silently reconciling it — the spec's logic/architecture should hold, but exact method names, import paths, or config syntax may need adjusting to match the actual installed library versions.

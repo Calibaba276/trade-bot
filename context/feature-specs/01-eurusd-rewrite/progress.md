@@ -3,7 +3,7 @@
 ## Current state
 
 - [x] The live Supabase `audit_log` table is ready: required columns, constraints, indexes, RLS, and account-owner read policy were verified on 2026-09-09.
-- [~] `backend/strategies/eurusd_model.py` is being built from scratch.
+- [~] Work on `backend/strategies/eurusd_model.py` has already begun and is continuing from the existing foundation; the strategy contract was re-aligned to the EURUSD ICT source on 2026-09-12.
 - [ ] Do not modify or use `backend/backtest/ict_backtest.py` for this work.
 
 ## Build order
@@ -35,12 +35,12 @@ Verification: `pytest tests/test_eurusd_model.py` passed (8 tests): UTC validati
 
 Continue in `backend/strategies/eurusd_model.py`. Add deterministic functions that use only supplied closed candles:
 
-1. Determine H4/Daily bias from confirmed swing structure; return no bias for conflicting or choppy structure.
-2. Build and freeze the NY midnight-to-03:00 range; calculate premium, discount, and midpoint.
-3. Select draw-on-liquidity in order: previous day, previous session, M15 equal highs/lows, then the opposite range side.
+1. Determine Daily/H4/H1 bias from confirmed swing structure, record DXY inverse-correlation and GBP/USD SMT evidence when available, and return no bias only for conflicting/choppy EURUSD structure; DXY/SMT are contextual unless a clear DXY structural conflict trips session safety.
+2. Build and freeze the NY midnight-to-03:00 range; separately mark the Asian range (19:00–00:00 NY); calculate premium, discount, and midpoint.
+3. Select draw-on-liquidity in order: PDH/PDL and Asian range, previous session, M15 equal highs/lows, then the opposite range side.
 4. Detect a sweep only when price wicks through a level and closes back inside it. A close through the level is a breakout, never a sweep.
-5. Confirm MSS only when a candle body closes through the counter-trend swing in the bias direction and meets the ATR displacement threshold.
-6. Extract FVG and the last opposing-candle order block from the MSS impulse.
+5. Confirm MSS primarily on a closed M5 candle body through the counter-trend swing in the bias direction with 1.5 ATR plus 70% body-to-wick displacement thresholds; permit M3/M1 only as optional refinement after M5/context confirmation.
+6. Extract FVG and the last opposing-candle order block from the MSS impulse; select the FVG boundary/CE entry, 2–3 pip protective offset, and a documented opposing-liquidity/ADR/scalp target.
 
 Verify every rule with fixtures, including future-candle sentinels that prove no lookahead is possible.
 
@@ -59,6 +59,7 @@ Implement these rules:
 - Emit exactly one complete immutable `Setup` for a valid trigger.
 
 Verify every state transition, resets, invalidations, duplicate-bar prevention, FVG-only/OB-only/both variants, and no-lookahead behavior.
+- Also verify contextual DXY/GBP/USD SMT evidence, clear DXY-conflict invalidation, Asian-range and PDH/PDL sweeps, 07:00–10:00 NY killzone tagging with 08:30–10:00 NY preferred timing (not an exclusive gate), optional M3/M1 refinement, separate no-trade safety gates, and the 15–20 pip maximum stop rule.
 
 ### 4. Create `setup_filter.py`
 
@@ -66,7 +67,7 @@ Only after the EURUSD model is complete, create `backend/strategies/setup_filter
 
 Add Pydantic filter models, the five configured checks, `evaluate()`, and `log_filter_result()` for the existing `audit_log` table. The filter receives only `Setup`, never raw candle data.
 
-Start with cooldown, confluence, and R:R as hard gates. Keep bias quality and AMD timing as soft scores. Verify every pass/fail case and the audit insert payload.
+Start with cooldown, confluence, and R:R as hard gates. Keep bias quality and AMD timing as soft scores. Apply the separate session-safety gates before setup-quality scoring, and verify every pass/fail case plus the audit insert payload.
 
 ### 5. Connect the completed strategy to execution
 
@@ -84,16 +85,22 @@ Verify rejection, invalid configuration, audit failure, and Verdict-save failure
 ## Fixed initial defaults
 
 - London killzone: 02:00–05:00 New York time.
-- NY AM killzone: 08:00–11:00 New York time.
+- NY AM killzone: 07:00–10:00 New York time; preferred entry sub-window 08:30–10:00 NY, not an exclusive gate.
 - Maximum trades per day: 2.
 - Minimum minutes between setups: 60.
 - Maximum setups per killzone: 1.
 - Minimum confluence categories: 2 of 3.
 - Minimum MSS displacement: 1.5 ATR.
 - Minimum R:R: 3.0.
+- Displacement: body >= 1.5 ATR14 and body-to-wick ratio >= 70%.
+- Stop offset: 2–3 pips beyond the displacement swing; reject above 20 pips.
+- Target priority: opposing Asian/London liquidity, then 80% ADR, then 20–30 pip scalp fallback.
+- DXY/SMT: contextual evidence; do not require confirmation for every EURUSD setup. Clear DXY structural conflict remains a separate safety invalidation.
+- Execution refinement: M5 primary; M3/M1 optional only after the setup is already confirmed.
+- Session safety: bank holidays, NFP Friday, FOMC decision afternoon, absent DOL, and exhausted ADR fail closed and are audit logged.
 
 Do not tune these values or alter hard/soft filter status during this implementation.
 
 ## Next step
 
-Create the from-scratch `backend/strategies/eurusd_model.py` foundation in Step 1.
+Update Step 2 implementation/tests to follow the revised EURUSD contract above, while retaining the existing `audit_log` and `setup_filter.py` requirements.

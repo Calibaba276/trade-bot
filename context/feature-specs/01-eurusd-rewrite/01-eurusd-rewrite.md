@@ -5,7 +5,7 @@
 **Does not cover:** `verdict.py`, `worker.py`, `position_monitor.py` — those stay as-is; this spec only produces the `Verdict` object and hands it off.
 
 **Key decisions this spec locks in:**
-- ICT detection logic follows the 2022 Mentorship model structure (bias → range → draw on liquidity → AMD → sweep → MSS → PD array entry), kept as pure pattern detection with no backtest-driven tuning
+- ICT detection logic follows the EURUSD execution rules in `.md/ict/ICT_EURUSD_Forex.md` plus the shared core framework: correlation-aware bias → session/range context → draw on liquidity → Judas Swing sweep → MSS/displacement → FVG/OB retracement entry, kept as pure pattern detection with no backtest-driven tuning
 - Selectivity (which valid setups are actually worth trading) is handled entirely in a separate `setup_filter.py` module, with each of its 5 checks weighted by how much real evidence supports it — cooldown and confluence as hard gates, bias quality/liquidity-target/AMD-timing as soft-scored until backtest data earns them more trust
 - All models are Pydantic, not dataclasses, for runtime validation and serialization
 - All internal timestamps are UTC; killzone windows are defined in NY-local time (DST-aware) and converted at runtime — never hardcoded as a fixed clock string in any timezone
@@ -56,8 +56,8 @@ ICT killzones are defined in **New York time**, and New York *does* observe DST 
 
 | Period | NY killzone (NY local) | NY→UTC offset | UTC window | WAT window (display only) |
 |---|---|---|---|---|
-| DST (EDT, roughly Mar–Nov) | 08:00–11:00 ET | UTC-4 | 12:00–15:00 UTC | 13:00–16:00 WAT |
-| Standard (EST, roughly Nov–Mar) | 08:00–11:00 ET | UTC-5 | 13:00–16:00 UTC | 14:00–17:00 WAT |
+| DST (EDT, roughly Mar–Nov) | 07:00–10:00 ET | UTC-4 | 11:00–14:00 UTC | 12:00–15:00 WAT |
+| Standard (EST, roughly Nov–Mar) | 07:00–10:00 ET | UTC-5 | 12:00–15:00 UTC | 13:00–16:00 WAT |
 
 **Never hand-type a UTC or WAT clock string into config for a killzone.** Store the NY-local definition only, and convert at runtime with a real timezone library — that's the only way DST transitions are handled automatically instead of via a manually maintained lookup table that will eventually be forgotten and go stale.
 
@@ -94,8 +94,8 @@ def to_wat_for_display(dt_utc: datetime) -> datetime:
 class KillzoneConfig(BaseModel):
     london_start_ny: time = time(2, 0)    # 2:00 AM ET
     london_end_ny: time = time(5, 0)      # 5:00 AM ET
-    ny_am_start_ny: time = time(8, 0)     # confirm 7-10 vs 8-11 against your own backtest data
-    ny_am_end_ny: time = time(11, 0)
+    ny_am_start_ny: time = time(7, 0)
+    ny_am_end_ny: time = time(10, 0)
 ```
 
 **A comment noting the WAT-equivalent time next to these values is fine and encouraged for readability** (e.g. `# 8:00 AM ET ≈ 1:00-2:00 PM WAT depending on DST`) — comments don't execute, so they can't introduce the bug below. What must never happen is storing the *value itself* as a fixed UTC or WAT clock time (e.g. `ny_am_start_utc = time(12, 0)`). UTC doesn't shift, but NY's offset from UTC does (EDT vs EST), so a fixed UTC number for "NY AM open" is only correct for half the year and will silently drift out of alignment with the real session once DST changes — no crash, no error, just a killzone window quietly evaluating the wrong hour of the market for months. Keep the stored value NY-local as shown above; convert to UTC fresh at runtime via `ny_killzone_window_utc()` every time it's needed.
@@ -109,6 +109,8 @@ The original ICT model marks the range from **midnight New York** to **London op
 - **Original ICT Choice (matches original ICT teaching):** midnight-to-03:00 in **NY local time**, converted to UTC for storage and WAT for display.
 
 Recommendation: **use Original ICT Choice** The ICT model's session logic is built around NY market microstructure (that's where USD liquidity concentrates), not around any particular trader's home timezone. Redefining the range to WAT midnight would be changing the strategy, not just translating a display — and that's exactly the kind of undocumented curve-fit risk you've flagged wanting to avoid. Store and compute from NY midnight (converted to UTC internally); render in WAT for your own readability only.
+
+This NY-midnight-to-03:00 range is the premium/discount context range. It is not the only liquidity pool: EURUSD detection must also mark the Asian range (19:00–00:00 NY) and previous-day high/low for the instrument-specific Judas Swing. A sweep of the Asian low/PDL supports a bullish reversal; a sweep of the Asian high/PDH supports a bearish reversal.
 
 ---
 
@@ -153,10 +155,12 @@ State resets to `AWAITING_BIAS` at the start of each new trading day (00:00 NY l
 
 ### 3.4 Step-by-step logic
 
-**Step 1 — HTF Bias (`determine_bias`)**
-- Input: Daily + H4 candles
-- Logic: identify the last 2 confirmed swing points on H4. Bias = bullish if the sequence shows higher-high + higher-low; bearish if lower-high + lower-low.
-- Reject (return `bias=None`) if the last 2 swings conflict (e.g., one BOS up, one BOS down within the lookback) — this is a range-bound/choppy read, no trade today.
+**Step 1 — HTF Bias and Correlation (`determine_bias`)**
+- Input: Daily, H4, H1 EURUSD candles plus contemporaneous DXY candles; GBP/USD candles are optional only when available for SMT confirmation.
+- Logic: identify confirmed EURUSD swing structure on Daily/H4/H1. Bias = bullish if the sequence shows higher-high + higher-low; bearish if lower-high + lower-low. A conflicting or choppy structure returns no bias.
+- DXY is a contextual inverse-correlation anchor: DXY reaching buyside liquidity supports EURUSD bearish bias; DXY reaching sellside liquidity supports EURUSD bullish bias. Record the relationship when DXY data is available, but do not require DXY confirmation for every EURUSD setup. A clear DXY market-structure conflict is a risk warning and may invalidate the candidate under the session-safety policy.
+- If GBP/USD makes a higher low while EURUSD makes a lower low during 02:00–04:00 NY or at 08:30 NY, record bullish SMT; mirror the rule for bearish SMT. SMT is recorded as evidence/confluence, not fabricated when GBP/USD data is absent.
+- Reject (return `bias=None`) if EURUSD structure is conflicting or choppy. A missing or non-confirming DXY/SMT signal does not by itself reject an otherwise valid EURUSD setup; preserve it as evidence for the setup filter and audit record.
 - Output: `bias: Literal["bullish", "bearish"] | None`, plus `bias_swing_count: int` (for the filter layer's bias-quality check later).
 
 **Step 2 — Midnight Range Mark (`mark_range`)**
@@ -167,21 +171,21 @@ State resets to `AWAITING_BIAS` at the start of each new trading day (00:00 NY l
 - **Hard filter, not optional:** only evaluate long setups when price is in discount; only evaluate short setups when price is in premium. If bias is bullish but price is currently in premium, wait — do not force the trade.
 
 **Step 3 — Draw on Liquidity (`identify_target_liquidity`)**
-- Candidate pools, in priority order: previous day high/low > previous session high/low > equal highs/equal lows on M15 > the opposite side of the midnight range.
+- Candidate pools, in priority order: previous day high/low (PDH/PDL) and Asian range high/low (19:00–00:00 NY) > previous London/session high/low > M15 equal highs/equal lows > the opposite side of the NY-midnight range.
 - Store the selected pool as `target_liquidity_level` and `target_liquidity_type` (string label, e.g. `"prev_day_high"`) — the filter layer needs to know *which kind* of pool this is to judge quality later.
 
 **Step 4 — Liquidity Sweep Detection (`detect_sweep`)**
-- A sweep = price **wicks through** `range_high` or `range_low` (or another marked liquidity level) and **does not close beyond it** on that candle.
+- A sweep = price **wicks through** a marked liquidity level (Asian range, PDH/PDL, previous session, or the range boundary) and **does not close beyond it** on that candle. For a bullish setup the sweep must be below sellside liquidity; for a bearish setup it must be above buyside liquidity.
 - A close beyond the level is a breakout, not a sweep — do not treat it as a sweep signal.
 - On sweep detected: record `sweep_time` (store as UTC internally, render WAT/NY as needed), `sweep_extreme_price`, `sweep_level_type`. Transition state to `SWEPT_AWAITING_MSS`.
-- **Killzone tag (informational only at this layer):** use `ny_killzone_window_utc()` (§2.2b) to check whether `sweep_time` (UTC) falls inside the configured London or NY AM killzone window. Store as `sweep_in_killzone: bool` and `killzone_label: str | None`. Do not reject here — this tag feeds `setup_filter.py`'s checks, not a hard gate in the detection layer.
+- **Killzone tag (informational only at this layer):** use `ny_killzone_window_utc()` (§2.2b) to check whether `sweep_time` (UTC) falls inside London (02:00–05:00 NY) or New York (07:00–10:00 NY). Store as `sweep_in_killzone: bool` and `killzone_label: str | None`. The 08:30–10:00 NY period is the preferred New York sub-window, not the only permitted entry period. Do not reject here — this tag feeds `setup_filter.py`'s checks, not a hard gate in the detection layer.
 
 **Step 5 — MSS Confirmation (`confirm_mss`)**
-- Drop to M5/M3/M1 after sweep.
+- Use M5 as the primary execution timeframe after the sweep (M15 may provide established swing context; do not use forming candles). M3/M1 may be used only as optional refinement after the higher-timeframe sweep and directional displacement are already confirmed; they must not manufacture a setup absent on M5/context.
 - MSS = a candle **closes** (full body, not wick) beyond the most recent counter-trend swing point, in the direction of `bias`.
-- Require a displacement candle: body size ≥ some multiple of the recent average true range (e.g., 1.5× ATR14 on the entry timeframe — expose this as a config constant, it's the one piece of this step that's legitimately tunable without being a curve-fit risk, since "what counts as displacement" is inherently a threshold).
+- Require a clean displacement candle: body size ≥ 1.5× ATR14 and body-to-wick ratio ≥ 70%; expose both as explicit constants, with no backtest tuning in this rewrite.
 - On confirmation: record `mss_time`, `mss_candle_index`, `mss_swing_point`. Transition to `MSS_CONFIRMED_AWAITING_FVG`.
-- **Invalidation:** if price closes back beyond `sweep_extreme_price` before MSS confirms, abandon this setup, return to `AWAITING_SWEEP` (or `AWAITING_BIAS` if the day's range is no longer relevant).
+- **Invalidation:** if price closes back beyond `sweep_extreme_price` before MSS confirms, abandon this setup. After confirmation, invalidate if the swept extreme is breached before the FVG is filled, or if DXY breaks structure against the trade. Return to `AWAITING_SWEEP`/`AWAITING_BIAS` as appropriate.
 
 **Step 6 — Extract FVG and Order Block (`extract_fvg_and_order_block`)**
 - FVG: on the MSS displacement leg, take the 3-candle sequence. Bullish FVG = gap between candle 1 high and candle 3 low (candle 2 the impulsive one). Bearish = mirror.
@@ -191,7 +195,9 @@ State resets to `AWAITING_BIAS` at the start of each new trading day (00:00 NY l
 
 **Step 7 — Await Retracement (`check_retracement`)**
 - Watch for price returning into the FVG or OB zone.
-- Entry trigger (pick ONE, keep deterministic): price touches `fvg_ce` (or OB zone boundary) and the candle closes back in the direction of `bias`.
+- Entry trigger (pick ONE, keep deterministic): price retraces to the FVG boundary or 50% CE (CE is preferred for a larger gap; use the boundary for a small gap) and a closed M5 candle—or an approved M3/M1 refinement candle after M5/context confirmation—confirms in the direction of `bias`. Use the OB boundary only when no FVG exists.
+- Stop: place 2–3 EURUSD pips beyond the swing extreme that initiated displacement; reject the candidate if the stop distance exceeds 15–20 pips (use the configured hard maximum, never silently widen it).
+- Target: use the selected opposing Asian/London liquidity or PDH/PDL first; if unavailable, use the 80% ADR projection or the documented 20–30 pip scalp target. Store the exact selected target and its source in `Setup`.
 - On trigger: build `Setup` object, transition to `SETUP_READY`, hand off to `setup_filter.py`.
 
 ### 3.5 `Setup` — Pydantic model (contract between the two modules)
@@ -226,6 +232,8 @@ class Setup(BaseModel):
     sweep_level_type: str
     sweep_in_killzone: bool
     killzone_label: Optional[str] = None
+    dxy_bias_alignment: Optional[Literal["bullish", "bearish"]] = None
+    smt_signal: Optional[Literal["bullish", "bearish"]] = None
 
     # From Step 5
     mss_time: datetime
@@ -245,6 +253,8 @@ class Setup(BaseModel):
     entry_price: float
     stop_price: float
     target_price: float
+    stop_distance_pips: float = Field(gt=0, le=20)
+    target_type: Literal["opposing_asian_liquidity", "opposing_london_liquidity", "previous_day_high", "previous_day_low", "adr_80", "scalp_20_30_pips"]
 
     model_config = {"frozen": True}  # immutable once built — matches the "single handoff point" contract
 ```
@@ -256,6 +266,10 @@ This model is the single handoff point. `setup_filter.py` only ever receives thi
 ---
 
 ## 4. `setup_filter.py` — Selectivity Layer
+
+### 4.0 Separate hard session-safety gates
+
+The five setup-quality checks below remain the selectivity layer. Separately, the evaluator must fail closed when a configured session-safety condition applies: US/UK bank holiday, NFP Friday, FOMC decision afternoon, no reachable draw on liquidity, exhausted ADR before the preferred New York sub-window, or a clear DXY structural conflict. These are safety/session gates, not confluence votes, and every blocked candidate must still be written to `audit_log` with the rejection reason.
 
 ### 4.1 Design contract — Pydantic throughout
 
@@ -509,8 +523,8 @@ class FilterConfig(BaseModel):
     # Killzone windows — NY LOCAL time, never WAT (see §2.2b)
     london_start_ny: time = time(2, 0)
     london_end_ny: time = time(5, 0)
-    ny_am_start_ny: time = time(8, 0)
-    ny_am_end_ny: time = time(11, 0)
+    ny_am_start_ny: time = time(7, 0)
+    ny_am_end_ny: time = time(10, 0)
 
     def is_hard_gate(self, check_name: str) -> bool:
         return check_name in self.hard_gate_checks
@@ -719,14 +733,7 @@ Knobs introduced across both files:
 
 ## 7. What this spec deliberately does NOT decide for you
 
-- **Exact NY killzone boundary (7-10 ET vs 8-11 ET) — a starting default is set, not a final answer.**
-  `KillzoneConfig` defaults to **8:00–11:00 ET** (§2.2b, §4.9):
-
-  - It's the window more consistently cited across ICT community material as the NY AM killzone
-  - It cleanly avoids overlapping the London killzone (2:00–5:00 ET), which keeps `killzone_label` attribution unambiguous
-  - Starting narrower is lower-risk than starting wide — missing a few borderline setups outside the window is safer than counting noise as signal
-
-  Treat this as a placeholder default, not a settled decision — once backtesting begins, this is a cheap, isolated A/B test: run the same period through both 7-10 and 8-11 and compare setups found and profit factor, since it's a single parameter that only differs by the first/last hour.
+- **NY killzone boundary:** the EURUSD source strategy uses **07:00–10:00 ET**, with **08:30–10:00 ET as the preferred sub-window**, not an exclusive entry rule. M5 remains the primary execution timeframe; M3/M1 are optional refinements only after the setup is already confirmed. Any later timing or timeframe change requires a reviewed strategy decision and backtest evidence.
 
 - **Whether `min_confluence_categories` should be 2 or 3 — shipping default: 2.**
 
