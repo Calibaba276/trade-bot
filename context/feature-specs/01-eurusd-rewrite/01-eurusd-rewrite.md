@@ -6,7 +6,7 @@
 
 **Key decisions this spec locks in:**
 - ICT detection logic follows the 2022 Mentorship model structure (bias → range → draw on liquidity → AMD → sweep → MSS → PD array entry), kept as pure pattern detection with no backtest-driven tuning
-- Selectivity (which valid setups are actually worth trading) is handled entirely in a separate `setup_filter.py` module, with each of its 5 checks weighted by how much real evidence supports it — cooldown and confluence as hard gates, bias quality/liquidity-target/AMD-timing as soft-scored until backtest data earns them more trust
+- Selectivity (which valid setups are actually worth trading) is handled entirely in a separate `setup_filter.py` module, with each of its 5 checks weighted by how much real evidence supports it — structural selectivity and confluence are hard gates, while bias quality/liquidity-target/AMD-timing remain soft-scored until backtest data earns them more trust
 - All models are Pydantic, not dataclasses, for runtime validation and serialization
 - All internal timestamps are UTC; killzone windows are defined in NY-local time (DST-aware) and converted at runtime — never hardcoded as a fixed clock string in any timezone
 - Every filter evaluation, pass or reject, is written to a Supabase `audit_log` table — this is the evidentiary backbone of the "Verify, Don't Trust" positioning
@@ -287,11 +287,12 @@ def check_name(setup: Setup, context: "FilterContext", config: "FilterConfig") -
 
 ```python
 class FilterContext(BaseModel):
-    """Session-level state individual checks need but that isn't part of the immutable Setup."""
-    trades_taken_today: int = 0
-    last_setup_time: Optional[datetime] = None
-    last_setup_killzone: Optional[str] = None
-    setups_this_killzone: int = 0
+    """Strategy/session state needed by checks but absent from Setup."""
+    strategy_state_is_resolved: bool = False
+    accepted_setups_today: Optional[int] = None
+    accepted_setup_killzones: Optional[tuple[str, ...]] = None
+    accepted_narrative_keys: Optional[frozenset[str]] = None
+    evaluated_setup_keys: Optional[frozenset[str]] = None
 ```
 
 ### 4.2 Evidence-based weighting — this is the important part
@@ -300,7 +301,7 @@ The five candidate checks do **not** have equal evidentiary support. Build the p
 
 | Check | Evidence level | Default mode |
 |---|---|---|
-| Cooldown / selectivity | Strongest support found | **Hard gate** |
+| Structural selectivity | Strongest support found | **Hard gate** |
 | Confluence count (honest, non-correlated) | Moderate support, real overfitting risk if miscounted | **Hard gate**, conservative threshold |
 | Bias quality | No direct evidence either way | **Soft score only** — log it, don't block on it yet |
 | Liquidity target sanity | No direct evidence either way | **Soft score only** |
@@ -308,33 +309,25 @@ The five candidate checks do **not** have equal evidentiary support. Build the p
 
 This table itself lives in `FilterConfig.hard_gate_checks` (a set of check names) — so you can promote a soft check to a hard gate later purely by changing config, once your own backtest data earns it that trust, not before.
 
-### 4.3 Check 1 — Cooldown / Selectivity (hard gate)
+### 4.3 Check 1 — Structural Selectivity (hard gate)
 
-**Rule:** limit trade frequency to force the same discipline that separated the winning backtest (92% refusal rate) from the losing one (fired on every valid pattern).
+**Rule:** limit strategy-level accepted setups without using one account's trade
+history and without imposing a speculative fixed-time cooldown. Rejected
+candidates do not consume quota. Exact candidates and accepted sweep/MSS
+narratives are deduplicated structurally.
 
 ```python
-def check_cooldown(setup: Setup, context: FilterContext, config: "FilterConfig") -> FilterCheckResult:
-    if context.trades_taken_today >= config.max_trades_per_day:
-        return FilterCheckResult(check_name="check_cooldown", passed=False, score=0.0, weight=1.0,
-            reason=f"Daily trade cap reached ({config.max_trades_per_day})")
-
-    if context.last_setup_time is not None:
-        minutes_since_last = (setup.timestamp - context.last_setup_time).total_seconds() / 60
-        if minutes_since_last < config.min_minutes_between_setups:
-            return FilterCheckResult(check_name="check_cooldown", passed=False, score=0.0, weight=1.0,
-                reason=f"Cooldown active: {minutes_since_last:.0f}m since last setup, need {config.min_minutes_between_setups}m")
-
-    if context.last_setup_killzone == setup.killzone_label and context.setups_this_killzone >= config.max_setups_per_killzone:
-        return FilterCheckResult(check_name="check_cooldown", passed=False, score=0.0, weight=1.0,
-            reason=f"Killzone setup cap reached for {setup.killzone_label}")
-
-    return FilterCheckResult(check_name="check_cooldown", passed=True, score=1.0, weight=1.0, reason="Cooldown clear")
+def check_selectivity(setup: Setup, context: FilterContext, config: "FilterConfig") -> FilterCheckResult:
+    # Fail closed unless all strategy-level count and identity state is resolved.
+    # Reject exact re-evaluations and narratives that already have an accepted
+    # setup. Then apply daily and killzone accepted-setup caps.
+    ...
 ```
 
 **Config defaults (starting point — tune via backtest, not guess):**
-- `max_trades_per_day: int = 2`
-- `min_minutes_between_setups: int = 60`
-- `max_setups_per_killzone: int = 1`
+- `max_accepted_setups_per_day: int = 2`
+- no fixed time cooldown
+- `max_accepted_setups_per_killzone: int = 1`
 
 ### 4.4 Check 2 — Confluence Count (hard gate, counted honestly)
 
@@ -441,7 +434,7 @@ def check_amd_timing(setup: Setup, context: FilterContext, config: "FilterConfig
 
 ```python
 FILTER_CHAIN = [
-    check_cooldown,
+    check_selectivity,
     check_confluence,
     check_bias_quality,
     check_liquidity_target,
@@ -479,12 +472,11 @@ def evaluate(setup: Setup, context: FilterContext, config: "FilterConfig") -> Fi
 ```python
 class FilterConfig(BaseModel):
     # Per-check hard-gate/soft-score mode
-    hard_gate_checks: set[str] = {"check_cooldown", "check_confluence", "check_liquidity_target"}
+    hard_gate_checks: set[str] = {"check_selectivity", "check_confluence", "check_liquidity_target"}
 
-    # Cooldown
-    max_trades_per_day: int = 2
-    min_minutes_between_setups: int = 60
-    max_setups_per_killzone: int = 1
+    # Strategy-level selectivity; per-account limits belong to workers
+    max_accepted_setups_per_day: int = 2
+    max_accepted_setups_per_killzone: int = 1
 
     # Confluence
     min_confluence_categories: int = 2
@@ -516,13 +508,15 @@ class FilterConfig(BaseModel):
         return check_name in self.hard_gate_checks
 ```
 
-Loaded per-account/per-instrument from Supabase, same pattern as `max_daily_drawdown_pct` — not hardcoded, so you can A/B different filter configs across your account fleet without a redeploy. Pydantic gives you `FilterConfig(**row_from_supabase)` with validation for free — a malformed config value from the DB raises immediately instead of silently misbehaving at 3am.
+Loaded per strategy/instrument rather than from one account's execution state.
+Pydantic gives you `FilterConfig(**row_from_supabase)` with validation so a
+malformed strategy configuration raises instead of silently misbehaving.
 
 ---
 
 ## 5. Audit Logging — Schema First, Then Implementation
 
-**Recommendation: Supabase table, not a local file.** You already use Supabase for MT5 credentials and account data, so this fits your existing infrastructure rather than adding a new moving part. It's also queryable — "show me every setup rejected by `check_cooldown` last Tuesday across all 50 accounts" is a SQL query, not a grep through log files scattered across your fleet.
+**Recommendation: Supabase table, not a local file.** You already use Supabase for MT5 credentials and account data, so this fits your existing infrastructure rather than adding a new moving part. It's also queryable — "show me every setup rejected by `check_selectivity` last Tuesday across all 50 accounts" is a SQL query, not a grep through log files scattered across your fleet.
 
 **Build order:** the table has to exist before either module can write to it, so this is step one — hand the migration below to whichever agent/process provisions your Supabase schema, get it applied, then implement `eurusd_model.py` and `setup_filter.py` against a confirmed-live table rather than a planned one.
 
@@ -689,7 +683,7 @@ def log_filter_result(result: FilterResult, account_id: str, supabase_client) ->
 
 ## 6. Parameter Budget — Plain Explanation
 
-**What "parameter" means here:** any number in `FilterConfig` you could turn up or down — `max_trades_per_day`, `min_reward_risk_ratio`, and so on. Every one of those is a knob.
+**What "parameter" means here:** any number in `FilterConfig` you could turn up or down — `max_accepted_setups_per_day`, `min_reward_risk_ratio`, and so on. Every one of those is a knob.
 
 **Why it matters:** the more knobs you have, the easier it becomes to accidentally find a combination that happens to look great on *your specific backtest window* purely by chance — not because it reflects anything real about the market. That's overfitting. It'll show a beautiful equity curve in testing and then lose money live, because you tuned to noise in the past, not a repeatable pattern.
 
@@ -700,18 +694,17 @@ def log_filter_result(result: FilterResult, account_id: str, supabase_client) ->
 Knobs introduced across both files:
 1. `min_displacement_atr`
 2. `min_confluence_categories`
-3. `max_trades_per_day`
-4. `min_minutes_between_setups`
-5. `max_setups_per_killzone`
-6. `min_reward_risk_ratio`
-7. `max_candles_sweep_to_mss`
-8. `ideal_bias_swing_count`
+3. `max_accepted_setups_per_day`
+4. `max_accepted_setups_per_killzone`
+5. `min_reward_risk_ratio`
+6. `max_candles_sweep_to_mss`
+7. `ideal_bias_swing_count`
 
-**8 knobs total.**
+**7 knobs total.**
 
-8 knobs × 10-20 trades per knob = **you need 80 to 160 resolved trades in your backtest** before treating any tuning of these numbers as meaningful. If you run a backtest with 40 trades and find "wow, `max_trades_per_day = 3` performs way better than `2`" — that's not trustworthy yet. You don't have enough data to tell the difference between a real finding and coincidence. Keep collecting trades (or backtest a longer period) before locking in a value.
+7 knobs × 10-20 trades per knob = **you need 70 to 140 resolved trades in your backtest** before treating any tuning of these numbers as meaningful. If you run a backtest with 40 trades and find "wow, `max_accepted_setups_per_day = 3` performs way better than `2`" — that's not trustworthy yet. You don't have enough data to tell the difference between a real finding and coincidence. Keep collecting trades (or backtest a longer period) before locking in a value.
 
-**Practical takeaway:** don't tune all 8 knobs at once against a small backtest. Either (a) gather enough trades first, or (b) fix most knobs at sensible defaults and only tune 1-2 at a time against what data you have, moving to the rest once you have more trades banked.
+**Practical takeaway:** don't tune all 7 knobs at once against a small backtest. Either (a) gather enough trades first, or (b) fix most knobs at sensible defaults and only tune 1-2 at a time against what data you have, moving to the rest once you have more trades banked.
 
 **Sequencing for this build specifically:** the defaults given in §4.3–§4.7 are starting points, not final values — ship the feature with those defaults first. Once `eurusd_model.py` and `setup_filter.py` are implemented and wired to the audit log (§5), run the backtest to accumulate resolved trades, then use that data to find the right values for these 8 parameters. Don't hand-tune them before the backtest exists — there's nothing to tune against yet, and guessing at "better" values now just means re-deciding them later anyway once real numbers are available.
 
@@ -749,3 +742,70 @@ Knobs introduced across both files:
   - If it doesn't correlate with anything, leave it soft indefinitely — that's a legitimate outcome, not a failure to decide
 
 - **Which of the two midnight-range conventions (§2.2c) to use if you later decide Option A doesn't suit your fleet** — flagged here as a documented, deliberate choice rather than an oversight
+
+---
+
+## 8. Future shared infrastructure — planned, not part of this implementation
+
+After the EURUSD rewrite, including its execution integration, is verified,
+build the following two steps before adding another strategy. They are not part
+of the current EURUSD rewrite or Step 5, and no calendar fetching, provider
+integration, or filter refactor is authorized by this spec yet.
+
+### 8.1 First: `TradingConditions`
+
+`TradingConditions` will be a shared backend service responsible for resolving
+the safety facts that determine whether an instrument must stand down for a
+trading day or event window.
+
+### 8.2 Final: modularize the filter framework
+
+The final future step makes `setup_filter.py` the shared framework. It retains
+generic mechanics—fail-closed context validation, quotas, deduplication,
+hard/soft gate orchestration, and audit logging—while moving EURUSD-specific
+ICT checks and configuration into an instrument module. The target structure
+is:
+
+```text
+backend/services/trading_conditions.py     # shared calendar/cache/safety facts
+backend/strategies/setup_filter.py         # shared filtering and audit framework
+backend/strategies/eurusd_filter_rules.py  # EURUSD ICT checks and configuration
+```
+
+This final extraction is necessary because shared mechanics must behave the
+same for every strategy, while market-specific logic must remain independent.
+It lets a future strategy add only its own rule/configuration module when its
+requirements differ materially, reusing `TradingConditions` and the filter
+framework rather than recreating calendar, deduplication, quota, or audit
+logic.
+
+When implemented, it must construct the already fail-closed
+`SessionSafetyContext` consumed by `setup_filter.py`. Lumibot's
+`on_trading_iteration()` remains the minute-level scheduler; it must read a
+locally cached result and must not fetch external calendar data on every
+iteration.
+
+Initial no-trade conditions to resolve:
+
+- US and EUR/Eurozone banking holidays according to an explicit EURUSD market
+  liquidity policy; UK holidays are configurable and are not an automatic
+  block by default.
+- NFP / the US Employment Situation release day.
+- The FOMC decision event window, with the exact UTC/NY-local window captured
+  in configuration rather than inferred from a meeting date alone.
+- Missing or stale calendar data: unresolved data must set
+  `SessionSafetyContext.is_resolved = False`, causing the filter to reject the
+  candidate and audit the reason.
+
+Authoritative calendar inputs should be normalized and cached from the
+official BLS Employment Situation schedule, the Federal Reserve FOMC calendar,
+and the chosen holiday-calendar source. DOL, ADR validity, and DXY conflict
+remain closed-candle market-data calculations; they are inputs to the same
+context, not economic-calendar activities.
+
+`TradingConditions` must define the holiday policy, refresh/staleness limits,
+event-block windows, source failure behavior, and deterministic fixtures for
+backtests. The final filter extraction must preserve EURUSD's verified behavior
+and audit payloads and demonstrate that a fake second-instrument rule set can
+use the framework without copying it. Until then, an unresolved context
+correctly prevents a trade.

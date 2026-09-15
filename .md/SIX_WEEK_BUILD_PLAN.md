@@ -1,5 +1,5 @@
 # Glass Box — 6-Week Build Plan: Complete Task Breakdown
-### Updated 2026-06-21 — includes 30-day free trial decision
+### Updated 2026-09-15
 
 **Document purpose:** Every task across the 6-week GTM sprint, written in full detail, grouped by discipline. Every item here was discussed and decided across planning sessions. Nothing is speculative.
 
@@ -73,8 +73,34 @@ If the current backtest is using future candle data to confirm conditions, every
 
 ---
 
+### POST-EURUSD PREREQUISITE · Shared TradingConditions
+**Owner:** ENG · **Estimate:** M · **File:** `backend/services/trading_conditions.py` (new)
+
+After EURUSD execution integration is verified, add only the missing
+economic-calendar coverage that Lumibot does not provide: official
+NFP/Employment Situation release days, configured FOMC decision windows, and
+explicit US/EUR holiday-liquidity policy. Lumibot remains responsible for the
+`24/5` schedule, weekends, market-open lifecycle, iteration timing, and
+strategy time. Calendar data is normalized and cached outside the per-minute
+loop; stale, malformed, incomplete, or unavailable data fails closed.
+
+### FINAL PRE-STRATEGY PREREQUISITE · Modular Setup Filter
+**Owner:** ENG · **Estimate:** M · **Files:** `backend/strategies/setup_filter.py`, `backend/strategies/eurusd_filter_rules.py` (new)
+
+Preserve shared safety-context validation, strategy-level quotas,
+deduplication, hard/soft gate orchestration, and account-owned audit projection
+in `setup_filter.py`. Move EURUSD-only ICT rules/configuration into
+`eurusd_filter_rules.py`. Verify identical EURUSD outcomes and prove a fake
+second-instrument rule set can plug in without copying the framework. Complete
+this final prerequisite before adding another strategy.
+
+---
+
 ### WEEK 2 · XAUUSD Strategy Runner
 **Owner:** ENG · **Estimate:** M · **Files:** `backend/runners/ict_xauusd.py` (new), `backend/strategies/ict_model.py`
+
+**Prerequisite (sequencing):** Complete the shared `TradingConditions` and
+modular setup-filter prerequisites after the EURUSD rewrite.
 
 **What:**
 Run a second instance of the ICT strategy engine for XAUUSD (Gold). The strategy logic is identical to EURUSD — same 8-phase model, same London (09:00–11:00 WAT) and NY (13:00–17:00 WAT) session windows. XAUUSD is available on both Starter and Pro tiers.
@@ -98,7 +124,9 @@ Gold is the most-traded instrument by Nigerian retail traders. The Telegram sign
 ### WEEK 3 · NAS100, US30, SPX500 Runners (Pro-Only)
 **Owner:** ENG · **Estimate:** L · **Files:** `backend/runners/nas100.py`, `backend/runners/us30.py`, `backend/runners/spx500.py` (new), `backend/services/orchestrator.py`
 
-**Prerequisite (sequencing):** Finish the EURUSD model modification first — it is the reference implementation these runners copy. Indices are the next strategy work *after* EURUSD is done.
+**Prerequisite (sequencing):** Finish EURUSD, shared `TradingConditions`, and
+the final modular setup-filter extraction first. Indices reuse that
+infrastructure rather than copying EURUSD's filter implementation.
 
 **What:**
 Three new strategy runners for US Indices. These are Pro-only instruments (and accessible to trial users since trial = Pro). Session window is NYSE open: 15:30–17:30 WAT.
@@ -1593,6 +1621,8 @@ Manual check on all pre-existing features:
 
 ### Week 1 — Foundation + Trial CTA
 - [ ] EURUSD strategy rewrite (no lookahead bias)
+- [ ] Shared `TradingConditions` after verified EURUSD execution integration
+- [ ] Final modular setup-filter extraction before another strategy
 - [ ] `user_profiles` table + trial fields + trigger + RLS
 - [ ] `plan_tier` denormalized into `broker_accounts` (with trial_expired state)
 - [ ] Three missing DB indexes
@@ -1684,5 +1714,5 @@ Manual check on all pre-existing features:
 
 ---
 
-*Glass Box 6-Week Build Plan · Updated 2026-06-21 · 30-day Pro trial + Pro trade-selectivity (Gold bias mode) decisions incorporated throughout.*
+*Glass Box 6-Week Build Plan · Updated 2026-09-15 · 30-day Pro trial, Pro trade-selectivity, and post-EURUSD shared safety/filter prerequisites incorporated throughout.*
 *Planning only — implementation begins on your signal.*

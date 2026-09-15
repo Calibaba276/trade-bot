@@ -18,7 +18,7 @@
 | Owner | Coding agent + project owner for external/manual dependencies |
 | Started | 2026-09-05 |
 | Status | `[~]` |
-| Source | `.md/SIX_WEEK_BUILD_PLAN.md` (updated 2026-06-21); statuses below preserve only verified plan evidence. |
+| Source | `.md/SIX_WEEK_BUILD_PLAN.md` (updated 2026-09-15); statuses below preserve only verified plan evidence. |
 
 ## Coding roadmap — ordered by the six-week plan
 
@@ -27,6 +27,10 @@
 ### Week 1 — Foundation, trial CTA, and safety
 
 - [ ] EURUSD strategy rewrite: eliminate lookahead bias; prove all decisions use closed candles.
+- [ ] After EURUSD execution integration, build shared `TradingConditions` for
+  economic-calendar restrictions Lumibot does not provide.
+- [ ] As the final prerequisite before another strategy, modularize the shared
+  setup-filter framework and isolate EURUSD-specific filter rules.
 - [ ] Add `user_profiles` with trial fields, signup trigger, RLS, and effective-tier behavior.
 - [ ] Denormalize effective plan/trial state into `broker_accounts`, including `trial_expired` behavior.
 - [ ] Add the three missing database indexes from the plan.
@@ -103,6 +107,7 @@
 
 | Date | Decision | Rationale | Consequences / follow-up |
 | --- | --- | --- | --- |
+| 2026-09-12 | After verified EURUSD execution integration, build shared `TradingConditions`; as the final planned step before another strategy, extract a modular filter framework. | Lumibot can schedule evaluations but is not the authoritative source for the BLS NFP/Employment Situation schedule, FOMC events, or EURUSD holiday policy; calendar safety, quotas, deduplication, and auditing should not be reimplemented per strategy. | `TradingConditions` will cache normalized official calendar inputs and produce the fail-closed `SessionSafetyContext`. The final extraction retains shared mechanics in `setup_filter.py`, moves EURUSD-specific rules to an instrument module without changing EURUSD behavior, and lets future strategies add only their own rules/configuration. |
 |  |  |  |  |
 
 ## Open decisions and blockers
@@ -116,4 +121,5 @@
 | Date | Change area | Verification performed | Result | Follow-up |
 | --- | --- | --- | --- | --- |
 | 2026-09-09 | EURUSD rewrite, Step 1 foundation | `uv run --project backend python -m pytest tests/test_eurusd_model.py` (8 passed); Ruff and Pyright on the new model/tests | UTC-only timestamp contract, immutable handoff model, and DST-aware NY/WAT helpers verified | Implement pure detection rules only after explicit `NEXT`. |
+| 2026-09-15 | EURUSD rewrite, Step 4 selectivity filter | Focused EURUSD pytest suite (53 passed); focused Ruff, Pyright, compileall, formatting, and diff checks passed | Unresolved safety/strategy state fails closed; selectivity is strategy-scoped rather than account-scoped; accepted-only quotas, structural deduplication, release-day NFP semantics, promotable score gates, finite setup evidence, hard confluence/R:R gates, and account-owned fail-closed audit projections are covered | Connect the strategy/filter to execution only after explicit `NEXT`. |
 |  |  |  |  |  |

@@ -180,6 +180,29 @@ class Setup(BaseModel):
     def timestamps_must_be_utc(cls, value: datetime) -> datetime:
         return _require_utc(value, field_name="Setup timestamp")
 
+    @field_validator(
+        "range_high",
+        "range_low",
+        "range_mid",
+        "target_liquidity_level",
+        "sweep_extreme_price",
+        "mss_displacement_atr_multiple",
+        "fvg_high",
+        "fvg_low",
+        "fvg_ce",
+        "ob_high",
+        "ob_low",
+        "entry_price",
+        "stop_price",
+        "target_price",
+    )
+    @classmethod
+    def numeric_values_must_be_finite(cls, value: float | None) -> float | None:
+        if value is None:
+            return None
+
+        return _require_finite(value, field_name="Setup numeric value")
+
 
 class BiasEvidence(BaseModel):
     model_config = ConfigDict(frozen=True)

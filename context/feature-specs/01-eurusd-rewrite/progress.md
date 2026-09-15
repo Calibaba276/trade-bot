@@ -3,7 +3,8 @@
 ## Current state
 
 - [x] The live Supabase `audit_log` table is ready: required columns, constraints, indexes, RLS, and account-owner read policy were verified on 2026-09-09.
-- [x] Steps 2–3 of `backend/strategies/eurusd_model.py` are completed and verified on 2026-09-12; Step 4 remains pending.
+- [x] Steps 2–3 were verified on 2026-09-12; Step 4 and its review corrections
+  were verified on 2026-09-15. Step 5 integration remains pending.
 - [ ] Do not modify or use `backend/backtest/ict_backtest.py` for this work.
 
 ## Build order
@@ -54,7 +55,7 @@ Verify every rule with fixtures, including future-candle sentinels that prove no
 
 ### 3. Complete the `EURUSDModel` state machine
 
-Status: complete (2026-09-12).
+Status: complete after review corrections (2026-09-15).
 
 Changed files: `backend/strategies/eurusd_model.py`, `tests/test_eurusd_model.py`.
 
@@ -79,11 +80,48 @@ Verify every state transition, resets, invalidations, duplicate-bar prevention, 
 
 ### 4. Create `setup_filter.py`
 
+Status: complete (2026-09-12).
+
+Changed files: `backend/strategies/setup_filter.py`,
+`backend/strategies/eurusd_model.py`, `tests/test_setup_filter.py`, and
+`tests/test_eurusd_model.py`.
+
+Added immutable Pydantic v2 filter configuration, context, check, and result
+contracts; fail-closed bank-holiday, NFP, FOMC, absent-DOL, exhausted-ADR,
+DXY-conflict, and chronology safety gates; accepted-setup selectivity; honest
+three-category confluence; directional minimum 3.0 R:R; soft bias-quality and
+AMD-timing scores; deterministic exact-candidate and sweep/MSS narrative keys;
+and append-only `audit_log` serialization through an injected Supabase client.
+Audit insert failures raise and must block execution.
+
+Post-review corrections require session-safety and strategy-selectivity state to
+be explicitly resolved and complete before a setup can pass; make bias-quality
+and AMD-timing promotion functional through validated score thresholds; and
+reject NaN/infinite setup numbers at the immutable `Setup` construction
+boundary before filtering or audit serialization.
+
+Following owner review of the ICT 2022 model, the speculative fixed 60-minute
+cooldown was removed. Rejected candidates do not consume killzone quota. Only
+accepted setups count toward the one-per-killzone limit, exact candidates cannot
+be evaluated twice, and an accepted sweep/MSS narrative cannot be entered twice.
+A genuinely new narrative may still qualify less than 60 minutes later, subject
+to the daily and killzone caps.
+
+Verification: `$env:PYTHONPATH='.'; python -m pytest -q
+tests/test_setup_filter.py tests/test_eurusd_model.py` passed (53 tests);
+`python -m ruff check backend/strategies/setup_filter.py
+backend/strategies/eurusd_model.py tests/test_setup_filter.py
+tests/test_eurusd_model.py`, focused Pyright, `compileall`, and `git diff
+--check` passed.
+
 Only after the EURUSD model is complete, create `backend/strategies/setup_filter.py`.
 
 Add Pydantic filter models, the five configured checks, `evaluate()`, and `log_filter_result()` for the existing `audit_log` table. The filter receives only `Setup`, never raw candle data.
 
-Start with cooldown, confluence, and R:R as hard gates. Keep bias quality and AMD timing as soft scores. Apply the separate session-safety gates before setup-quality scoring, and verify every pass/fail case plus the audit insert payload.
+Start with structural selectivity, confluence, and R:R as hard gates. Keep bias
+quality and AMD timing as soft scores. Apply the separate session-safety gates
+before setup-quality scoring, and verify every pass/fail case plus the audit
+insert payload.
 
 ### 5. Connect the completed strategy to execution
 
@@ -93,17 +131,93 @@ Update the minimal integration points only:
 - Normalize broker candle timestamps to UTC before strategy evaluation.
 - Audit every candidate with `setup_filter.evaluate()`.
 - Build, save, and publish an existing Verdict only after the setup passes the filter.
+- Resolve daily/killzone selectivity from strategy-level accepted setups; never
+  suppress the shared market signal using one account's trade history.
+- Because `audit_log` is account-owned, write the same strategy-level filter
+  outcome as an account-scoped audit projection for every eligible account.
+  `account_id` scopes audit visibility only and must not influence evaluation.
 
 Keep `worker.py`, `position_monitor.py`, Redis behavior, and existing Verdict persistence unchanged. Confirm the mapping from `Setup`/killzone values to existing Verdict scenarios before integrating.
 
 Verify rejection, invalid configuration, audit failure, and Verdict-save failure all fail closed. A rejected setup must never create a Verdict.
 
+### 6. Build shared `TradingConditions`
+
+Status: planned future work; do not implement until Steps 1–5 are verified and
+the owner explicitly authorizes this step with `NEXT`.
+
+**Boundary with Lumibot:** Lumibot remains authoritative for the configured
+market schedule and strategy lifecycle. It owns the `24/5` forex schedule,
+weekend/market-closed handling, `on_trading_iteration()` timing, and the current
+strategy time from `self.get_datetime()`. `TradingConditions` must not duplicate
+those responsibilities.
+
+**Missing calendar coverage only:** After Lumibot reports that the market is
+open, `backend/services/trading_conditions.py` resolves only the economic-event
+and liquidity-calendar restrictions Lumibot does not provide:
+
+- the official NFP/US Employment Situation release day;
+- the configured FOMC decision event window; and
+- explicit US and EUR/Eurozone holiday-liquidity blocks that are not expressed
+  by Lumibot's generic forex schedule.
+
+It must populate only the calendar-derived portion of
+`SessionSafetyContext`, using the existing `is_nfp_release_day` contract so
+rescheduled official releases cannot be missed. DOL selection, ADR exhaustion,
+DXY conflict, and all ICT pattern evidence remain closed-candle
+strategy/filter calculations; they are not responsibilities of
+`TradingConditions`.
+
+The resolver must refresh calendar data outside Lumibot's per-minute trading
+iteration, return a local cached result during strategy evaluation, and fail
+closed when its sources are unavailable, stale, malformed, or incomplete.
+Use official BLS and Federal Reserve schedules plus an explicit holiday policy;
+do not treat Lumibot's market-session calendar as a complete economic calendar.
+
+**Decision order:** Lumibot market closed means no strategy evaluation. If
+Lumibot reports open, unresolved/stale `TradingConditions` data fails closed;
+a resolved blocked event rejects and audits the candidate; only a resolved,
+clear result proceeds to the strategy filter.
+
+Verify official-source parsing with deterministic fixtures; Lumibot-closed
+short-circuiting without a calendar lookup; NFP release-day, FOMC-window, and
+holiday-policy blocks; stale-cache and source-failure rejection; and that no
+Verdict can be created when the calendar-derived context is unresolved.
+
+### 7. Final step: modularize the reusable filter framework for future strategies
+
+Status: planned future work; do not implement before Steps 5 and 6 are
+verified.
+
+**Why this exists:** Every strategy needs the same disciplined plumbing:
+fail-closed safety-context validation, candidate/audit identity, per-session
+quotas, deduplication, hard/soft gate orchestration, and append-only audit
+logging. Rewriting those mechanics for each instrument would create divergent
+trade-safety behavior and make later strategies harder to verify. At the same
+time, forcing EURUSD's ICT confluence, DXY, and AMD rules onto instruments
+with different market behavior would be incorrect.
+
+**Implementation:** Retain `backend/strategies/setup_filter.py` as the shared
+framework. Extract EURUSD-only checks and configuration into
+`backend/strategies/eurusd_filter_rules.py`. The shared filter accepts an
+instrument-specific rule set/configuration while continuing to construct the
+same `FilterResult` and append the same audit record. Future strategies add
+their own `<instrument>_filter_rules.py` only when their rules differ; they
+reuse `TradingConditions` and the shared filter framework.
+
+**Acceptance criteria:** EURUSD produces identical pass/reject outcomes and
+audit payloads for the existing fixture suite after extraction; shared
+framework tests cover unresolved context, quotas, deduplication, hard/soft
+gate behavior, and audit-write failure; and a small fake second-instrument
+rule set proves a new strategy can plug in without copying the framework.
+
 ## Fixed initial defaults
 
 - London killzone: 02:00–05:00 New York time.
 - NY AM killzone: 07:00–10:00 New York time; preferred entry sub-window 08:30–10:00 NY, not an exclusive gate.
-- Maximum trades per day: 2.
-- Minimum minutes between setups: 60.
+- Maximum strategy-level accepted setups per day: 2; per-account execution
+  limits remain worker responsibilities.
+- No fixed time cooldown: deduplicate exact candidates and accepted sweep/MSS narratives.
 - Maximum setups per killzone: 1.
 - Minimum confluence categories: 2 of 3.
 - Minimum MSS displacement: 1.5 ATR.
@@ -113,10 +227,18 @@ Verify rejection, invalid configuration, audit failure, and Verdict-save failure
 - Target priority: opposing Asian/London liquidity, then 80% ADR, then 20–30 pip scalp fallback.
 - DXY/SMT: contextual evidence; do not require confirmation for every EURUSD setup. Clear DXY structural conflict remains a separate safety invalidation.
 - Execution refinement: M5 primary; M3/M1 optional only after the setup is already confirmed.
-- Session safety: bank holidays, NFP Friday, FOMC decision afternoon, absent DOL, and exhausted ADR fail closed and are audit logged.
+- Session safety: Lumibot owns `24/5`/market-closed scheduling;
+  `TradingConditions` later supplies only missing holiday, NFP/Employment
+  Situation, and FOMC calendar restrictions; strategy/filter calculations own
+  absent DOL, exhausted ADR, and DXY conflict. Every unresolved or blocked gate
+  fails closed and is audit logged.
+
+`TradingConditions` is deliberately deferred until after verified EURUSD
+execution integration. Filter modularization is the final planned step after
+`TradingConditions`; both complete before any additional strategy is added.
 
 Do not tune these values or alter hard/soft filter status during this implementation.
 
 ## Next step
 
-Implement Step 4, `setup_filter.py`, while retaining the existing `audit_log` requirements.
+Implement Step 5, connecting the completed strategy and filter to the existing execution boundary.
